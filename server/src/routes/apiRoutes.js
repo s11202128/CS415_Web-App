@@ -1,7 +1,7 @@
 const express = require("express");
+const { Op } = require("sequelize");
 const requirementsData = require("../config/requirementsData");
 const {
-  HIGH_VALUE_OTP_THRESHOLD,
   getAccountTransactions,
   initiateTransfer,
   verifyTransfer,
@@ -13,8 +13,11 @@ const {
   generateStatement,
   generateInterestSummaries,
   applyMonthlyFees,
+  getHighValueTransferThreshold,
+  setHighValueTransferThreshold,
+  getNotificationLogs,
 } = require("../store-mysql");
-const { Customer, Account, Bill, Investment, Loan } = require("../models");
+const { Customer, Account, Bill, Investment, Loan, Transaction } = require("../models");
 
 const loanProducts = [
   { id: "LP-001", name: "Personal Loan", annualRate: 0.089, maxAmount: 30000, minTermMonths: 6, maxTermMonths: 60 },
@@ -38,17 +41,23 @@ const toCustomerResponse = (c) => ({
   id: c.id,
   fullName: c.fullName,
   mobile: c.mobile,
-  residencyStatus: "resident",
-  tin: "",
+  residencyStatus: c.residencyStatus || "resident",
+  tin: c.tin || "",
+  identityVerified: Boolean(c.identityVerified),
+  registrationStatus: c.registrationStatus || "approved",
+  status: c.status,
+  email: c.email,
 });
 
 const toAccountResponse = (a) => ({
   id: a.id,
+  accountNumber: a.accountNumber,
   customerId: a.customerId,
   type: a.accountType,
   balance: Number(a.balance),
   maintenanceFee: a.accountType === "Simple Access" ? 2.5 : 0,
   currency: a.currency,
+  status: a.status,
   createdAt: a.createdAt,
 });
 
@@ -77,13 +86,41 @@ router.post("/customers", asyncHandler(async (req, res) => {
     email: payload.email || `customer-${Date.now()}@example.com`,
     password: payload.password || "temporary-password",
     status: "active",
+    tin: payload.tin || "",
+    residencyStatus: payload.residencyStatus || "resident",
+    identityVerified: Boolean(payload.identityVerified),
+    registrationStatus: payload.registrationStatus || "approved",
   });
 
-  res.status(201).json({
-    ...toCustomerResponse(customer),
-    residencyStatus: payload.residencyStatus || "resident",
-    tin: payload.tin || "",
+  res.status(201).json(toCustomerResponse(customer));
+}));
+
+router.patch("/admin/customers/:id", asyncHandler(async (req, res) => {
+  const customer = await Customer.findByPk(req.params.id);
+  if (!customer) {
+    return res.status(404).json({ error: "Customer not found" });
+  }
+
+  const payload = req.body || {};
+  const updates = {};
+  const allowed = [
+    "fullName",
+    "mobile",
+    "status",
+    "tin",
+    "residencyStatus",
+    "identityVerified",
+    "registrationStatus",
+  ];
+
+  allowed.forEach((field) => {
+    if (payload[field] !== undefined) {
+      updates[field] = payload[field];
+    }
   });
+
+  await customer.update(updates);
+  res.json(toCustomerResponse(customer));
 }));
 
 router.get("/accounts", asyncHandler(async (req, res) => {
@@ -116,6 +153,73 @@ router.post("/accounts", asyncHandler(async (req, res) => {
   res.status(201).json(toAccountResponse(account));
 }));
 
+router.patch("/admin/accounts/:id", asyncHandler(async (req, res) => {
+  const account = await Account.findByPk(req.params.id);
+  if (!account) {
+    return res.status(404).json({ error: "Account not found" });
+  }
+
+  const payload = req.body || {};
+  const updates = {};
+  if (payload.type !== undefined) {
+    if (!["Simple Access", "Savings"].includes(payload.type)) {
+      return res.status(400).json({ error: "type must be Simple Access or Savings" });
+    }
+    updates.accountType = payload.type;
+  }
+  if (payload.status !== undefined) {
+    updates.status = payload.status;
+  }
+  if (payload.accountNumber !== undefined) {
+    const candidate = String(payload.accountNumber || "").trim();
+    if (!/^\d{12}$/.test(candidate)) {
+      return res.status(400).json({ error: "Reenter 12 digit number" });
+    }
+    updates.accountNumber = candidate;
+  }
+
+  await account.update(updates);
+  res.json(toAccountResponse(account));
+}));
+
+router.post("/admin/accounts/:id/freeze", asyncHandler(async (req, res) => {
+  const account = await Account.findByPk(req.params.id);
+  if (!account) {
+    return res.status(404).json({ error: "Account not found" });
+  }
+  await account.update({ status: "frozen" });
+  res.json(toAccountResponse(account));
+}));
+
+router.get("/admin/transactions", asyncHandler(async (req, res) => {
+  const accountNumber = String(req.query.accountNumber || "").trim();
+  let accountIdFilter = null;
+
+  if (accountNumber) {
+    const account = await Account.findOne({ where: { accountNumber } });
+    if (!account) {
+      return res.json([]);
+    }
+    accountIdFilter = account.id;
+  }
+
+  const rows = await Transaction.findAll({
+    where: accountIdFilter ? { accountId: accountIdFilter } : undefined,
+    order: [["createdAt", "DESC"]],
+    limit: 500,
+  });
+
+  res.json(rows.map((t) => ({
+    id: t.id,
+    accountId: t.accountId,
+    kind: t.type,
+    amount: Number(t.amount),
+    description: t.description,
+    status: t.status,
+    createdAt: t.createdAt,
+  })));
+}));
+
 router.get("/transactions", asyncHandler(async (req, res) => {
   const { accountId } = req.query;
   if (!accountId) {
@@ -135,7 +239,136 @@ router.get("/transactions", asyncHandler(async (req, res) => {
 
 router.post("/transfers/initiate", asyncHandler(async (req, res) => {
   const result = await initiateTransfer(req.body || {});
-  res.json({ highValueThreshold: HIGH_VALUE_OTP_THRESHOLD, ...result });
+  res.json({ highValueThreshold: getHighValueTransferThreshold(), ...result });
+}));
+
+router.get("/admin/transfers", asyncHandler(async (req, res) => {
+  const rows = await Transaction.findAll({
+    where: { description: { [Op.in]: ["Transfer sent", "Transfer received"] } },
+    order: [["createdAt", "DESC"]],
+    limit: 500,
+  });
+
+  res.json(rows.map((t) => ({
+    id: t.id,
+    accountId: t.accountId,
+    kind: t.type,
+    amount: Number(t.amount),
+    description: t.description,
+    createdAt: t.createdAt,
+  })));
+}));
+
+router.get("/admin/transfer-limit", (req, res) => {
+  res.json({ highValueTransferLimit: getHighValueTransferThreshold() });
+});
+
+router.put("/admin/transfer-limit", (req, res) => {
+  const updated = setHighValueTransferThreshold(req.body?.highValueTransferLimit);
+  res.json({ highValueTransferLimit: updated });
+});
+
+router.get("/admin/dashboard-report", asyncHandler(async (req, res) => {
+  const [totalCustomers, totalAccounts, totalDepositsRaw, pendingLoans, frozenAccounts] = await Promise.all([
+    Customer.count(),
+    Account.count(),
+    Account.sum("balance"),
+    Loan.count({ where: { status: "submitted" } }),
+    Account.count({ where: { status: { [Op.in]: ["frozen", "suspended"] } } }),
+  ]);
+
+  const totalDeposits = Number(totalDepositsRaw || 0);
+  const sevenDaysAgo = new Date();
+  sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 6);
+  sevenDaysAgo.setHours(0, 0, 0, 0);
+
+  const dailyRows = await Transaction.findAll({
+    attributes: [
+      [Account.sequelize.fn("DATE", Account.sequelize.col("createdAt")), "day"],
+      [Account.sequelize.fn("COUNT", Account.sequelize.col("id")), "count"],
+      [Account.sequelize.fn("SUM", Account.sequelize.col("amount")), "totalAmount"],
+    ],
+    where: {
+      createdAt: { [Op.gte]: sevenDaysAgo },
+    },
+    group: [Account.sequelize.fn("DATE", Account.sequelize.col("createdAt"))],
+    order: [[Account.sequelize.fn("DATE", Account.sequelize.col("createdAt")), "ASC"]],
+    raw: true,
+  });
+
+  const dailyMap = {};
+  dailyRows.forEach((row) => {
+    dailyMap[String(row.day)] = {
+      count: Number(row.count || 0),
+      totalAmount: Number(row.totalAmount || 0),
+    };
+  });
+
+  const transactionsByDay = [];
+  for (let i = 0; i < 7; i += 1) {
+    const date = new Date(sevenDaysAgo);
+    date.setDate(sevenDaysAgo.getDate() + i);
+    const key = date.toISOString().slice(0, 10);
+    transactionsByDay.push({
+      day: key,
+      count: dailyMap[key]?.count || 0,
+      totalAmount: Number((dailyMap[key]?.totalAmount || 0).toFixed(2)),
+    });
+  }
+
+  const accountTypeRows = await Account.findAll({
+    attributes: [
+      [Account.sequelize.col("accountType"), "label"],
+      [Account.sequelize.fn("COUNT", Account.sequelize.col("id")), "value"],
+    ],
+    group: [Account.sequelize.col("accountType")],
+    raw: true,
+  });
+
+  const loanStatusRows = await Loan.findAll({
+    attributes: [
+      [Loan.sequelize.col("status"), "label"],
+      [Loan.sequelize.fn("COUNT", Loan.sequelize.col("id")), "value"],
+    ],
+    group: [Loan.sequelize.col("status")],
+    raw: true,
+  });
+
+  const latestTransactions = await Transaction.findAll({
+    order: [["createdAt", "DESC"]],
+    limit: 8,
+  });
+
+  const recentTransactionRows = latestTransactions.map((t) => ({
+    id: t.id,
+    accountId: t.accountId,
+    kind: t.type,
+    amount: Number(t.amount),
+    description: t.description,
+    createdAt: t.createdAt,
+  }));
+
+  const todayStart = new Date();
+  todayStart.setHours(0, 0, 0, 0);
+  const todaysTransactions = await Transaction.count({
+    where: { createdAt: { [Op.gte]: todayStart } },
+  });
+
+  res.json({
+    generatedAt: new Date().toISOString(),
+    metrics: {
+      totalCustomers,
+      totalAccounts,
+      totalDeposits: Number(totalDeposits.toFixed(2)),
+      pendingLoans,
+      frozenAccounts,
+      todaysTransactions,
+    },
+    transactionsByDay,
+    accountTypeBreakdown: accountTypeRows.map((x) => ({ label: x.label || "Unknown", value: Number(x.value || 0) })),
+    loanStatusBreakdown: loanStatusRows.map((x) => ({ label: x.label || "unknown", value: Number(x.value || 0) })),
+    recentTransactions: recentTransactionRows,
+  });
 }));
 
 router.post("/transfers/verify", asyncHandler(async (req, res) => {
@@ -233,6 +466,11 @@ router.get("/statements/:accountId/download", asyncHandler(async (req, res) => {
 router.get("/notifications/:customerId", (req, res) => {
   // Notifications are not persisted yet in MySQL. Keep API stable.
   res.json([]);
+});
+
+router.get("/admin/notifications/logs", (req, res) => {
+  const limit = Number(req.query.limit || 200);
+  res.json(getNotificationLogs(limit));
 });
 
 router.get("/config/interest-rate", (req, res) => {
@@ -342,6 +580,36 @@ router.get("/loan-applications", asyncHandler(async (req, res) => {
       createdAt: l.createdAt,
     }))
   );
+}));
+
+router.patch("/admin/loan-applications/:id", asyncHandler(async (req, res) => {
+  const loan = await Loan.findByPk(req.params.id);
+  if (!loan) {
+    return res.status(404).json({ error: "Loan application not found" });
+  }
+
+  const payload = req.body || {};
+  const updates = {};
+  if (payload.status !== undefined) {
+    updates.status = payload.status;
+  }
+  if (payload.interestRate !== undefined) {
+    const rate = Number(payload.interestRate);
+    if (!Number.isFinite(rate) || rate < 0) {
+      return res.status(400).json({ error: "interestRate must be a non-negative number" });
+    }
+    updates.interestRate = rate;
+  }
+  await loan.update(updates);
+
+  res.json({
+    id: loan.id,
+    customerId: loan.customerId,
+    requestedAmount: Number(loan.principal),
+    status: loan.status,
+    interestRate: Number(loan.interestRate || 0),
+    createdAt: loan.createdAt,
+  });
 }));
 
 module.exports = router;

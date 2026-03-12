@@ -8,11 +8,15 @@ const {
   Bill,
   Investment,
   OtpVerification,
+  Registration,
 } = require("./models");
 
-const HIGH_VALUE_OTP_THRESHOLD = 1000;
+let HIGH_VALUE_OTP_THRESHOLD = 1000;
 const WITHHOLDING_TAX_RATE = 0.15;
 const SAVINGS_INTEREST_RATE = 0.0325;
+const ADMIN_EMAIL = String(process.env.ADMIN_EMAIL || "admin@bof.fj").toLowerCase();
+const ADMIN_PASSWORD = String(process.env.ADMIN_PASSWORD || "admin12345");
+const notificationLogs = [];
 
 function nowIso() {
   return new Date().toISOString();
@@ -55,14 +59,36 @@ async function getAccount(accountId) {
 // Add notification (for now, just log it)
 async function addNotification(customerId, message, type = "SMS") {
   console.log(`[${type}] Customer ${customerId}: ${message}`);
-  // In future, store notifications in a Notifications table
-  return {
+  const logEntry = {
     id: makeId("NTF"),
     customerId,
     type,
     message,
     createdAt: nowIso(),
   };
+  notificationLogs.unshift(logEntry);
+  if (notificationLogs.length > 1000) {
+    notificationLogs.pop();
+  }
+  // In future, store notifications in a Notifications table
+  return logEntry;
+}
+
+function getHighValueTransferThreshold() {
+  return HIGH_VALUE_OTP_THRESHOLD;
+}
+
+function setHighValueTransferThreshold(value) {
+  const threshold = Number(value);
+  if (!Number.isFinite(threshold) || threshold <= 0) {
+    throw new Error("High-value transfer limit must be a positive number");
+  }
+  HIGH_VALUE_OTP_THRESHOLD = threshold;
+  return HIGH_VALUE_OTP_THRESHOLD;
+}
+
+function getNotificationLogs(limit = 200) {
+  return notificationLogs.slice(0, Number(limit) || 200);
 }
 
 // Create a transaction in the database
@@ -445,6 +471,14 @@ async function registerUser({ fullName, mobile, email, password }) {
   }
 
   const passwordHash = await bcrypt.hash(password, 10);
+
+  await Registration.create({
+    fullName,
+    mobile,
+    email: email.toLowerCase(),
+    password: passwordHash,
+  });
+
   const customer = await Customer.create({
     fullName,
     mobile,
@@ -473,6 +507,16 @@ async function loginUser({ email, password }) {
     throw new Error("email and password are required");
   }
 
+  if (email.toLowerCase() === ADMIN_EMAIL && password === ADMIN_PASSWORD) {
+    return {
+      userId: "admin",
+      fullName: "System Admin",
+      email: ADMIN_EMAIL,
+      customerId: null,
+      isAdmin: true,
+    };
+  }
+
   const customer = await Customer.findOne({
     where: { email: email.toLowerCase() },
   });
@@ -486,7 +530,30 @@ async function loginUser({ email, password }) {
     throw new Error("Invalid email or password");
   }
 
-  return { userId: customer.id, fullName: customer.fullName, email: customer.email, customerId: customer.id };
+  return {
+    userId: customer.id,
+    fullName: customer.fullName,
+    email: customer.email,
+    customerId: customer.id,
+    isAdmin: false,
+  };
+}
+
+async function verifyAdminCredentials({ email, password }) {
+  if (!email || !password) {
+    throw new Error("email and password are required");
+  }
+
+  const normalizedEmail = String(email).toLowerCase();
+  if (normalizedEmail !== ADMIN_EMAIL || password !== ADMIN_PASSWORD) {
+    throw new Error("Invalid admin email or password");
+  }
+
+  return {
+    email: ADMIN_EMAIL,
+    fullName: "System Admin",
+    isAdmin: true,
+  };
 }
 
 module.exports = {
@@ -507,7 +574,11 @@ module.exports = {
   generateStatement,
   generateInterestSummaries,
   applyMonthlyFees,
+  getHighValueTransferThreshold,
+  setHighValueTransferThreshold,
+  getNotificationLogs,
   generateRandomAccountNumber,
   registerUser,
   loginUser,
+  verifyAdminCredentials,
 };

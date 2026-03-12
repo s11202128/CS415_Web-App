@@ -6,6 +6,7 @@ const Bill = require('./Bill');
 const Investment = require('./Investment');
 const Loan = require('./Loan');
 const OtpVerification = require('./OtpVerification');
+const Registration = require('./Registration');
 
 // Define associations
 Customer.hasMany(Account, { foreignKey: 'customerId' });
@@ -35,4 +36,5 @@ module.exports = {
   Investment,
   Loan,
   OtpVerification,
+  Registration,
 };

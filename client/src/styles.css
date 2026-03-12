@@ -244,6 +244,86 @@ td {
   color: #15803d;
 }
 
+.admin-grid h3 {
+  margin: 0 0 10px;
+  font-size: 1rem;
+}
+
+.admin-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.admin-tab {
+  border: 1px solid #94a3b8;
+  background: #fff;
+  color: #0f172a;
+  padding: 8px 12px;
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+.admin-tab.active {
+  background: #0f766e;
+  border-color: #0f766e;
+  color: #fff;
+}
+
+.metric-card {
+  grid-column: span 2;
+}
+
+.mini-chart {
+  min-height: 220px;
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+  padding-top: 12px;
+}
+
+.mini-chart-col {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
+}
+
+.mini-bar {
+  width: 100%;
+  max-width: 48px;
+  background: linear-gradient(180deg, #0ea5e9, #0f766e);
+  border-radius: 8px 8px 0 0;
+}
+
+.mini-bar.amount {
+  background: linear-gradient(180deg, #f59e0b, #d97706);
+}
+
+.mini-chart-label {
+  font-size: 0.78rem;
+  color: #475569;
+}
+
+.mini-chart-value {
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+@media (max-width: 980px) {
+  .metric-card {
+    grid-column: span 6;
+  }
+}
+
+@media (max-width: 720px) {
+  .metric-card {
+    grid-column: span 12;
+  }
+}
+
 /* ── Hero user bar ──────────────────────────────────────────────────── */
 .hero-row {
   display: flex;
@@ -255,9 +335,9 @@ td {
 
 .hero-user {
   display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 6px;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
   font-size: 0.9rem;
   color: #f0fdf4;
 }
@@ -274,6 +354,36 @@ td {
 
 .logout-btn:hover {
   background: rgba(255,255,255,0.35);
+}
+
+.admin-btn {
+  padding: 6px 14px;
+  border-radius: 8px;
+  background: #1d4ed8;
+  border: 1px solid #3b82f6;
+  color: white;
+  cursor: pointer;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.admin-btn:hover {
+  background: #2563eb;
+}
+
+.home-btn {
+  padding: 6px 14px;
+  border-radius: 8px;
+  background: #15803d;
+  border: 1px solid #22c55e;
+  color: white;
+  cursor: pointer;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.home-btn:hover {
+  background: #16a34a;
 }
 
 /* ── OTP notice ─────────────────────────────────────────────────────── */
@@ -332,6 +442,17 @@ td {
   margin: 4px 0;
 }
 
+.admin-form {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.admin-form button {
+  align-self: end;
+}
+
 @media (max-width: 980px) {
   .review-grid {
     grid-template-columns: 1fr 1fr;
@@ -340,6 +461,10 @@ td {
 
 @media (max-width: 720px) {
   .review-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .admin-form {
     grid-template-columns: 1fr;
   }
 }

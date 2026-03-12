@@ -29,6 +29,22 @@ const Customer = sequelize.define('Customer', {
     type: DataTypes.STRING,
     defaultValue: 'active',
   },
+  tin: {
+    type: DataTypes.STRING,
+    defaultValue: '',
+  },
+  residencyStatus: {
+    type: DataTypes.STRING,
+    defaultValue: 'resident',
+  },
+  identityVerified: {
+    type: DataTypes.BOOLEAN,
+    defaultValue: false,
+  },
+  registrationStatus: {
+    type: DataTypes.STRING,
+    defaultValue: 'approved',
+  },
 }, {
   tableName: 'customers',
   timestamps: true,
