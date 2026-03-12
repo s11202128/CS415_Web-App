@@ -73,7 +73,7 @@ const seedDatabase = async () => {
     // Create accounts for each customer
     await Account.create({
       customerId: customer1.id,
-      accountNumber: "ACC001",
+      accountNumber: "235673489789",
       accountType: "Savings",
       balance: 15000,
       currency: "FJD",
@@ -82,7 +82,7 @@ const seedDatabase = async () => {
 
     await Account.create({
       customerId: customer2.id,
-      accountNumber: "ACC002",
+      accountNumber: "918274635402",
       accountType: "Checking",
       balance: 25000,
       currency: "FJD",
@@ -91,7 +91,7 @@ const seedDatabase = async () => {
 
     await Account.create({
       customerId: customer3.id,
-      accountNumber: "ACC003",
+      accountNumber: "603957214886",
       accountType: "Savings",
       balance: 18500,
       currency: "FJD",

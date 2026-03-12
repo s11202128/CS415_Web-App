@@ -22,6 +22,26 @@ function makeId(prefix) {
   return `${prefix}-${uuid().slice(0, 8).toUpperCase()}`;
 }
 
+function createRandom12DigitNumber() {
+  let value = "";
+  for (let i = 0; i < 12; i += 1) {
+    value += Math.floor(Math.random() * 10);
+  }
+  return value;
+}
+
+async function generateRandomAccountNumber() {
+  const maxAttempts = 20;
+  for (let i = 0; i < maxAttempts; i += 1) {
+    const accountNumber = createRandom12DigitNumber();
+    const existing = await Account.findOne({ where: { accountNumber } });
+    if (!existing) {
+      return accountNumber;
+    }
+  }
+  throw new Error("Unable to generate unique account number. Please try again.");
+}
+
 // Get customer by ID
 async function getCustomer(customerId) {
   return await Customer.findByPk(customerId);
@@ -434,7 +454,7 @@ async function registerUser({ fullName, mobile, email, password }) {
   });
 
   // Create a default account for the new customer
-  const accountNumber = `ACC${Date.now()}`;
+  const accountNumber = await generateRandomAccountNumber();
   await Account.create({
     customerId: customer.id,
     accountNumber,
@@ -487,6 +507,7 @@ module.exports = {
   generateStatement,
   generateInterestSummaries,
   applyMonthlyFees,
+  generateRandomAccountNumber,
   registerUser,
   loginUser,
 };

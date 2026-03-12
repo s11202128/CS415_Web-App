@@ -1,10 +1,24 @@
-const API_BASE = import.meta.env.VITE_API_BASE || "http://localhost:4000/api";
+const API_BASE = import.meta.env.VITE_API_BASE || "/api";
 
 let _authToken = null;
 export function setToken(token) { _authToken = token; }
 export function clearToken() { _authToken = null; }
 
 async function request(path, options = {}) {
+  if (path === "/accounts" && String(options.method || "GET").toUpperCase() === "POST" && options.body) {
+    try {
+      const payload = JSON.parse(options.body);
+      const accountNumber = String(payload?.accountNumber || "").trim();
+      if (accountNumber && !/^\d{12}$/.test(accountNumber)) {
+        throw new Error("Reenter 12 digit number");
+      }
+    } catch (err) {
+      if (err instanceof Error && err.message === "Reenter 12 digit number") {
+        throw err;
+      }
+    }
+  }
+
   const headers = {
     "Content-Type": "application/json",
     ...(options.headers || {}),
@@ -12,10 +26,15 @@ async function request(path, options = {}) {
   if (_authToken) {
     headers["Authorization"] = `Bearer ${_authToken}`;
   }
-  const response = await fetch(`${API_BASE}${path}`, {
-    ...options,
-    headers,
-  });
+  let response;
+  try {
+    response = await fetch(`${API_BASE}${path}`, {
+      ...options,
+      headers,
+    });
+  } catch (err) {
+    throw new Error("Cannot reach backend server. Start server on port 4000 and try again.");
+  }
 
   if (!response.ok) {
     let message = "Request failed";

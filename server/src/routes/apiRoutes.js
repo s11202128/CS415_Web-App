@@ -9,6 +9,7 @@ const {
   scheduleBillPayment,
   runScheduledPayment,
   createInvestment,
+  generateRandomAccountNumber,
   generateStatement,
   generateInterestSummaries,
   applyMonthlyFees,
@@ -92,16 +93,20 @@ router.get("/accounts", asyncHandler(async (req, res) => {
 
 router.post("/accounts", asyncHandler(async (req, res) => {
   const payload = req.body || {};
+  const providedAccountNumber = String(payload.accountNumber || "").trim();
   if (!payload.customerId || !payload.type) {
     return res.status(400).json({ error: "customerId and type are required" });
   }
   if (!["Simple Access", "Savings"].includes(payload.type)) {
     return res.status(400).json({ error: "type must be Simple Access or Savings" });
   }
+  if (providedAccountNumber && !/^\d{12}$/.test(providedAccountNumber)) {
+    return res.status(400).json({ error: "Reenter 12 digit number" });
+  }
 
   const account = await Account.create({
     customerId: payload.customerId,
-    accountNumber: `ACC${Date.now()}`,
+    accountNumber: providedAccountNumber || await generateRandomAccountNumber(),
     accountType: payload.type,
     balance: Number(payload.openingBalance || 0),
     currency: "FJD",

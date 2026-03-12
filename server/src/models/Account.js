@@ -15,6 +15,12 @@ const Account = sequelize.define('Account', {
     type: DataTypes.STRING,
     allowNull: false,
     unique: true,
+    validate: {
+      is: {
+        args: /^\d{12}$/,
+        msg: "Reenter 12 digit number",
+      },
+    },
   },
   accountType: {
     type: DataTypes.STRING,
