@@ -9,45 +9,24 @@ export default function HomePage({
   setSelectedAccountForTx,
   transactions,
 }) {
+  const selectedAccount = accounts.find((a) => String(a.id) === String(selectedAccountForTx));
+
   return (
     <section className="panel-grid">
       <article className="panel">
-        <h2>Customers</h2>
-        <p className="metric">{customers.length}</p>
-      </article>
-      <article className="panel">
-        <h2>Accounts</h2>
+        <h2>My Accounts</h2>
         <p className="metric">{accounts.length}</p>
       </article>
       <article className="panel">
-        <h2>Total Deposits</h2>
+        <h2>Portfolio Balance</h2>
         <p className="metric">FJD {totalBalance.toFixed(2)}</p>
       </article>
-
-      <article className="panel wide">
-        <h2>Account Snapshot</h2>
-        <table>
-          <thead>
-            <tr>
-              <th>Account</th>
-              <th>Customer</th>
-              <th>Type</th>
-              <th>Balance</th>
-              <th>Monthly Fee</th>
-            </tr>
-          </thead>
-          <tbody>
-            {accounts.map((a) => (
-              <tr key={a.id}>
-                <td>{a.id}</td>
-                <td>{customerMap[a.customerId]?.fullName || a.customerId}</td>
-                <td>{a.type}</td>
-                <td>FJD {a.balance.toFixed(2)}</td>
-                <td>FJD {a.maintenanceFee.toFixed(2)}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+      <article className="panel">
+        <h2>Selected Account</h2>
+        <p className="metric">{selectedAccount ? selectedAccount.id : "N/A"}</p>
+        <p className="hint">
+          {selectedAccount ? `${selectedAccount.type} • FJD ${Number(selectedAccount.balance || 0).toFixed(2)}` : "Choose an account below"}
+        </p>
       </article>
 
       <article className="panel wide">
@@ -58,7 +37,7 @@ export default function HomePage({
             <select value={selectedAccountForTx} onChange={(e) => setSelectedAccountForTx(e.target.value)}>
               {accounts.map((a) => (
                 <option key={a.id} value={a.id}>
-                  {a.id} ({a.type})
+                  {a.id} ({a.type}) - {customerMap[a.customerId]?.fullName || a.customerId}
                 </option>
               ))}
             </select>

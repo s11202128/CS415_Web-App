@@ -1,22 +1,27 @@
 import { useEffect, useMemo, useState } from "react";
-import { api, setToken, clearToken } from "./api";
+import { api, clearToken } from "./api";
 import { tabs } from "./constants/tabs";
 import AuthPage from "./components/AuthPage";
 import HomePage from "./components/HomePage";
+import AdminPage from "./components/AdminPage";
 import SiteFooter from "./components/SiteFooter";
+import TransfersTab from "./components/tabs/TransfersTab";
+import BillPaymentsTab from "./components/tabs/BillPaymentsTab";
+import StatementsTab from "./components/tabs/StatementsTab";
+import InvestmentsTab from "./components/tabs/InvestmentsTab";
+import LoansTab from "./components/tabs/LoansTab";
+import ComplianceTab from "./components/tabs/ComplianceTab";
+import RequirementsTab from "./components/tabs/RequirementsTab";
+import AdminLockScreen from "./components/tabs/AdminLockScreen";
 
 export default function App() {
   const [activeTab, setActiveTab] = useState("Overview");
+  const [showAdmin, setShowAdmin] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
-  // ── Auth state ───────────────────────────────────────────────────────────
   const [authToken, setAuthToken] = useState(null);
   const [currentUser, setCurrentUser] = useState(null);
-  const [authView, setAuthView] = useState("login"); // "login" | "register"
-  const [authForm, setAuthForm] = useState({ fullName: "", mobile: "", email: "", password: "", confirmPassword: "" });
-  const [authMessage, setAuthMessage] = useState("");
-  // ────────────────────────────────────────────────────────────────────────
   const [customers, setCustomers] = useState([]);
   const [accounts, setAccounts] = useState([]);
   const [requirements, setRequirements] = useState(null);
@@ -57,6 +62,22 @@ export default function App() {
 
   const [summaryYear, setSummaryYear] = useState(new Date().getFullYear());
   const [complianceMessage, setComplianceMessage] = useState("");
+  const [adminMessage, setAdminMessage] = useState("");
+  const [adminAccessGranted, setAdminAccessGranted] = useState(false);
+  const [adminAuthForm, setAdminAuthForm] = useState({ email: "", password: "" });
+  const [adminAuthMessage, setAdminAuthMessage] = useState("");
+  const [adminTransactions, setAdminTransactions] = useState([]);
+  const [adminNotificationLogs, setAdminNotificationLogs] = useState([]);
+  const [adminTransferLimit, setAdminTransferLimit] = useState(1000);
+  const [adminReport, setAdminReport] = useState(null);
+  const [adminLastUpdated, setAdminLastUpdated] = useState("");
+  const [adminAccountForm, setAdminAccountForm] = useState({
+    customerId: "",
+    type: "Simple Access",
+    openingBalance: "0",
+    accountNumber: "",
+  });
+  const [adminAccountMessage, setAdminAccountMessage] = useState("");
 
   const customerMap = useMemo(() => {
     const map = {};
@@ -120,54 +141,67 @@ export default function App() {
     api.getNotifications(notificationCustomer).then(setNotifications).catch((err) => setError(err.message));
   }, [notificationCustomer]);
 
-  // ── Auth handlers ────────────────────────────────────────────────────────
-  async function onLogin(e) {
-    e.preventDefault();
-    setAuthMessage("");
-    try {
-      const result = await api.login({ email: authForm.email, password: authForm.password });
-      setToken(result.token);
-      setAuthToken(result.token);
-      setCurrentUser({ fullName: result.fullName, userId: result.userId, customerId: result.customerId });
-    } catch (err) {
-      setAuthMessage(err.message);
-    }
-  }
-
-  async function onRegister(e) {
-    e.preventDefault();
-    setAuthMessage("");
-    if (authForm.password !== authForm.confirmPassword) {
-      setAuthMessage("Passwords do not match");
+  useEffect(() => {
+    const hasAdminAccess = currentUser?.isAdmin || adminAccessGranted;
+    if (!hasAdminAccess || !showAdmin) {
       return;
     }
-    try {
-      await api.register({
-        fullName: authForm.fullName,
-        mobile: authForm.mobile,
-        email: authForm.email,
-        password: authForm.password,
-      });
-      setAuthMessage("Registration successful! You can now log in.");
-      setAuthView("login");
-      setAuthForm({ ...authForm, password: "", confirmPassword: "" });
-    } catch (err) {
-      setAuthMessage(err.message);
-    }
+    let cancelled = false;
+    const refreshAdminData = async () => {
+      const selected = accounts.find((a) => a.id === selectedAccountForTx);
+      const accountNumber = selected?.accountNumber || "";
+      try {
+        const [txRows, logs, limit, report] = await Promise.all([
+          api.getAdminTransactions(accountNumber),
+          api.getNotificationLogsAdmin(100),
+          api.getTransferLimitAdmin(),
+          api.getAdminDashboardReport(),
+        ]);
+        if (cancelled) {
+          return;
+        }
+        setAdminTransactions(txRows);
+        setAdminNotificationLogs(logs);
+        setAdminTransferLimit(Number(limit.highValueTransferLimit || 1000));
+        setAdminReport(report);
+        setAdminLastUpdated(new Date().toISOString());
+      } catch (err) {
+        if (!cancelled) {
+          setAdminMessage(err.message);
+        }
+      }
+    };
+
+    refreshAdminData();
+    const timer = setInterval(refreshAdminData, 10000);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, [showAdmin, currentUser?.isAdmin, adminAccessGranted, selectedAccountForTx, accounts]);
+
+  const totalBalance = accounts.reduce((sum, a) => sum + a.balance, 0);
+  const currentYear = new Date().getFullYear();
+
+  // ── Auth gate ────────────────────────────────────────────────────────────
+  if (!authToken) {
+    return <AuthPage onLoginSuccess={handleLoginSuccess} currentYear={currentYear} />;
+  }
+  // ────────────────────────────────────────────────────────────────────────
+
+  // ── Auth handlers ────────────────────────────────────────────────────────
+  function handleLoginSuccess(token, user) {
+    setAuthToken(token);
+    setCurrentUser(user);
   }
 
   function onLogout() {
     clearToken();
     setAuthToken(null);
     setCurrentUser(null);
-    setAuthView("login");
-    setAuthForm({ fullName: "", mobile: "", email: "", password: "", confirmPassword: "" });
-    setAuthMessage("");
-  }
-
-  function onAuthViewChange(view) {
-    setAuthView(view);
-    setAuthMessage("");
+    setAdminAccessGranted(false);
+    setAdminAuthForm({ email: "", password: "" });
+    setAdminAuthMessage("");
   }
   // ────────────────────────────────────────────────────────────────────────
 
@@ -305,25 +339,153 @@ export default function App() {
     }
   }
 
-  const totalBalance = accounts.reduce((sum, a) => sum + a.balance, 0);
-  const currentYear = new Date().getFullYear();
+  async function onAdminUpdateCustomer(customerId, updates) {
+    setAdminMessage("");
+    try {
+      await api.updateCustomerAdmin(customerId, updates);
+      setAdminMessage("Customer updated.");
+      await loadInitialData();
+    } catch (err) {
+      setAdminMessage(err.message);
+    }
+  }
 
-  // ── Auth gate ────────────────────────────────────────────────────────────
-  if (!authToken) {
+  async function onAdminUpdateAccount(accountId, updates) {
+    setAdminMessage("");
+    try {
+      await api.updateAccountAdmin(accountId, updates);
+      setAdminMessage("Account updated.");
+      await loadInitialData();
+    } catch (err) {
+      setAdminMessage(err.message);
+    }
+  }
+
+  async function onAdminFreezeAccount(accountId) {
+    setAdminMessage("");
+    try {
+      await api.freezeAccountAdmin(accountId);
+      setAdminMessage("Account frozen.");
+      await loadInitialData();
+    } catch (err) {
+      setAdminMessage(err.message);
+    }
+  }
+
+  async function onAdminUpdateLoanStatus(loanId, status) {
+    setAdminMessage("");
+    try {
+      await api.updateLoanApplicationAdmin(loanId, { status });
+      setAdminMessage(`Loan ${status}.`);
+      await loadInitialData();
+    } catch (err) {
+      setAdminMessage(err.message);
+    }
+  }
+
+  async function onAdminUpdateTransferLimit(e) {
+    e.preventDefault();
+    setAdminMessage("");
+    try {
+      const result = await api.updateTransferLimitAdmin(adminTransferLimit);
+      setAdminTransferLimit(Number(result.highValueTransferLimit));
+      setAdminMessage("High-value transfer limit updated.");
+    } catch (err) {
+      setAdminMessage(err.message);
+    }
+  }
+
+  async function onCreateAdminAccount(e) {
+    e.preventDefault();
+    setAdminAccountMessage("");
+    try {
+      await api.createAccount({
+        customerId: adminAccountForm.customerId,
+        type: adminAccountForm.type,
+        openingBalance: Number(adminAccountForm.openingBalance || 0),
+        accountNumber: adminAccountForm.accountNumber || undefined,
+      });
+      setAdminAccountMessage("Account created successfully.");
+      setAdminAccountForm({ ...adminAccountForm, accountNumber: "" });
+      await loadInitialData();
+    } catch (err) {
+      setAdminAccountMessage(err.message);
+    }
+  }
+
+  async function onVerifyAdminAccess(e) {
+    e.preventDefault();
+    setAdminAuthMessage("");
+    try {
+      await api.verifyAdminCredentials(adminAuthForm);
+      setAdminAccessGranted(true);
+      setAdminAuthMessage("Admin access granted.");
+    } catch (err) {
+      setAdminAuthMessage(err.message);
+    }
+  }
+
+  // ── Admin page view ───────────────────────────────────────────────────────
+  if (showAdmin) {
     return (
-      <AuthPage
-        authView={authView}
-        setAuthView={onAuthViewChange}
-        authForm={authForm}
-        setAuthForm={setAuthForm}
-        authMessage={authMessage}
-        onLogin={onLogin}
-        onRegister={onRegister}
-        currentYear={currentYear}
-      />
+      <div className="app-shell">
+        <header className="hero">
+          <div className="hero-row">
+            <div>
+              <h1>Bank of Fiji — Admin Console</h1>
+              <p>Admin dashboard — live updates every 10 seconds.</p>
+            </div>
+            {currentUser && (
+              <div className="hero-user">
+                <span>Welcome, <strong>{currentUser.fullName}</strong></span>
+                <button className="home-btn" onClick={() => setShowAdmin(false)}>Home</button>
+                <button className="logout-btn" onClick={onLogout}>Logout</button>
+              </div>
+            )}
+          </div>
+        </header>
+
+        {!(currentUser?.isAdmin || adminAccessGranted) && (
+          <AdminLockScreen
+            adminAuthForm={adminAuthForm}
+            setAdminAuthForm={setAdminAuthForm}
+            onVerifyAdminAccess={onVerifyAdminAccess}
+            adminAuthMessage={adminAuthMessage}
+          />
+        )}
+        {(currentUser?.isAdmin || adminAccessGranted) && (
+          <AdminPage
+            customers={customers}
+            accounts={accounts}
+            transactions={adminTransactions}
+            scheduledBills={scheduledBills}
+            loanApplications={loanApplications}
+            summaries={summaries}
+            selectedAccountForTx={selectedAccountForTx}
+            setSelectedAccountForTx={setSelectedAccountForTx}
+            adminAccountForm={adminAccountForm}
+            setAdminAccountForm={setAdminAccountForm}
+            onCreateAdminAccount={onCreateAdminAccount}
+            adminAccountMessage={adminAccountMessage}
+            adminMessage={adminMessage}
+            onAdminUpdateCustomer={onAdminUpdateCustomer}
+            onAdminUpdateAccount={onAdminUpdateAccount}
+            onAdminFreezeAccount={onAdminFreezeAccount}
+            onAdminUpdateLoanStatus={onAdminUpdateLoanStatus}
+            adminTransferLimit={adminTransferLimit}
+            setAdminTransferLimit={setAdminTransferLimit}
+            onAdminUpdateTransferLimit={onAdminUpdateTransferLimit}
+            adminNotificationLogs={adminNotificationLogs}
+            adminReport={adminReport}
+            adminLastUpdated={adminLastUpdated}
+          />
+        )}
+
+        <SiteFooter currentYear={currentYear} />
+      </div>
     );
   }
-  // ────────────────────────────────────────────────────────────────────────
+  // ─────────────────────────────────────────────────────────────────────────
 
   return (
     <div className="app-shell">
@@ -336,6 +498,7 @@ export default function App() {
           {currentUser && (
             <div className="hero-user">
               <span>Welcome, <strong>{currentUser.fullName}</strong></span>
+              <button className="admin-btn" onClick={() => { setShowAdmin(true); setAdminAuthMessage(""); }}>Admin</button>
               <button className="logout-btn" onClick={onLogout}>Logout</button>
             </div>
           )}
@@ -370,615 +533,87 @@ export default function App() {
       )}
 
       {!loading && activeTab === "Transfers" && (
-        <section className="panel-grid">
-          <article className="panel">
-            <h2>Initiate Transfer</h2>
-            <form onSubmit={onInitiateTransfer}>
-              <label>
-                From Account
-                <select
-                  value={transferForm.fromAccountId}
-                  onChange={(e) => setTransferForm({ ...transferForm, fromAccountId: e.target.value })}
-                  required
-                >
-                  <option value="">Select</option>
-                  {accounts.map((a) => (
-                    <option key={a.id} value={a.id}>
-                      {a.id} - FJD {a.balance.toFixed(2)}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label>
-                To Account
-                <select
-                  value={transferForm.toAccountId}
-                  onChange={(e) => setTransferForm({ ...transferForm, toAccountId: e.target.value })}
-                  required
-                >
-                  <option value="">Select</option>
-                  {accounts.map((a) => (
-                    <option key={a.id} value={a.id}>
-                      {a.id} - {a.type}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label>
-                Amount (FJD)
-                <input
-                  type="number"
-                  min="1"
-                  step="0.01"
-                  value={transferForm.amount}
-                  onChange={(e) => setTransferForm({ ...transferForm, amount: e.target.value })}
-                  required
-                />
-              </label>
-              <label>
-                Description
-                <input
-                  value={transferForm.description}
-                  onChange={(e) => setTransferForm({ ...transferForm, description: e.target.value })}
-                />
-              </label>
-              <button type="submit">Send Transfer</button>
-            </form>
-          </article>
-
-          <article className="panel">
-            <h2>OTP Verification</h2>
-            <div className="otp-notice">
-              🔒 Transfers of <strong>FJD 1,000 or more</strong> require OTP verification before processing. The OTP is sent via SMS to the account holder's mobile number.
-            </div>
-            <form onSubmit={onVerifyTransfer}>
-              <label>
-                Transfer ID
-                <input
-                  value={pendingTransfer.transferId}
-                  onChange={(e) => setPendingTransfer({ ...pendingTransfer, transferId: e.target.value })}
-                  required
-                />
-              </label>
-              <label>
-                OTP
-                <input
-                  value={pendingTransfer.otp}
-                  onChange={(e) => setPendingTransfer({ ...pendingTransfer, otp: e.target.value })}
-                  required
-                />
-              </label>
-              <button type="submit">Verify OTP</button>
-            </form>
-            <p className="status">{transferMessage}</p>
-            <p className="hint">OTP is required only for high-value transactions.</p>
-          </article>
-        </section>
+        <TransfersTab
+          accounts={accounts}
+          transferForm={transferForm}
+          setTransferForm={setTransferForm}
+          onInitiateTransfer={onInitiateTransfer}
+          pendingTransfer={pendingTransfer}
+          setPendingTransfer={setPendingTransfer}
+          onVerifyTransfer={onVerifyTransfer}
+          transferMessage={transferMessage}
+        />
       )}
 
       {!loading && activeTab === "Bill Payments" && (
-        <section className="panel-grid">
-          <article className="panel">
-            <h2>Manual Bill Payment</h2>
-            <form onSubmit={onManualBill}>
-              <label>
-                Account
-                <select
-                  value={manualBillForm.accountId}
-                  onChange={(e) => setManualBillForm({ ...manualBillForm, accountId: e.target.value })}
-                  required
-                >
-                  <option value="">Select</option>
-                  {accounts.map((a) => (
-                    <option key={a.id} value={a.id}>
-                      {a.id}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label>
-                Payee
-                <input
-                  value={manualBillForm.payee}
-                  onChange={(e) => setManualBillForm({ ...manualBillForm, payee: e.target.value })}
-                  required
-                />
-              </label>
-              <label>
-                Amount
-                <input
-                  type="number"
-                  min="1"
-                  step="0.01"
-                  value={manualBillForm.amount}
-                  onChange={(e) => setManualBillForm({ ...manualBillForm, amount: e.target.value })}
-                  required
-                />
-              </label>
-              <button type="submit">Pay Now</button>
-            </form>
-          </article>
-
-          <article className="panel">
-            <h2>Schedule Auto Payment</h2>
-            <form onSubmit={onScheduleBill}>
-              <label>
-                Account
-                <select
-                  value={scheduleBillForm.accountId}
-                  onChange={(e) => setScheduleBillForm({ ...scheduleBillForm, accountId: e.target.value })}
-                  required
-                >
-                  <option value="">Select</option>
-                  {accounts.map((a) => (
-                    <option key={a.id} value={a.id}>
-                      {a.id}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label>
-                Payee
-                <input
-                  value={scheduleBillForm.payee}
-                  onChange={(e) => setScheduleBillForm({ ...scheduleBillForm, payee: e.target.value })}
-                  required
-                />
-              </label>
-              <label>
-                Amount
-                <input
-                  type="number"
-                  min="1"
-                  step="0.01"
-                  value={scheduleBillForm.amount}
-                  onChange={(e) => setScheduleBillForm({ ...scheduleBillForm, amount: e.target.value })}
-                  required
-                />
-              </label>
-              <label>
-                Scheduled Date
-                <input
-                  type="date"
-                  value={scheduleBillForm.scheduledDate}
-                  onChange={(e) => setScheduleBillForm({ ...scheduleBillForm, scheduledDate: e.target.value })}
-                  required
-                />
-              </label>
-              <button type="submit">Schedule</button>
-            </form>
-          </article>
-
-          <article className="panel wide">
-            <h2>Scheduled Payments</h2>
-            <table>
-              <thead>
-                <tr>
-                  <th>ID</th>
-                  <th>Account</th>
-                  <th>Payee</th>
-                  <th>Amount</th>
-                  <th>Date</th>
-                  <th>Status</th>
-                  <th>Action</th>
-                </tr>
-              </thead>
-              <tbody>
-                {scheduledBills.map((b) => (
-                  <tr key={b.id}>
-                    <td>{b.id}</td>
-                    <td>{b.accountId}</td>
-                    <td>{b.payee}</td>
-                    <td>FJD {b.amount.toFixed(2)}</td>
-                    <td>{b.scheduledDate}</td>
-                    <td>{b.status}</td>
-                    <td>
-                      <button disabled={b.status === "processed"} onClick={() => runScheduledBill(b.id)}>
-                        Run
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            <p className="status">{billMessage}</p>
-          </article>
-        </section>
+        <BillPaymentsTab
+          accounts={accounts}
+          manualBillForm={manualBillForm}
+          setManualBillForm={setManualBillForm}
+          onManualBill={onManualBill}
+          scheduleBillForm={scheduleBillForm}
+          setScheduleBillForm={setScheduleBillForm}
+          onScheduleBill={onScheduleBill}
+          scheduledBills={scheduledBills}
+          runScheduledBill={runScheduledBill}
+          billMessage={billMessage}
+        />
       )}
 
       {!loading && activeTab === "Statements" && (
-        <section className="panel-grid">
-          <article className="panel wide">
-            <h2>On-Demand Statements</h2>
-            <div className="inline-controls">
-              <label>
-                Account
-                <select value={statementAccount} onChange={(e) => setStatementAccount(e.target.value)}>
-                  {accounts.map((a) => (
-                    <option key={a.id} value={a.id}>
-                      {a.id}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <button onClick={fetchStatement}>View Statement</button>
-              <a className="button-link" href={api.statementDownloadUrl(statementAccount)} target="_blank" rel="noreferrer">
-                Download CSV
-              </a>
-            </div>
-            <table>
-              <thead>
-                <tr>
-                  <th>Time</th>
-                  <th>Type</th>
-                  <th>Amount</th>
-                  <th>Description</th>
-                </tr>
-              </thead>
-              <tbody>
-                {statementRows.map((r) => (
-                  <tr key={r.id}>
-                    <td>{new Date(r.createdAt).toLocaleString()}</td>
-                    <td>{r.kind}</td>
-                    <td>FJD {r.amount.toFixed(2)}</td>
-                    <td>{r.description}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </article>
-
-          <article className="panel">
-            <h2>SMS Notifications</h2>
-            <label>
-              Customer
-              <select value={notificationCustomer} onChange={(e) => setNotificationCustomer(e.target.value)}>
-                {customers.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.fullName}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <ul className="feed">
-              {notifications.map((n) => (
-                <li key={n.id}>
-                  <strong>{new Date(n.createdAt).toLocaleString()}:</strong> {n.message}
-                </li>
-              ))}
-            </ul>
-          </article>
-        </section>
+        <StatementsTab
+          accounts={accounts}
+          customers={customers}
+          statementAccount={statementAccount}
+          setStatementAccount={setStatementAccount}
+          statementRows={statementRows}
+          fetchStatement={fetchStatement}
+          notificationCustomer={notificationCustomer}
+          setNotificationCustomer={setNotificationCustomer}
+          notifications={notifications}
+        />
       )}
 
       {!loading && activeTab === "Investments" && (
-        <section className="panel-grid">
-          <article className="panel">
-            <h2>Create Investment</h2>
-            <form onSubmit={onAddInvestment}>
-              <label>
-                Customer
-                <select
-                  value={investmentForm.customerId}
-                  onChange={(e) => setInvestmentForm({ ...investmentForm, customerId: e.target.value })}
-                  required
-                >
-                  <option value="">Select</option>
-                  {customers.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.fullName}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label>
-                Product Name
-                <input
-                  value={investmentForm.name}
-                  onChange={(e) => setInvestmentForm({ ...investmentForm, name: e.target.value })}
-                  required
-                />
-              </label>
-              <label>
-                Amount
-                <input
-                  type="number"
-                  min="1"
-                  step="0.01"
-                  value={investmentForm.amount}
-                  onChange={(e) => setInvestmentForm({ ...investmentForm, amount: e.target.value })}
-                  required
-                />
-              </label>
-              <label>
-                Annual Rate (decimal)
-                <input
-                  type="number"
-                  step="0.0001"
-                  value={investmentForm.annualRate}
-                  onChange={(e) => setInvestmentForm({ ...investmentForm, annualRate: e.target.value })}
-                  required
-                />
-              </label>
-              <button type="submit">Create</button>
-            </form>
-            <p className="status">{investmentMessage}</p>
-          </article>
-
-          <article className="panel wide">
-            <h2>Investments</h2>
-            <table>
-              <thead>
-                <tr>
-                  <th>ID</th>
-                  <th>Customer</th>
-                  <th>Name</th>
-                  <th>Amount</th>
-                  <th>Rate</th>
-                </tr>
-              </thead>
-              <tbody>
-                {investments.map((inv) => (
-                  <tr key={inv.id}>
-                    <td>{inv.id}</td>
-                    <td>{customerMap[inv.customerId]?.fullName || inv.customerId}</td>
-                    <td>{inv.name}</td>
-                    <td>FJD {inv.amount.toFixed(2)}</td>
-                    <td>{(inv.annualRate * 100).toFixed(2)}%</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </article>
-        </section>
+        <InvestmentsTab
+          customers={customers}
+          customerMap={customerMap}
+          investments={investments}
+          investmentForm={investmentForm}
+          setInvestmentForm={setInvestmentForm}
+          onAddInvestment={onAddInvestment}
+          investmentMessage={investmentMessage}
+        />
       )}
 
       {!loading && activeTab === "Loans" && (
-        <section className="panel-grid">
-          <article className="panel wide">
-            <h2>Loan Products (Website Advertisement)</h2>
-            <table>
-              <thead>
-                <tr>
-                  <th>Name</th>
-                  <th>Annual Rate</th>
-                  <th>Max Amount</th>
-                  <th>Term</th>
-                </tr>
-              </thead>
-              <tbody>
-                {loanProducts.map((lp) => (
-                  <tr key={lp.id}>
-                    <td>{lp.name}</td>
-                    <td>{(lp.annualRate * 100).toFixed(2)}%</td>
-                    <td>FJD {lp.maxAmount.toFixed(2)}</td>
-                    <td>
-                      {lp.minTermMonths}-{lp.maxTermMonths} months
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </article>
-
-          <article className="panel">
-            <h2>Apply For Loan</h2>
-            <form onSubmit={onSubmitLoan}>
-              <label>
-                Customer
-                <select value={loanForm.customerId} onChange={(e) => setLoanForm({ ...loanForm, customerId: e.target.value })} required>
-                  <option value="">Select</option>
-                  {customers.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.fullName}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label>
-                Loan Product
-                <select
-                  value={loanForm.loanProductId}
-                  onChange={(e) => setLoanForm({ ...loanForm, loanProductId: e.target.value })}
-                  required
-                >
-                  <option value="">Select</option>
-                  {loanProducts.map((lp) => (
-                    <option key={lp.id} value={lp.id}>
-                      {lp.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label>
-                Requested Amount
-                <input
-                  type="number"
-                  min="1"
-                  value={loanForm.requestedAmount}
-                  onChange={(e) => setLoanForm({ ...loanForm, requestedAmount: e.target.value })}
-                  required
-                />
-              </label>
-              <label>
-                Term (months)
-                <input
-                  type="number"
-                  min="1"
-                  value={loanForm.termMonths}
-                  onChange={(e) => setLoanForm({ ...loanForm, termMonths: e.target.value })}
-                  required
-                />
-              </label>
-              <label>
-                Purpose
-                <input value={loanForm.purpose} onChange={(e) => setLoanForm({ ...loanForm, purpose: e.target.value })} required />
-              </label>
-              <label>
-                Monthly Income
-                <input
-                  type="number"
-                  min="0"
-                  value={loanForm.monthlyIncome}
-                  onChange={(e) => setLoanForm({ ...loanForm, monthlyIncome: e.target.value })}
-                />
-              </label>
-              <label>
-                Employment Status
-                <input
-                  value={loanForm.employmentStatus}
-                  onChange={(e) => setLoanForm({ ...loanForm, employmentStatus: e.target.value })}
-                />
-              </label>
-              <button type="submit">Submit Application</button>
-            </form>
-            <p className="status">{loanMessage}</p>
-          </article>
-
-          <article className="panel wide">
-            <h2>Submitted Loan Applications</h2>
-            <table>
-              <thead>
-                <tr>
-                  <th>ID</th>
-                  <th>Customer</th>
-                  <th>Product</th>
-                  <th>Amount</th>
-                  <th>Term</th>
-                  <th>Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                {loanApplications.map((a) => (
-                  <tr key={a.id}>
-                    <td>{a.id}</td>
-                    <td>{customerMap[a.customerId]?.fullName || a.customerId}</td>
-                    <td>{loanProducts.find((p) => p.id === a.loanProductId)?.name || a.loanProductId}</td>
-                    <td>FJD {a.requestedAmount.toFixed(2)}</td>
-                    <td>{a.termMonths}</td>
-                    <td>{a.status}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </article>
-        </section>
+        <LoansTab
+          customers={customers}
+          customerMap={customerMap}
+          loanProducts={loanProducts}
+          loanApplications={loanApplications}
+          loanForm={loanForm}
+          setLoanForm={setLoanForm}
+          onSubmitLoan={onSubmitLoan}
+          loanMessage={loanMessage}
+        />
       )}
 
       {!loading && activeTab === "Compliance" && (
-        <section className="panel-grid">
-          <article className="panel">
-            <h2>Savings Interest Rate Config</h2>
-            <form onSubmit={onUpdateRate}>
-              <label>
-                Reserve Bank Minimum Savings Interest Rate (decimal)
-                <input
-                  type="number"
-                  step="0.0001"
-                  value={interestRate}
-                  onChange={(e) => setInterestRate(e.target.value)}
-                  required
-                />
-              </label>
-              <button type="submit">Update Rate</button>
-            </form>
-          </article>
-
-          <article className="panel">
-            <h2>Generate Year-End Interest Summaries</h2>
-            <label>
-              Year
-              <input type="number" value={summaryYear} onChange={(e) => setSummaryYear(e.target.value)} />
-            </label>
-            <button onClick={onGenerateSummaries}>Generate + Submit to FRCS</button>
-            <p className="status">{complianceMessage}</p>
-          </article>
-
-          <article className="panel wide">
-            <h2>Interest Summaries</h2>
-            <table>
-              <thead>
-                <tr>
-                  <th>Account</th>
-                  <th>Customer</th>
-                  <th>Year</th>
-                  <th>Gross</th>
-                  <th>Withholding Tax</th>
-                  <th>Net</th>
-                  <th>Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                {summaries.map((s) => (
-                  <tr key={s.id}>
-                    <td>{s.accountId}</td>
-                    <td>{s.customerName}</td>
-                    <td>{s.year}</td>
-                    <td>FJD {s.grossInterest.toFixed(2)}</td>
-                    <td>FJD {s.withholdingTax.toFixed(2)}</td>
-                    <td>FJD {s.netInterest.toFixed(2)}</td>
-                    <td>{s.status}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </article>
-        </section>
+        <ComplianceTab
+          interestRate={interestRate}
+          setInterestRate={setInterestRate}
+          onUpdateRate={onUpdateRate}
+          summaryYear={summaryYear}
+          setSummaryYear={setSummaryYear}
+          onGenerateSummaries={onGenerateSummaries}
+          summaries={summaries}
+          complianceMessage={complianceMessage}
+        />
       )}
 
-      {!loading && activeTab === "Requirements" && requirements && (
-        <section className="panel-grid">
-          <article className="panel wide">
-            <h2>Prioritized User Stories</h2>
-            <table>
-              <thead>
-                <tr>
-                  <th>ID</th>
-                  <th>Priority</th>
-                  <th>User Story</th>
-                </tr>
-              </thead>
-              <tbody>
-                {requirements.userStories.map((s) => (
-                  <tr key={s.id}>
-                    <td>{s.id}</td>
-                    <td>{s.priority}</td>
-                    <td>{s.story}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </article>
-
-          <article className="panel wide">
-            <h2>Conflicting Requirements and Trade-Offs</h2>
-            <table>
-              <thead>
-                <tr>
-                  <th>Conflict</th>
-                  <th>Trade-Off</th>
-                </tr>
-              </thead>
-              <tbody>
-                {requirements.conflictsAndTradeOffs.map((item, idx) => (
-                  <tr key={idx}>
-                    <td>{item.conflict}</td>
-                    <td>{item.tradeOff}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </article>
-
-          <article className="panel">
-            <h2>High Priority Prototypes</h2>
-            <ul className="feed">
-              {requirements.highPriorityPrototypes.map((p) => (
-                <li key={p}>{p}</li>
-              ))}
-            </ul>
-          </article>
-        </section>
+      {!loading && activeTab === "Requirements" && (
+        <RequirementsTab requirements={requirements} />
       )}
 
       <SiteFooter currentYear={currentYear} />

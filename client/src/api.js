@@ -57,10 +57,27 @@ async function request(path, options = {}) {
 export const api = {
   register: (body) => request("/auth/register", { method: "POST", body: JSON.stringify(body) }),
   login: (body) => request("/auth/login", { method: "POST", body: JSON.stringify(body) }),
+  verifyAdminCredentials: (body) => request("/auth/admin-verify", { method: "POST", body: JSON.stringify(body) }),
   getRequirements: () => request("/requirements"),
   getCustomers: () => request("/customers"),
+  updateCustomerAdmin: (id, body) => request(`/admin/customers/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
   getAccounts: () => request("/accounts"),
+  createAccount: (body) => request("/accounts", { method: "POST", body: JSON.stringify(body) }),
+  updateAccountAdmin: (id, body) => request(`/admin/accounts/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
+  freezeAccountAdmin: (id) => request(`/admin/accounts/${id}/freeze`, { method: "POST" }),
   getTransactions: (accountId) => request(`/transactions?accountId=${encodeURIComponent(accountId)}`),
+  getAdminTransactions: (accountNumber) => {
+    const suffix = accountNumber ? `?accountNumber=${encodeURIComponent(accountNumber)}` : "";
+    return request(`/admin/transactions${suffix}`);
+  },
+  getTransferHistoryAdmin: () => request("/admin/transfers"),
+  getAdminDashboardReport: () => request("/admin/dashboard-report"),
+  getTransferLimitAdmin: () => request("/admin/transfer-limit"),
+  updateTransferLimitAdmin: (highValueTransferLimit) =>
+    request("/admin/transfer-limit", {
+      method: "PUT",
+      body: JSON.stringify({ highValueTransferLimit: Number(highValueTransferLimit) }),
+    }),
   initiateTransfer: (body) => request("/transfers/initiate", { method: "POST", body: JSON.stringify(body) }),
   verifyTransfer: (body) => request("/transfers/verify", { method: "POST", body: JSON.stringify(body) }),
   payBillManual: (body) => request("/bills/manual", { method: "POST", body: JSON.stringify(body) }),
@@ -82,5 +99,7 @@ export const api = {
   getLoanProducts: () => request("/loan-products"),
   createLoanApplication: (body) => request("/loan-applications", { method: "POST", body: JSON.stringify(body) }),
   getLoanApplications: () => request("/loan-applications"),
+  updateLoanApplicationAdmin: (id, body) => request(`/admin/loan-applications/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
+  getNotificationLogsAdmin: (limit = 200) => request(`/admin/notifications/logs?limit=${encodeURIComponent(limit)}`),
   statementDownloadUrl: (accountId) => `${API_BASE}/statements/${accountId}/download`,
 };

@@ -1,4 +1,5 @@
 const mysql = require("mysql2/promise");
+const { DataTypes } = require("sequelize");
 const sequelize = require("./config/database");
 const {
   Customer,
@@ -27,6 +28,40 @@ const initializeDatabase = async () => {
 
     // Avoid repeated ALTER operations that can create excess indexes in MySQL.
     await sequelize.sync({ alter: DB_SYNC_ALTER });
+
+    // Ensure customer admin/compliance fields exist even when DB_SYNC_ALTER is false.
+    const queryInterface = sequelize.getQueryInterface();
+    const customerColumns = await queryInterface.describeTable("customers");
+
+    if (!customerColumns.tin) {
+      await queryInterface.addColumn("customers", "tin", {
+        type: DataTypes.STRING,
+        allowNull: true,
+        defaultValue: "",
+      });
+    }
+    if (!customerColumns.residencyStatus) {
+      await queryInterface.addColumn("customers", "residencyStatus", {
+        type: DataTypes.STRING,
+        allowNull: true,
+        defaultValue: "resident",
+      });
+    }
+    if (!customerColumns.identityVerified) {
+      await queryInterface.addColumn("customers", "identityVerified", {
+        type: DataTypes.BOOLEAN,
+        allowNull: true,
+        defaultValue: false,
+      });
+    }
+    if (!customerColumns.registrationStatus) {
+      await queryInterface.addColumn("customers", "registrationStatus", {
+        type: DataTypes.STRING,
+        allowNull: true,
+        defaultValue: "approved",
+      });
+    }
+
     console.log("Database tables synchronized");
 
     // Check if database already has data
