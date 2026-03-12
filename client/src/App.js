@@ -164,6 +164,11 @@ export default function App() {
     setAuthForm({ fullName: "", mobile: "", email: "", password: "", confirmPassword: "" });
     setAuthMessage("");
   }
+
+  function onAuthViewChange(view) {
+    setAuthView(view);
+    setAuthMessage("");
+  }
   // ────────────────────────────────────────────────────────────────────────
 
   async function onInitiateTransfer(e) {
@@ -308,10 +313,7 @@ export default function App() {
     return (
       <AuthPage
         authView={authView}
-        setAuthView={(view) => {
-          setAuthView(view);
-          setAuthMessage("");
-        }}
+        setAuthView={onAuthViewChange}
         authForm={authForm}
         setAuthForm={setAuthForm}
         authMessage={authMessage}
