@@ -1,4 +1,3 @@
-import { homepageReviews } from "../data/homepageReviews";
 import SiteFooter from "./SiteFooter";
 
 export default function AuthPage({
@@ -120,17 +119,6 @@ export default function AuthPage({
           )}
         </article>
 
-        <article className="panel wide review-panel">
-          <h2>Customer Reviews</h2>
-          <div className="review-grid">
-            {homepageReviews.map((review) => (
-              <blockquote key={review.id} className="review-card">
-                <p>{review.quote}</p>
-                <footer>{review.author}</footer>
-              </blockquote>
-            ))}
-          </div>
-        </article>
       </section>
 
       <SiteFooter currentYear={currentYear} />

@@ -190,7 +190,7 @@ function transfer({ fromAccountId, toAccountId, amount, description }) {
     description: description || "Transfer received",
     counterpartyAccountId: fromAccountId,
   });
-
+  
   const fromCustomer = getCustomer(fromAccount.customerId);
   const toCustomer = getCustomer(toAccount.customerId);
 
