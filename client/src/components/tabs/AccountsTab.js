@@ -16,17 +16,23 @@ export default function AccountsTab({
     openingBalance: "0",
   });
 
+  const activeCustomerId = currentUser?.customerId || currentUser?.userId || currentUser?.id || "";
+
   // Filter accounts for current user
   const userAccounts = currentUser
-    ? accounts.filter((a) => String(a.customerId) === String(currentUser.id))
+    ? accounts.filter((a) => String(a.customerId) === String(activeCustomerId))
     : [];
 
   const handleCreateAccount = async (e) => {
     e.preventDefault();
     setAccountMessage("");
+    if (!activeCustomerId) {
+      setAccountMessage("❌ Unable to determine your customer ID. Please log out and sign in again.");
+      return;
+    }
     try {
       await api.createAccount({
-        customerId: currentUser.id,
+        customerId: Number(activeCustomerId),
         type: newAccountForm.type,
         openingBalance: Number(newAccountForm.openingBalance || 0),
       });
@@ -100,6 +106,10 @@ export default function AccountsTab({
         <article className="panel">
           <h2>📋 Open New Account</h2>
           <form onSubmit={handleCreateAccount}>
+            <label>
+              Customer ID
+              <input value={activeCustomerId} readOnly />
+            </label>
             <label>
               Account Type
               <select

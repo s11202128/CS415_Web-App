@@ -89,7 +89,7 @@ export default function App() {
 
   useEffect(() => {
     if (authToken) loadInitialData();
-  }, [authToken]);
+  }, [authToken, currentUser?.customerId, currentUser?.isAdmin]);
 
   async function loadInitialData() {
     setLoading(true);
@@ -105,21 +105,75 @@ export default function App() {
         api.getInterestRate(),
         api.getSummaries(),
       ]);
-      setCustomers(customerRows);
-      setAccounts(accountRows);
-      setScheduledBills(scheduled);
-      setLoanProducts(products);
-      setLoanApplications(apps);
-      setInvestments(invs);
-      setInterestRate(rate.reserveBankMinSavingsInterestRate);
-      setSummaries(sumRows);
+      const isAdminUser = Boolean(currentUser?.isAdmin);
+      const activeCustomerId = currentUser?.customerId;
 
-      if (accountRows.length > 0) {
-        setSelectedAccountForTx(accountRows[0].id);
-        setStatementAccount(accountRows[0].id);
+      const visibleCustomers = isAdminUser
+        ? customerRows
+        : customerRows.filter((c) => String(c.id) === String(activeCustomerId));
+
+      const visibleCustomerIds = new Set(visibleCustomers.map((c) => String(c.id)));
+
+      const visibleAccounts = isAdminUser
+        ? accountRows
+        : accountRows.filter((a) => visibleCustomerIds.has(String(a.customerId)));
+
+      const visibleAccountIds = new Set(visibleAccounts.map((a) => String(a.id)));
+
+      const visibleScheduledBills = isAdminUser
+        ? scheduled
+        : scheduled.filter((b) => b.accountId && visibleAccountIds.has(String(b.accountId)));
+
+      const visibleLoanApplications = isAdminUser
+        ? apps
+        : apps.filter((l) => visibleCustomerIds.has(String(l.customerId)));
+
+      const visibleInvestments = isAdminUser
+        ? invs
+        : invs.filter((x) => visibleCustomerIds.has(String(x.customerId)));
+
+      const visibleSummaries = isAdminUser
+        ? sumRows
+        : sumRows.filter((s) => visibleCustomerIds.has(String(s.customerId)));
+
+      setCustomers(visibleCustomers);
+      setAccounts(visibleAccounts);
+      setScheduledBills(visibleScheduledBills);
+      setLoanProducts(products);
+      setLoanApplications(visibleLoanApplications);
+      setInvestments(visibleInvestments);
+      setInterestRate(rate.reserveBankMinSavingsInterestRate);
+      setSummaries(visibleSummaries);
+
+      if (visibleAccounts.length > 0) {
+        setSelectedAccountForTx((prev) =>
+          visibleAccounts.some((a) => String(a.id) === String(prev)) ? prev : visibleAccounts[0].id
+        );
+        setStatementAccount((prev) =>
+          visibleAccounts.some((a) => String(a.id) === String(prev)) ? prev : visibleAccounts[0].id
+        );
+      } else {
+        setSelectedAccountForTx("");
+        setStatementAccount("");
       }
-      if (customerRows.length > 0) {
-        setNotificationCustomer(customerRows[0].id);
+      if (visibleCustomers.length > 0) {
+        setNotificationCustomer((prev) =>
+          visibleCustomers.some((c) => String(c.id) === String(prev)) ? prev : visibleCustomers[0].id
+        );
+        setInvestmentForm((prev) => ({
+          ...prev,
+          customerId: visibleCustomers.some((c) => String(c.id) === String(prev.customerId))
+            ? prev.customerId
+            : String(visibleCustomers[0].id),
+        }));
+        setLoanForm((prev) => ({
+          ...prev,
+          customerId: visibleCustomers.some((c) => String(c.id) === String(prev.customerId))
+            ? prev.customerId
+            : String(visibleCustomers[0].id),
+        }));
+      } else {
+        setNotificationCustomer("");
       }
     } catch (err) {
       setError(err.message);
@@ -429,7 +483,7 @@ export default function App() {
         <header className="hero">
           <div className="hero-row">
             <div>
-              <h1>Bank of Fiji — Admin Console</h1>
+              <h1>Bank of Fiji — Admin</h1>
               <p>Admin dashboard — live updates every 10 seconds.</p>
             </div>
             {currentUser && (
@@ -489,8 +543,8 @@ export default function App() {
       <header className="hero">
         <div className="hero-row">
           <div>
-            <h1>Bank of Fiji Online Banking Prototype</h1>
-            <p>Client-server implementation using React frontend + Node.js REST backend.</p>
+            <h1>Bank of Fiji Online Banking</h1>
+            <p>Home Dashboard</p>
           </div>
           {currentUser && (
             <div className="hero-user">
