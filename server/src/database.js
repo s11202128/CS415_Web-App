@@ -1,9 +1,11 @@
 const mysql = require("mysql2/promise");
 const { DataTypes } = require("sequelize");
+const bcrypt = require("bcryptjs");
 const sequelize = require("./config/database");
 const {
   Customer,
   Account,
+  Admin,
 } = require("./models");
 
 const DB_NAME = process.env.DB_NAME || "bof_banking_db";
@@ -78,6 +80,8 @@ const initializeDatabase = async () => {
     const hasOtpVerificationsTable = normalizedTables.includes("otp_verifications");
     const hasTransactionsTable = normalizedTables.includes("transactions");
     const hasRegistrationsTable = normalizedTables.includes("registrations");
+    const hasAdminsTable = normalizedTables.includes("admins");
+    const hasLoginLogsTable = normalizedTables.includes("login_logs");
 
     let requiresCustomerIdMigration = false;
     let requiresAccountIdMigration = false;
@@ -87,6 +91,8 @@ const initializeDatabase = async () => {
     let requiresOtpVerificationIdMigration = false;
     let requiresTransactionIdMigration = false;
     let requiresRegistrationIdMigration = false;
+    let requiresAdminIdMigration = false;
+    let requiresLoginLogIdMigration = false;
     
     if (hasCustomersTable) {
       const customerColumns = await queryInterface.describeTable("customers");
@@ -120,10 +126,19 @@ const initializeDatabase = async () => {
       const registrationColumns = await queryInterface.describeTable("registrations");
       requiresRegistrationIdMigration = isLegacyRegistrationIdType(registrationColumns?.id?.type);
     }
+    if (hasAdminsTable) {
+      const adminColumns = await queryInterface.describeTable("admins");
+      requiresAdminIdMigration = isLegacyRegistrationIdType(adminColumns?.id?.type);
+    }
+    if (hasLoginLogsTable) {
+      const loginLogColumns = await queryInterface.describeTable("login_logs");
+      requiresLoginLogIdMigration = isLegacyRegistrationIdType(loginLogColumns?.id?.type);
+    }
 
     if (requiresCustomerIdMigration || requiresAccountIdMigration || requiresLoanIdMigration || 
         requiresBillIdMigration || requiresInvestmentIdMigration || requiresOtpVerificationIdMigration || 
-        requiresTransactionIdMigration || requiresRegistrationIdMigration) {
+        requiresTransactionIdMigration || requiresRegistrationIdMigration || requiresAdminIdMigration ||
+        requiresLoginLogIdMigration) {
       console.warn("Detected legacy UUID IDs. Rebuilding schema to use integer auto-increment IDs.");
       console.warn("Existing local data will be recreated from seed data after migration.");
       await sequelize.sync({ force: true });
@@ -161,6 +176,87 @@ const initializeDatabase = async () => {
         type: DataTypes.STRING,
         allowNull: true,
         defaultValue: "approved",
+      });
+    }
+    if (!customerColumns.nationalId) {
+      await queryInterface.addColumn("customers", "nationalId", {
+        type: DataTypes.STRING,
+        allowNull: true,
+        defaultValue: "",
+      });
+    }
+    if (!customerColumns.emailVerified) {
+      await queryInterface.addColumn("customers", "emailVerified", {
+        type: DataTypes.BOOLEAN,
+        allowNull: true,
+        defaultValue: false,
+      });
+    }
+    if (!customerColumns.failedLoginAttempts) {
+      await queryInterface.addColumn("customers", "failedLoginAttempts", {
+        type: DataTypes.INTEGER,
+        allowNull: true,
+        defaultValue: 0,
+      });
+    }
+    if (!customerColumns.lockedUntil) {
+      await queryInterface.addColumn("customers", "lockedUntil", {
+        type: DataTypes.DATE,
+        allowNull: true,
+      });
+    }
+    if (!customerColumns.lastLoginAt) {
+      await queryInterface.addColumn("customers", "lastLoginAt", {
+        type: DataTypes.DATE,
+        allowNull: true,
+      });
+    }
+
+    const registrationColumns = await queryInterface.describeTable("registrations");
+    if (!registrationColumns.nationalId) {
+      await queryInterface.addColumn("registrations", "nationalId", {
+        type: DataTypes.STRING,
+        allowNull: true,
+        defaultValue: "",
+      });
+    }
+    if (!registrationColumns.verificationCode) {
+      await queryInterface.addColumn("registrations", "verificationCode", {
+        type: DataTypes.STRING,
+        allowNull: true,
+      });
+    }
+    if (!registrationColumns.verificationStatus) {
+      await queryInterface.addColumn("registrations", "verificationStatus", {
+        type: DataTypes.STRING,
+        allowNull: true,
+        defaultValue: "pending",
+      });
+    }
+    if (!registrationColumns.verifiedAt) {
+      await queryInterface.addColumn("registrations", "verifiedAt", {
+        type: DataTypes.DATE,
+        allowNull: true,
+      });
+    }
+
+    const otpColumns = await queryInterface.describeTable("otp_verifications");
+    if (!otpColumns.referenceCode) {
+      await queryInterface.addColumn("otp_verifications", "referenceCode", {
+        type: DataTypes.STRING,
+        allowNull: true,
+      });
+      await sequelize.query("UPDATE otp_verifications SET referenceCode = CONCAT('LEGACY-', id) WHERE referenceCode IS NULL");
+      await queryInterface.changeColumn("otp_verifications", "referenceCode", {
+        type: DataTypes.STRING,
+        allowNull: false,
+        unique: true,
+      });
+    }
+    if (!otpColumns.metadata) {
+      await queryInterface.addColumn("otp_verifications", "metadata", {
+        type: DataTypes.TEXT,
+        allowNull: true,
       });
     }
 
@@ -215,6 +311,16 @@ const initializeDatabase = async () => {
       await sequelize.query("ALTER TABLE registrations AUTO_INCREMENT = 1");
     }
 
+    const [[{ totalAdmins }]] = await sequelize.query("SELECT COUNT(*) AS totalAdmins FROM admins");
+    if (Number(totalAdmins || 0) === 0) {
+      await sequelize.query("ALTER TABLE admins AUTO_INCREMENT = 1");
+    }
+
+    const [[{ totalLoginLogs }]] = await sequelize.query("SELECT COUNT(*) AS totalLoginLogs FROM login_logs");
+    if (Number(totalLoginLogs || 0) === 0) {
+      await sequelize.query("ALTER TABLE login_logs AUTO_INCREMENT = 1");
+    }
+
     console.log("Database tables synchronized");
 
     // Check if database already has data
@@ -225,6 +331,8 @@ const initializeDatabase = async () => {
     } else {
       console.log("Database already populated");
     }
+
+    await ensureDefaultAdmin();
   } catch (error) {
     console.error("Database initialization error:", error.message);
     throw error;
@@ -238,7 +346,9 @@ const seedDatabase = async () => {
       fullName: "Litia Narikoso",
       email: "litia@example.com",
       mobile: "+679812345",
-      password: "$2b$10$example_hashed_password_1",
+      nationalId: "FJ-100001",
+      password: await bcrypt.hash("password123", 10),
+      emailVerified: true,
       status: "active",
     });
 
@@ -246,7 +356,9 @@ const seedDatabase = async () => {
       fullName: "Aman Patel",
       email: "aman@example.com",
       mobile: "+679823456",
-      password: "$2b$10$example_hashed_password_2",
+      nationalId: "FJ-100002",
+      password: await bcrypt.hash("password123", 10),
+      emailVerified: true,
       status: "active",
     });
 
@@ -254,7 +366,9 @@ const seedDatabase = async () => {
       fullName: "Mere Tikoisuva",
       email: "mere@example.com",
       mobile: "+679834567",
-      password: "$2b$10$example_hashed_password_3",
+      nationalId: "FJ-100003",
+      password: await bcrypt.hash("password123", 10),
+      emailVerified: true,
       status: "active",
     });
 
@@ -271,7 +385,7 @@ const seedDatabase = async () => {
     await Account.create({
       customerId: customer2.id,
       accountNumber: "918274635402",
-      accountType: "Checking",
+      accountType: "Current",
       balance: 25000,
       currency: "FJD",
       status: "active",
@@ -292,5 +406,22 @@ const seedDatabase = async () => {
     throw error;
   }
 };
+
+async function ensureDefaultAdmin() {
+  const adminEmail = String(process.env.ADMIN_EMAIL || "admin@bof.fj").toLowerCase();
+  const adminPassword = String(process.env.ADMIN_PASSWORD || "admin12345");
+  const existing = await Admin.findOne({ where: { email: adminEmail } });
+  if (existing) {
+    return existing;
+  }
+
+  return Admin.create({
+    fullName: "System Admin",
+    email: adminEmail,
+    password: await bcrypt.hash(adminPassword, 10),
+    role: "super_admin",
+    status: "active",
+  });
+}
 
 module.exports = initializeDatabase;

@@ -1,7 +1,7 @@
 const { DataTypes } = require('sequelize');
 const sequelize = require('../config/database');
 
-const Registration = sequelize.define('Registration', {
+const Admin = sequelize.define('Admin', {
   id: {
     type: DataTypes.BIGINT.UNSIGNED,
     autoIncrement: true,
@@ -11,38 +11,30 @@ const Registration = sequelize.define('Registration', {
     type: DataTypes.STRING,
     allowNull: false,
   },
-  mobile: {
-    type: DataTypes.STRING,
-    allowNull: false,
-  },
-  nationalId: {
-    type: DataTypes.STRING,
-    allowNull: true,
-    defaultValue: '',
-  },
   email: {
     type: DataTypes.STRING,
     allowNull: false,
+    unique: true,
   },
   password: {
     type: DataTypes.STRING,
     allowNull: false,
   },
-  verificationCode: {
+  role: {
     type: DataTypes.STRING,
-    allowNull: true,
+    defaultValue: 'super_admin',
   },
-  verificationStatus: {
+  status: {
     type: DataTypes.STRING,
-    defaultValue: 'pending',
+    defaultValue: 'active',
   },
-  verifiedAt: {
+  lastLoginAt: {
     type: DataTypes.DATE,
     allowNull: true,
   },
 }, {
-  tableName: 'registrations',
+  tableName: 'admins',
   timestamps: true,
 });
 
-module.exports = Registration;
+module.exports = Admin;

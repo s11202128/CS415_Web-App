@@ -6,5 +6,6 @@ export const tabs = [
   "Statements",
   "Investments",
   "Loans",
+  "Profile",
   "Compliance",
 ];

@@ -29,6 +29,8 @@ export default function AdminPage({
   adminTransferLimit,
   setAdminTransferLimit,
   onAdminUpdateTransferLimit,
+  onAdminReverseTransaction,
+  adminLoginLogs,
   adminNotificationLogs,
   adminReport,
   adminLastUpdated,
@@ -42,7 +44,10 @@ export default function AdminPage({
           <h2>Admin Dashboard</h2>
           <p className="hint">Professional admin console — live updates every 10 seconds.</p>
         </article>
-        <article className="panel wide">
+      </section>
+
+      <div className="workspace-layout">
+        <aside className="left-tabs">
           <div className="admin-tabs" role="tablist" aria-label="Admin sections">
             {ADMIN_SECTIONS.map((section) => (
               <button
@@ -55,54 +60,58 @@ export default function AdminPage({
               </button>
             ))}
           </div>
-        </article>
-      </section>
+        </aside>
 
-      {activeSection === "Overview" && (
-        <AdminOverviewTab
-          customers={customers}
-          accounts={accounts}
-          adminReport={adminReport}
-          adminLastUpdated={adminLastUpdated}
-          adminMessage={adminMessage}
-        />
-      )}
-      {activeSection === "Customers" && (
-        <AdminCustomersTab customers={customers} onAdminUpdateCustomer={onAdminUpdateCustomer} />
-      )}
-      {activeSection === "Accounts" && (
-        <AdminAccountsTab
-          accounts={accounts}
-          adminAccountForm={adminAccountForm}
-          setAdminAccountForm={setAdminAccountForm}
-          onCreateAdminAccount={onCreateAdminAccount}
-          adminAccountMessage={adminAccountMessage}
-          onAdminUpdateAccount={onAdminUpdateAccount}
-          onAdminFreezeAccount={onAdminFreezeAccount}
-        />
-      )}
-      {activeSection === "Loans" && (
-        <AdminLoansTab loanApplications={loanApplications} onAdminUpdateLoanStatus={onAdminUpdateLoanStatus} />
-      )}
-      {activeSection === "Monitoring" && (
-        <AdminMonitoringTab
-          accounts={accounts}
-          transactions={transactions}
-          selectedAccountForTx={selectedAccountForTx}
-          setSelectedAccountForTx={setSelectedAccountForTx}
-          adminTransferLimit={adminTransferLimit}
-          setAdminTransferLimit={setAdminTransferLimit}
-          onAdminUpdateTransferLimit={onAdminUpdateTransferLimit}
-          adminNotificationLogs={adminNotificationLogs}
-        />
-      )}
-      {activeSection === "Reports" && (
-        <AdminReportsTab
-          adminReport={adminReport}
-          scheduledBills={scheduledBills}
-          summaries={summaries}
-        />
-      )}
+        <section className="tab-content">
+          {activeSection === "Overview" && (
+            <AdminOverviewTab
+              customers={customers}
+              accounts={accounts}
+              adminReport={adminReport}
+              adminLastUpdated={adminLastUpdated}
+              adminMessage={adminMessage}
+            />
+          )}
+          {activeSection === "Customers" && (
+            <AdminCustomersTab customers={customers} onAdminUpdateCustomer={onAdminUpdateCustomer} />
+          )}
+          {activeSection === "Accounts" && (
+            <AdminAccountsTab
+              accounts={accounts}
+              adminAccountForm={adminAccountForm}
+              setAdminAccountForm={setAdminAccountForm}
+              onCreateAdminAccount={onCreateAdminAccount}
+              adminAccountMessage={adminAccountMessage}
+              onAdminUpdateAccount={onAdminUpdateAccount}
+              onAdminFreezeAccount={onAdminFreezeAccount}
+            />
+          )}
+          {activeSection === "Loans" && (
+            <AdminLoansTab loanApplications={loanApplications} onAdminUpdateLoanStatus={onAdminUpdateLoanStatus} />
+          )}
+          {activeSection === "Monitoring" && (
+            <AdminMonitoringTab
+              accounts={accounts}
+              transactions={transactions}
+              selectedAccountForTx={selectedAccountForTx}
+              setSelectedAccountForTx={setSelectedAccountForTx}
+              adminTransferLimit={adminTransferLimit}
+              setAdminTransferLimit={setAdminTransferLimit}
+              onAdminUpdateTransferLimit={onAdminUpdateTransferLimit}
+              onAdminReverseTransaction={onAdminReverseTransaction}
+              adminLoginLogs={adminLoginLogs}
+              adminNotificationLogs={adminNotificationLogs}
+            />
+          )}
+          {activeSection === "Reports" && (
+            <AdminReportsTab
+              adminReport={adminReport}
+              scheduledBills={scheduledBills}
+              summaries={summaries}
+            />
+          )}
+        </section>
+      </div>
     </div>
   );
 }

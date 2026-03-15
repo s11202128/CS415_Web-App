@@ -7,15 +7,18 @@ const {
   Transaction,
   Bill,
   Investment,
+  Loan,
   OtpVerification,
   Registration,
+  Admin,
+  LoginLog,
 } = require("./models");
 
 let HIGH_VALUE_OTP_THRESHOLD = 1000;
 const WITHHOLDING_TAX_RATE = 0.15;
 const SAVINGS_INTEREST_RATE = 0.0325;
-const ADMIN_EMAIL = String(process.env.ADMIN_EMAIL || "admin@bof.fj").toLowerCase();
-const ADMIN_PASSWORD = String(process.env.ADMIN_PASSWORD || "admin12345");
+const MAX_FAILED_LOGIN_ATTEMPTS = 5;
+const ACCOUNT_LOCK_MINUTES = 15;
 const notificationLogs = [];
 
 function nowIso() {
@@ -24,6 +27,50 @@ function nowIso() {
 
 function makeId(prefix) {
   return `${prefix}-${uuid().slice(0, 8).toUpperCase()}`;
+}
+
+function makeSixDigitCode() {
+  return `${Math.floor(100000 + Math.random() * 900000)}`;
+}
+
+function normalizeEmail(value) {
+  return String(value || "").trim().toLowerCase();
+}
+
+function validatePassword(password) {
+  if (!password || String(password).length < 8) {
+    throw new Error("Password must be at least 8 characters");
+  }
+}
+
+function validateEmail(email) {
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    throw new Error("Invalid email format");
+  }
+}
+
+function validateMobile(mobile) {
+  if (!/^\+?\d{7,15}$/.test(String(mobile || "").replace(/[\s\-]/g, ""))) {
+    throw new Error("Invalid mobile number - use digits only, optionally starting with +");
+  }
+}
+
+function validateNationalId(nationalId) {
+  if (!nationalId || String(nationalId).trim().length < 4) {
+    throw new Error("National ID / Passport is required");
+  }
+}
+
+async function recordLoginAttempt({ userType, userId = null, email, success, failureReason = null, ipAddress = null, userAgent = null }) {
+  return LoginLog.create({
+    userType,
+    userId,
+    email: normalizeEmail(email),
+    success: Boolean(success),
+    failureReason,
+    ipAddress,
+    userAgent,
+  });
 }
 
 function createRandom12DigitNumber() {
@@ -44,6 +91,12 @@ async function generateRandomAccountNumber() {
     }
   }
   throw new Error("Unable to generate unique account number. Please try again.");
+}
+
+function parseScheduledAccountId(description) {
+  const text = String(description || "");
+  const match = text.match(/scheduled_account:(\d+)/i);
+  return match ? Number(match[1]) : null;
 }
 
 // Get customer by ID
@@ -72,6 +125,18 @@ async function addNotification(customerId, message, type = "SMS") {
   }
   // In future, store notifications in a Notifications table
   return logEntry;
+}
+
+function isAccountLocked(customer) {
+  return customer?.lockedUntil && new Date(customer.lockedUntil).getTime() > Date.now();
+}
+
+function safeParseMetadata(value) {
+  try {
+    return value ? JSON.parse(value) : {};
+  } catch (error) {
+    return {};
+  }
 }
 
 function getHighValueTransferThreshold() {
@@ -148,6 +213,12 @@ async function transfer({ fromAccountId, toAccountId, amount, description }) {
   if (!fromAccount || !toAccount) {
     throw new Error("Both accounts must exist");
   }
+  if (["frozen", "suspended", "closed"].includes(String(fromAccount.status || "").toLowerCase())) {
+    throw new Error("Source account is not available for transfers");
+  }
+  if (["frozen", "suspended", "closed"].includes(String(toAccount.status || "").toLowerCase())) {
+    throw new Error("Destination account is not available for transfers");
+  }
   if (fromAccount.id === toAccount.id) {
     throw new Error("Transfer accounts must be different");
   }
@@ -206,24 +277,33 @@ async function initiateTransfer(payload) {
   }
 
   const transferId = makeId("TRF");
-  const otp = `${Math.floor(100000 + Math.random() * 900000)}`;
+  const otp = makeSixDigitCode();
+
+  const sourceAccount = await getAccount(payload.fromAccountId);
+  if (!sourceAccount) {
+    throw new Error("Source account not found");
+  }
 
   // Store pending transfer as OtpVerification record
   await OtpVerification.create({
-    id: transferId,
-    customerId: (await getAccount(payload.fromAccountId)).customerId,
+    referenceCode: transferId,
+    customerId: sourceAccount.customerId,
     otp,
     transactionType: "transfer",
     amount,
+    metadata: JSON.stringify({
+      fromAccountId: payload.fromAccountId,
+      toAccountId: payload.toAccountId,
+      description: payload.description || "Transfer sent",
+    }),
     expiresAt: new Date(Date.now() + 5 * 60 * 1000), // 5 minutes
     verified: false,
   });
 
-  const fromAccount = await getAccount(payload.fromAccountId);
-  if (fromAccount) {
+  if (sourceAccount) {
     await addNotification(
-      fromAccount.customerId,
-      `OTP ${otp} for high-value transfer of FJD ${amount.toFixed(2)} from account ${fromAccount.id}.`
+      sourceAccount.customerId,
+      `OTP ${otp} for high-value transfer of FJD ${amount.toFixed(2)} from account ${sourceAccount.id}.`
     );
   }
 
@@ -237,7 +317,7 @@ async function initiateTransfer(payload) {
 
 // Verify and complete a transfer using OTP
 async function verifyTransfer({ transferId, otp }) {
-  const pending = await OtpVerification.findByPk(transferId);
+  const pending = await OtpVerification.findOne({ where: { referenceCode: transferId, transactionType: "transfer" } });
   if (!pending) {
     throw new Error("Pending transfer not found");
   }
@@ -247,11 +327,20 @@ async function verifyTransfer({ transferId, otp }) {
   if (pending.otp !== String(otp)) {
     throw new Error("Invalid OTP");
   }
+  if (new Date(pending.expiresAt).getTime() < Date.now()) {
+    throw new Error("OTP has expired");
+  }
+
+  const metadata = safeParseMetadata(pending.metadata);
+  const result = await transfer({
+    fromAccountId: metadata.fromAccountId,
+    toAccountId: metadata.toAccountId,
+    amount: Number(pending.amount),
+    description: metadata.description,
+  });
 
   await pending.update({ verified: true });
-
-  // For now, we'll just return success. Complete transfer logic would go here.
-  return { status: "completed", transferId: pending.id };
+  return { status: "completed", transferId: pending.referenceCode, result };
 }
 
 // Post a bill payment
@@ -262,6 +351,9 @@ async function postBillPayment({ accountId, payee, amount, mode, scheduledDate }
   }
   if (amount <= 0) {
     throw new Error("Amount must be greater than 0");
+  }
+  if (["frozen", "suspended", "closed"].includes(String(account.status || "").toLowerCase())) {
+    throw new Error("Selected account is not available for bill payments");
   }
 
   await createTransaction({
@@ -306,6 +398,7 @@ async function scheduleBillPayment({ accountId, payee, amount, scheduledDate }) 
     amount,
     status: "scheduled",
     dueDate: new Date(scheduledDate),
+    description: `scheduled_account:${accountId}`,
   });
 
   return {
@@ -329,10 +422,17 @@ async function runScheduledPayment(id) {
     throw new Error("Scheduled payment already processed");
   }
 
-  // Find the account for this customer
-  const account = await Account.findOne({
-    where: { customerId: scheduled.customerId },
-  });
+  const preferredAccountId = parseScheduledAccountId(scheduled.description);
+  let account = null;
+  if (preferredAccountId) {
+    account = await Account.findByPk(preferredAccountId);
+  }
+  if (!account) {
+    // Backward compatibility for older scheduled rows without account tracking.
+    account = await Account.findOne({
+      where: { customerId: scheduled.customerId },
+    });
+  }
 
   if (!account) {
     throw new Error("Account not found");
@@ -449,92 +549,165 @@ async function applyMonthlyFees() {
 }
 
 // Register a new user
-async function registerUser({ fullName, mobile, email, password }) {
+async function registerUser({ fullName, mobile, email, password, confirmPassword }) {
   if (!fullName || !mobile || !email || !password) {
     throw new Error("fullName, mobile, email and password are required");
   }
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-    throw new Error("Invalid email format");
-  }
-  if (!/^\+?\d{7,15}$/.test(mobile.replace(/[\s\-]/g, ""))) {
-    throw new Error("Invalid mobile number — use digits only, optionally starting with +");
-  }
-  if (password.length < 8) {
-    throw new Error("Password must be at least 8 characters");
+  validateEmail(email);
+  validateMobile(mobile);
+  validatePassword(password);
+  if (confirmPassword !== undefined && password !== confirmPassword) {
+    throw new Error("Passwords do not match");
   }
 
+  const normalizedEmail = normalizeEmail(email);
+  const normalizedMobile = String(mobile).trim();
+
   const existingUser = await Customer.findOne({
-    where: { email: email.toLowerCase() },
+    where: {
+      [Op.or]: [
+        { email: normalizedEmail },
+        { mobile: normalizedMobile },
+      ],
+    },
   });
   if (existingUser) {
-    throw new Error("Email already registered");
+    throw new Error("Email or phone number is already registered");
   }
 
   const passwordHash = await bcrypt.hash(password, 10);
+  const verificationCode = makeSixDigitCode();
 
   await Registration.create({
     fullName,
-    mobile,
-    email: email.toLowerCase(),
+    mobile: normalizedMobile,
+    email: normalizedEmail,
     password: passwordHash,
+    verificationCode,
+    verificationStatus: "pending",
   });
 
   const customer = await Customer.create({
     fullName,
-    mobile,
-    email: email.toLowerCase(),
+    mobile: normalizedMobile,
+    email: normalizedEmail,
     password: passwordHash,
     status: "active",
+    emailVerified: false,
+    registrationStatus: "pending",
   });
 
-  // Create a default account for the new customer
-  const accountNumber = await generateRandomAccountNumber();
-  await Account.create({
+  await addNotification(customer.id, `Registration verification code: ${verificationCode}`, "EMAIL");
+
+  return {
+    userId: customer.id,
     customerId: customer.id,
-    accountNumber,
-    accountType: "Savings",
-    balance: 0,
-    currency: "FJD",
-    status: "active",
-  });
+    fullName,
+    email: customer.email,
+    emailVerified: false,
+    simulatedVerificationCode: verificationCode,
+    message: "Registration created. Use the verification code to activate your login.",
+  };
+}
 
-  return { userId: customer.id, customerId: customer.id, fullName, email: customer.email };
+async function verifyEmail({ email, code }) {
+  const normalizedEmail = normalizeEmail(email);
+  const registration = await Registration.findOne({ where: { email: normalizedEmail }, order: [["createdAt", "DESC"]] });
+  if (!registration) {
+    throw new Error("Registration not found");
+  }
+  if (registration.verificationStatus === "verified") {
+    return { email: normalizedEmail, status: "verified" };
+  }
+  if (String(registration.verificationCode) !== String(code || "").trim()) {
+    throw new Error("Invalid verification code");
+  }
+
+  await registration.update({ verificationStatus: "verified", verifiedAt: new Date() });
+  const customer = await Customer.findOne({ where: { email: normalizedEmail } });
+  if (customer) {
+    await customer.update({ emailVerified: true, registrationStatus: "approved" });
+  }
+  return { email: normalizedEmail, status: "verified" };
 }
 
 // Login a user
-async function loginUser({ email, password }) {
+async function loginUser({ email, password, ipAddress, userAgent }) {
   if (!email || !password) {
     throw new Error("email and password are required");
   }
 
-  if (email.toLowerCase() === ADMIN_EMAIL && password === ADMIN_PASSWORD) {
+  const normalizedEmail = normalizeEmail(email);
+  const admin = await Admin.findOne({ where: { email: normalizedEmail } });
+  if (admin) {
+    const validAdmin = await bcrypt.compare(password, admin.password);
+    if (!validAdmin || admin.status !== "active") {
+      await recordLoginAttempt({ userType: "admin", userId: admin.id, email: normalizedEmail, success: false, failureReason: "Invalid admin credentials", ipAddress, userAgent });
+      throw new Error("Invalid email or password");
+    }
+    await admin.update({ lastLoginAt: new Date() });
+    await recordLoginAttempt({ userType: "admin", userId: admin.id, email: normalizedEmail, success: true, ipAddress, userAgent });
     return {
-      userId: "admin",
-      fullName: "System Admin",
-      email: ADMIN_EMAIL,
+      userId: admin.id,
+      fullName: admin.fullName,
+      email: admin.email,
       customerId: null,
       isAdmin: true,
     };
   }
 
   const customer = await Customer.findOne({
-    where: { email: email.toLowerCase() },
+    where: { email: normalizedEmail },
   });
 
   if (!customer) {
+    await recordLoginAttempt({ userType: "customer", email: normalizedEmail, success: false, failureReason: "Unknown email", ipAddress, userAgent });
     throw new Error("Invalid email or password");
+  }
+
+  if (isAccountLocked(customer)) {
+    await recordLoginAttempt({ userType: "customer", userId: customer.id, email: normalizedEmail, success: false, failureReason: "Account locked", ipAddress, userAgent });
+    throw new Error("Account locked due to repeated failed logins. Try again later.");
+  }
+
+  if (!customer.emailVerified) {
+    await recordLoginAttempt({ userType: "customer", userId: customer.id, email: normalizedEmail, success: false, failureReason: "Email not verified", ipAddress, userAgent });
+    throw new Error("Please verify your email before logging in");
+  }
+
+  if (["disabled", "locked", "suspended"].includes(String(customer.status || "").toLowerCase())) {
+    await recordLoginAttempt({ userType: "customer", userId: customer.id, email: normalizedEmail, success: false, failureReason: `Status ${customer.status}`, ipAddress, userAgent });
+    throw new Error("This account is not currently permitted to log in");
   }
 
   const valid = await bcrypt.compare(password, customer.password);
   if (!valid) {
+    const nextFailures = Number(customer.failedLoginAttempts || 0) + 1;
+    const updates = { failedLoginAttempts: nextFailures };
+    if (nextFailures >= MAX_FAILED_LOGIN_ATTEMPTS) {
+      updates.lockedUntil = new Date(Date.now() + ACCOUNT_LOCK_MINUTES * 60 * 1000);
+      updates.status = "locked";
+    }
+    await customer.update(updates);
+    await recordLoginAttempt({ userType: "customer", userId: customer.id, email: normalizedEmail, success: false, failureReason: "Invalid password", ipAddress, userAgent });
     throw new Error("Invalid email or password");
   }
+
+  await customer.update({
+    failedLoginAttempts: 0,
+    lockedUntil: null,
+    status: customer.status === "locked" ? "active" : customer.status,
+    lastLoginAt: new Date(),
+  });
+  await recordLoginAttempt({ userType: "customer", userId: customer.id, email: normalizedEmail, success: true, ipAddress, userAgent });
 
   return {
     userId: customer.id,
     fullName: customer.fullName,
     email: customer.email,
     customerId: customer.id,
+    mobile: customer.mobile,
+    nationalId: customer.nationalId,
     isAdmin: false,
   };
 }
@@ -544,16 +717,210 @@ async function verifyAdminCredentials({ email, password }) {
     throw new Error("email and password are required");
   }
 
-  const normalizedEmail = String(email).toLowerCase();
-  if (normalizedEmail !== ADMIN_EMAIL || password !== ADMIN_PASSWORD) {
+  const admin = await Admin.findOne({ where: { email: normalizeEmail(email) } });
+  if (!admin || !(await bcrypt.compare(password, admin.password))) {
     throw new Error("Invalid admin email or password");
   }
 
   return {
-    email: ADMIN_EMAIL,
-    fullName: "System Admin",
+    email: admin.email,
+    fullName: admin.fullName,
     isAdmin: true,
   };
+}
+
+async function requestPasswordReset({ email }) {
+  const normalizedEmail = normalizeEmail(email);
+  validateEmail(normalizedEmail);
+  const customer = await Customer.findOne({ where: { email: normalizedEmail } });
+  if (!customer) {
+    throw new Error("Account not found for that email");
+  }
+
+  const resetId = makeId("RST");
+  const otp = makeSixDigitCode();
+  await OtpVerification.create({
+    referenceCode: resetId,
+    customerId: customer.id,
+    otp,
+    transactionType: "password_reset",
+    amount: null,
+    metadata: JSON.stringify({ email: normalizedEmail }),
+    expiresAt: new Date(Date.now() + 10 * 60 * 1000),
+    verified: false,
+  });
+
+  await addNotification(customer.id, `Password reset code: ${otp}`, "EMAIL");
+  return { resetId, simulatedResetCode: otp, message: "Password reset code generated." };
+}
+
+async function resetPassword({ email, resetId, otp, newPassword }) {
+  const normalizedEmail = normalizeEmail(email);
+  validateEmail(normalizedEmail);
+  validatePassword(newPassword);
+
+  const customer = await Customer.findOne({ where: { email: normalizedEmail } });
+  if (!customer) {
+    throw new Error("Account not found for that email");
+  }
+
+  const resetRecord = await OtpVerification.findOne({
+    where: {
+      referenceCode: resetId,
+      customerId: customer.id,
+      transactionType: "password_reset",
+      verified: false,
+    },
+  });
+  if (!resetRecord) {
+    throw new Error("Password reset request not found");
+  }
+  if (new Date(resetRecord.expiresAt).getTime() < Date.now()) {
+    throw new Error("Password reset code has expired");
+  }
+  if (String(resetRecord.otp) !== String(otp || "").trim()) {
+    throw new Error("Invalid password reset code");
+  }
+
+  await customer.update({
+    password: await bcrypt.hash(newPassword, 10),
+    failedLoginAttempts: 0,
+    lockedUntil: null,
+    status: customer.status === "locked" ? "active" : customer.status,
+  });
+  await resetRecord.update({ verified: true });
+  return { status: "password_reset_completed" };
+}
+
+async function getDashboard(customerId) {
+  const customer = await Customer.findByPk(customerId);
+  if (!customer) {
+    throw new Error("Customer not found");
+  }
+
+  const accounts = await Account.findAll({ where: { customerId }, order: [["createdAt", "ASC"]] });
+  const accountIds = accounts.map((account) => account.id);
+  const transactions = accountIds.length > 0
+    ? await Transaction.findAll({ where: { accountId: { [Op.in]: accountIds } }, order: [["createdAt", "DESC"]], limit: 10 })
+    : [];
+
+  return {
+    customer: {
+      id: customer.id,
+      fullName: customer.fullName,
+      email: customer.email,
+      mobile: customer.mobile,
+      nationalId: customer.nationalId,
+    },
+    accounts: accounts.map((account) => ({
+      id: account.id,
+      accountNumber: account.accountNumber,
+      accountType: account.accountType,
+      balance: Number(account.balance),
+      status: account.status,
+    })),
+    recentTransactions: transactions.map((tx) => ({
+      id: tx.id,
+      accountId: tx.accountId,
+      type: tx.type,
+      amount: Number(tx.amount),
+      description: tx.description,
+      createdAt: tx.createdAt,
+    })),
+    quickActions: ["Transfer", "Pay Bills"],
+  };
+}
+
+async function updateProfile(customerId, payload) {
+  const customer = await Customer.findByPk(customerId);
+  if (!customer) {
+    throw new Error("Customer not found");
+  }
+
+  const updates = {};
+  if (payload.fullName !== undefined) {
+    updates.fullName = String(payload.fullName || "").trim();
+  }
+  if (payload.mobile !== undefined) {
+    validateMobile(payload.mobile);
+    const normalizedMobile = String(payload.mobile).trim();
+    const existingMobile = await Customer.findOne({ where: { mobile: normalizedMobile, id: { [Op.ne]: customerId } } });
+    if (existingMobile) {
+      throw new Error("Phone number is already used by another customer");
+    }
+    updates.mobile = normalizedMobile;
+  }
+  if (payload.email !== undefined) {
+    const normalizedEmail = normalizeEmail(payload.email);
+    validateEmail(normalizedEmail);
+    const existingEmail = await Customer.findOne({ where: { email: normalizedEmail, id: { [Op.ne]: customerId } } });
+    if (existingEmail) {
+      throw new Error("Email is already used by another customer");
+    }
+    updates.email = normalizedEmail;
+  }
+  if (payload.nationalId !== undefined) {
+    validateNationalId(payload.nationalId);
+    updates.nationalId = String(payload.nationalId).trim();
+  }
+  if (payload.newPassword) {
+    if (!payload.currentPassword) {
+      throw new Error("Current password is required to change password");
+    }
+    const valid = await bcrypt.compare(String(payload.currentPassword), customer.password);
+    if (!valid) {
+      throw new Error("Current password is incorrect");
+    }
+    validatePassword(payload.newPassword);
+    updates.password = await bcrypt.hash(String(payload.newPassword), 10);
+  }
+
+  await customer.update(updates);
+  return {
+    id: customer.id,
+    fullName: customer.fullName,
+    email: customer.email,
+    mobile: customer.mobile,
+    nationalId: customer.nationalId,
+    emailVerified: Boolean(customer.emailVerified),
+    status: customer.status,
+  };
+}
+
+async function getLoginLogs(limit = 200) {
+  const rows = await LoginLog.findAll({ order: [["createdAt", "DESC"]], limit: Number(limit) || 200 });
+  return rows.map((row) => ({
+    id: row.id,
+    userType: row.userType,
+    userId: row.userId,
+    email: row.email,
+    success: Boolean(row.success),
+    failureReason: row.failureReason,
+    ipAddress: row.ipAddress,
+    userAgent: row.userAgent,
+    createdAt: row.createdAt,
+  }));
+}
+
+async function reverseTransaction(transactionId) {
+  const tx = await Transaction.findByPk(transactionId);
+  if (!tx) {
+    throw new Error("Transaction not found");
+  }
+  if (tx.status === "reversed") {
+    throw new Error("Transaction already reversed");
+  }
+
+  const reversalKind = tx.type === "debit" ? "credit" : "debit";
+  const reversal = await createTransaction({
+    accountId: tx.accountId,
+    kind: reversalKind,
+    amount: Number(tx.amount),
+    description: `Reversal for transaction ${tx.id}`,
+  });
+
+  await tx.update({ status: "reversed", description: `${tx.description || "Transaction"} [REVERSED]` });
+  return { originalTransactionId: tx.id, reversal };
 }
 
 module.exports = {
@@ -579,6 +946,13 @@ module.exports = {
   getNotificationLogs,
   generateRandomAccountNumber,
   registerUser,
+  verifyEmail,
   loginUser,
   verifyAdminCredentials,
+  requestPasswordReset,
+  resetPassword,
+  getDashboard,
+  updateProfile,
+  getLoginLogs,
+  reverseTransaction,
 };

@@ -11,6 +11,7 @@ import BillPaymentsTab from "./components/tabs/BillPaymentsTab";
 import StatementsTab from "./components/tabs/StatementsTab";
 import InvestmentsTab from "./components/tabs/InvestmentsTab";
 import LoansTab from "./components/tabs/LoansTab";
+import ProfileTab from "./components/tabs/ProfileTab";
 import ComplianceTab from "./components/tabs/ComplianceTab";
 import AdminLockScreen from "./components/tabs/AdminLockScreen";
 
@@ -36,6 +37,15 @@ export default function App() {
   const [statementRows, setStatementRows] = useState([]);
   const [notificationCustomer, setNotificationCustomer] = useState("");
   const [notifications, setNotifications] = useState([]);
+  const [profileForm, setProfileForm] = useState({
+    fullName: "",
+    email: "",
+    mobile: "",
+    nationalId: "",
+    currentPassword: "",
+    newPassword: "",
+  });
+  const [profileMessage, setProfileMessage] = useState("");
 
   const [accountMessage, setAccountMessage] = useState("");
   const [transferForm, setTransferForm] = useState({ fromAccountId: "", toAccountId: "", amount: "", description: "" });
@@ -67,6 +77,7 @@ export default function App() {
   const [adminAuthForm, setAdminAuthForm] = useState({ email: "", password: "" });
   const [adminAuthMessage, setAdminAuthMessage] = useState("");
   const [adminTransactions, setAdminTransactions] = useState([]);
+  const [adminLoginLogs, setAdminLoginLogs] = useState([]);
   const [adminNotificationLogs, setAdminNotificationLogs] = useState([]);
   const [adminTransferLimit, setAdminTransferLimit] = useState(1000);
   const [adminReport, setAdminReport] = useState(null);
@@ -90,6 +101,25 @@ export default function App() {
   useEffect(() => {
     if (authToken) loadInitialData();
   }, [authToken, currentUser?.customerId, currentUser?.isAdmin]);
+
+  useEffect(() => {
+    if (!currentUser?.customerId || customers.length === 0) {
+      return;
+    }
+    const profile = customers.find((customer) => String(customer.id) === String(currentUser.customerId));
+    if (!profile) {
+      return;
+    }
+    setProfileForm((prev) => ({
+      ...prev,
+      fullName: profile.fullName || "",
+      email: profile.email || currentUser.email || "",
+      mobile: profile.mobile || currentUser.mobile || "",
+      nationalId: profile.nationalId || currentUser.nationalId || "",
+      currentPassword: "",
+      newPassword: "",
+    }));
+  }, [customers, currentUser]);
 
   async function loadInitialData() {
     setLoading(true);
@@ -122,7 +152,11 @@ export default function App() {
 
       const visibleScheduledBills = isAdminUser
         ? scheduled
-        : scheduled.filter((b) => b.accountId && visibleAccountIds.has(String(b.accountId)));
+        : scheduled.filter((b) => {
+          const byAccount = b.accountId && visibleAccountIds.has(String(b.accountId));
+          const byCustomer = b.customerId && visibleCustomerIds.has(String(b.customerId));
+          return byAccount || byCustomer;
+        });
 
       const visibleLoanApplications = isAdminUser
         ? apps
@@ -183,9 +217,45 @@ export default function App() {
   }
 
   useEffect(() => {
-    if (!selectedAccountForTx) return;
-    api.getTransactions(selectedAccountForTx).then(setTransactions).catch((err) => setError(err.message));
-  }, [selectedAccountForTx]);
+    if (!accounts.length) {
+      setTransactions([]);
+      return;
+    }
+
+    let cancelled = false;
+    const loadOverviewTransactions = async () => {
+      try {
+        if (currentUser?.isAdmin) {
+          if (!selectedAccountForTx) {
+            setTransactions([]);
+            return;
+          }
+          const rows = await api.getTransactions(selectedAccountForTx);
+          if (!cancelled) {
+            setTransactions(rows);
+          }
+          return;
+        }
+
+        const rowsByAccount = await Promise.all(accounts.map((account) => api.getTransactions(account.id)));
+        const merged = rowsByAccount
+          .flat()
+          .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+        if (!cancelled) {
+          setTransactions(merged);
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setError(err.message);
+        }
+      }
+    };
+
+    loadOverviewTransactions();
+    return () => {
+      cancelled = true;
+    };
+  }, [accounts, currentUser?.isAdmin, selectedAccountForTx]);
 
   useEffect(() => {
     if (!notificationCustomer) return;
@@ -202,8 +272,9 @@ export default function App() {
       const selected = accounts.find((a) => a.id === selectedAccountForTx);
       const accountNumber = selected?.accountNumber || "";
       try {
-        const [txRows, logs, limit, report] = await Promise.all([
+        const [txRows, loginLogRows, notificationLogRows, limit, report] = await Promise.all([
           api.getAdminTransactions(accountNumber),
+          api.getAdminLoginLogs(100),
           api.getNotificationLogsAdmin(100),
           api.getTransferLimitAdmin(),
           api.getAdminDashboardReport(),
@@ -212,7 +283,8 @@ export default function App() {
           return;
         }
         setAdminTransactions(txRows);
-        setAdminNotificationLogs(logs);
+        setAdminLoginLogs(loginLogRows);
+        setAdminNotificationLogs(notificationLogRows);
         setAdminTransferLimit(Number(limit.highValueTransferLimit || 1000));
         setAdminReport(report);
         setAdminLastUpdated(new Date().toISOString());
@@ -367,6 +439,29 @@ export default function App() {
     }
   }
 
+  async function onUpdateProfile(e) {
+    e.preventDefault();
+    setProfileMessage("");
+    try {
+      const updatedProfile = await api.updateProfile({
+        customerId: currentUser.customerId,
+        ...profileForm,
+      });
+      setCurrentUser((prev) => ({
+        ...prev,
+        fullName: updatedProfile.fullName,
+        email: updatedProfile.email,
+        mobile: updatedProfile.mobile,
+        nationalId: updatedProfile.nationalId,
+      }));
+      setProfileForm((prev) => ({ ...prev, currentPassword: "", newPassword: "" }));
+      setProfileMessage("Profile updated successfully.");
+      await loadInitialData();
+    } catch (err) {
+      setProfileMessage(err.message);
+    }
+  }
+
   async function onUpdateRate(e) {
     e.preventDefault();
     setComplianceMessage("");
@@ -441,6 +536,17 @@ export default function App() {
       const result = await api.updateTransferLimitAdmin(adminTransferLimit);
       setAdminTransferLimit(Number(result.highValueTransferLimit));
       setAdminMessage("High-value transfer limit updated.");
+    } catch (err) {
+      setAdminMessage(err.message);
+    }
+  }
+
+  async function onAdminReverseTransaction(transactionId) {
+    setAdminMessage("");
+    try {
+      await api.reverseTransactionAdmin(transactionId);
+      setAdminMessage("Transaction reversed successfully.");
+      await loadInitialData();
     } catch (err) {
       setAdminMessage(err.message);
     }
@@ -526,6 +632,8 @@ export default function App() {
             adminTransferLimit={adminTransferLimit}
             setAdminTransferLimit={setAdminTransferLimit}
             onAdminUpdateTransferLimit={onAdminUpdateTransferLimit}
+            onAdminReverseTransaction={onAdminReverseTransaction}
+            adminLoginLogs={adminLoginLogs}
             adminNotificationLogs={adminNotificationLogs}
             adminReport={adminReport}
             adminLastUpdated={adminLastUpdated}
@@ -556,124 +664,137 @@ export default function App() {
         </div>
       </header>
 
-      <nav className="tabs">
-        {tabs.map((tab) => (
-          <button
-            key={tab}
-            className={tab === activeTab ? "tab active" : "tab"}
-            onClick={() => setActiveTab(tab)}
-          >
-            {tab}
-          </button>
-        ))}
-      </nav>
+      <div className="workspace-layout">
+        <aside className="left-tabs">
+          <nav className="tabs">
+            {tabs.map((tab) => (
+              <button
+                key={tab}
+                className={tab === activeTab ? "tab active" : "tab"}
+                onClick={() => setActiveTab(tab)}
+              >
+                {tab}
+              </button>
+            ))}
+          </nav>
+        </aside>
 
-      {loading && <p className="status">Loading data...</p>}
-      {error && <p className="status error">{error}</p>}
+        <section className="tab-content">
+          {loading && <p className="status">Loading data...</p>}
+          {error && <p className="status error">{error}</p>}
 
-      {!loading && activeTab === "Overview" && (
-        <HomePage
-          customers={customers}
-          accounts={accounts}
-          totalBalance={totalBalance}
-          customerMap={customerMap}
-          selectedAccountForTx={selectedAccountForTx}
-          setSelectedAccountForTx={setSelectedAccountForTx}
-          transactions={transactions}
-        />
-      )}
+          {!loading && activeTab === "Overview" && (
+            <HomePage
+              accounts={accounts}
+              totalBalance={totalBalance}
+              selectedAccountForTx={selectedAccountForTx}
+              setSelectedAccountForTx={setSelectedAccountForTx}
+              transactions={transactions}
+            />
+          )}
 
-      {!loading && activeTab === "Accounts" && (
-        <AccountsTab
-          accounts={accounts}
-          customers={customers}
-          customerMap={customerMap}
-          currentUser={currentUser}
-          accountMessage={accountMessage}
-          setAccountMessage={setAccountMessage}
-          onCreateAccount={onCreateAdminAccount}
-        />
-      )}
+          {!loading && activeTab === "Accounts" && (
+            <AccountsTab
+              accounts={accounts}
+              customers={customers}
+              customerMap={customerMap}
+              currentUser={currentUser}
+              accountMessage={accountMessage}
+              setAccountMessage={setAccountMessage}
+              onCreateAccount={onCreateAdminAccount}
+            />
+          )}
 
-      {!loading && activeTab === "Transfers" && (
-        <TransfersTab
-          accounts={accounts}
-          transferForm={transferForm}
-          setTransferForm={setTransferForm}
-          onInitiateTransfer={onInitiateTransfer}
-          pendingTransfer={pendingTransfer}
-          setPendingTransfer={setPendingTransfer}
-          onVerifyTransfer={onVerifyTransfer}
-          transferMessage={transferMessage}
-        />
-      )}
+          {!loading && activeTab === "Transfers" && (
+            <TransfersTab
+              accounts={accounts}
+              transferForm={transferForm}
+              setTransferForm={setTransferForm}
+              onInitiateTransfer={onInitiateTransfer}
+              pendingTransfer={pendingTransfer}
+              setPendingTransfer={setPendingTransfer}
+              onVerifyTransfer={onVerifyTransfer}
+              transferMessage={transferMessage}
+            />
+          )}
 
-      {!loading && activeTab === "Bill Payments" && (
-        <BillPaymentsTab
-          accounts={accounts}
-          manualBillForm={manualBillForm}
-          setManualBillForm={setManualBillForm}
-          onManualBill={onManualBill}
-          scheduleBillForm={scheduleBillForm}
-          setScheduleBillForm={setScheduleBillForm}
-          onScheduleBill={onScheduleBill}
-          scheduledBills={scheduledBills}
-          runScheduledBill={runScheduledBill}
-          billMessage={billMessage}
-        />
-      )}
+          {!loading && activeTab === "Bill Payments" && (
+            <BillPaymentsTab
+              accounts={accounts}
+              manualBillForm={manualBillForm}
+              setManualBillForm={setManualBillForm}
+              onManualBill={onManualBill}
+              scheduleBillForm={scheduleBillForm}
+              setScheduleBillForm={setScheduleBillForm}
+              onScheduleBill={onScheduleBill}
+              scheduledBills={scheduledBills}
+              runScheduledBill={runScheduledBill}
+              billMessage={billMessage}
+            />
+          )}
 
-      {!loading && activeTab === "Statements" && (
-        <StatementsTab
-          accounts={accounts}
-          customers={customers}
-          statementAccount={statementAccount}
-          setStatementAccount={setStatementAccount}
-          statementRows={statementRows}
-          fetchStatement={fetchStatement}
-          notificationCustomer={notificationCustomer}
-          setNotificationCustomer={setNotificationCustomer}
-          notifications={notifications}
-        />
-      )}
+          {!loading && activeTab === "Statements" && (
+            <StatementsTab
+              accounts={accounts}
+              customers={customers}
+              statementAccount={statementAccount}
+              setStatementAccount={setStatementAccount}
+              statementRows={statementRows}
+              fetchStatement={fetchStatement}
+              notificationCustomer={notificationCustomer}
+              setNotificationCustomer={setNotificationCustomer}
+              notifications={notifications}
+            />
+          )}
 
-      {!loading && activeTab === "Investments" && (
-        <InvestmentsTab
-          customers={customers}
-          customerMap={customerMap}
-          investments={investments}
-          investmentForm={investmentForm}
-          setInvestmentForm={setInvestmentForm}
-          onAddInvestment={onAddInvestment}
-          investmentMessage={investmentMessage}
-        />
-      )}
+          {!loading && activeTab === "Investments" && (
+            <InvestmentsTab
+              customers={customers}
+              customerMap={customerMap}
+              investments={investments}
+              investmentForm={investmentForm}
+              setInvestmentForm={setInvestmentForm}
+              onAddInvestment={onAddInvestment}
+              investmentMessage={investmentMessage}
+            />
+          )}
 
-      {!loading && activeTab === "Loans" && (
-        <LoansTab
-          customers={customers}
-          customerMap={customerMap}
-          loanProducts={loanProducts}
-          loanApplications={loanApplications}
-          loanForm={loanForm}
-          setLoanForm={setLoanForm}
-          onSubmitLoan={onSubmitLoan}
-          loanMessage={loanMessage}
-        />
-      )}
+          {!loading && activeTab === "Loans" && (
+            <LoansTab
+              customers={customers}
+              customerMap={customerMap}
+              loanProducts={loanProducts}
+              loanApplications={loanApplications}
+              loanForm={loanForm}
+              setLoanForm={setLoanForm}
+              onSubmitLoan={onSubmitLoan}
+              loanMessage={loanMessage}
+            />
+          )}
 
-      {!loading && activeTab === "Compliance" && (
-        <ComplianceTab
-          interestRate={interestRate}
-          setInterestRate={setInterestRate}
-          onUpdateRate={onUpdateRate}
-          summaryYear={summaryYear}
-          setSummaryYear={setSummaryYear}
-          onGenerateSummaries={onGenerateSummaries}
-          summaries={summaries}
-          complianceMessage={complianceMessage}
-        />
-      )}
+          {!loading && activeTab === "Profile" && (
+            <ProfileTab
+              profileForm={profileForm}
+              setProfileForm={setProfileForm}
+              onUpdateProfile={onUpdateProfile}
+              profileMessage={profileMessage}
+            />
+          )}
+
+          {!loading && activeTab === "Compliance" && (
+            <ComplianceTab
+              interestRate={interestRate}
+              setInterestRate={setInterestRate}
+              onUpdateRate={onUpdateRate}
+              summaryYear={summaryYear}
+              setSummaryYear={setSummaryYear}
+              onGenerateSummaries={onGenerateSummaries}
+              summaries={summaries}
+              complianceMessage={complianceMessage}
+            />
+          )}
+        </section>
+      </div>
 
       <SiteFooter currentYear={currentYear} />
     </div>

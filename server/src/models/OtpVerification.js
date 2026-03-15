@@ -7,6 +7,11 @@ const OtpVerification = sequelize.define('OtpVerification', {
     autoIncrement: true,
     primaryKey: true,
   },
+  referenceCode: {
+    type: DataTypes.STRING,
+    allowNull: false,
+    unique: true,
+  },
   customerId: {
     type: DataTypes.BIGINT.UNSIGNED,
     allowNull: false,
@@ -21,6 +26,10 @@ const OtpVerification = sequelize.define('OtpVerification', {
   },
   amount: {
     type: DataTypes.DECIMAL(12, 2),
+  },
+  metadata: {
+    type: DataTypes.TEXT,
+    allowNull: true,
   },
   expiresAt: {
     type: DataTypes.DATE,

@@ -1,48 +1,44 @@
 const { DataTypes } = require('sequelize');
 const sequelize = require('../config/database');
 
-const Registration = sequelize.define('Registration', {
+const LoginLog = sequelize.define('LoginLog', {
   id: {
     type: DataTypes.BIGINT.UNSIGNED,
     autoIncrement: true,
     primaryKey: true,
   },
-  fullName: {
+  userType: {
     type: DataTypes.STRING,
     allowNull: false,
   },
-  mobile: {
-    type: DataTypes.STRING,
-    allowNull: false,
-  },
-  nationalId: {
-    type: DataTypes.STRING,
+  userId: {
+    type: DataTypes.BIGINT.UNSIGNED,
     allowNull: true,
-    defaultValue: '',
   },
   email: {
     type: DataTypes.STRING,
     allowNull: false,
   },
-  password: {
-    type: DataTypes.STRING,
-    allowNull: false,
+  success: {
+    type: DataTypes.BOOLEAN,
+    defaultValue: false,
   },
-  verificationCode: {
+  failureReason: {
     type: DataTypes.STRING,
     allowNull: true,
   },
-  verificationStatus: {
+  ipAddress: {
     type: DataTypes.STRING,
-    defaultValue: 'pending',
+    allowNull: true,
   },
-  verifiedAt: {
-    type: DataTypes.DATE,
+  userAgent: {
+    type: DataTypes.STRING(1000),
     allowNull: true,
   },
 }, {
-  tableName: 'registrations',
+  tableName: 'login_logs',
   timestamps: true,
+  updatedAt: false,
 });
 
-module.exports = Registration;
+module.exports = LoginLog;

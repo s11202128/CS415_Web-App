@@ -21,13 +21,34 @@ const Customer = sequelize.define('Customer', {
     allowNull: false,
     unique: true,
   },
+  nationalId: {
+    type: DataTypes.STRING,
+    allowNull: true,
+    defaultValue: '',
+  },
   password: {
     type: DataTypes.STRING,
     allowNull: false,
   },
+  emailVerified: {
+    type: DataTypes.BOOLEAN,
+    defaultValue: false,
+  },
   status: {
     type: DataTypes.STRING,
     defaultValue: 'active',
+  },
+  failedLoginAttempts: {
+    type: DataTypes.INTEGER,
+    defaultValue: 0,
+  },
+  lockedUntil: {
+    type: DataTypes.DATE,
+    allowNull: true,
+  },
+  lastLoginAt: {
+    type: DataTypes.DATE,
+    allowNull: true,
   },
   tin: {
     type: DataTypes.STRING,

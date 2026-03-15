@@ -13,10 +13,6 @@ export default function AdminOverviewTab({ customers, accounts, adminReport, adm
     todaysTransactions: 0,
   };
 
-  const txDays = adminReport?.transactionsByDay || [];
-  const countMax = txDays.reduce((m, r) => Math.max(m, r.count), 1);
-  const amtMax = txDays.reduce((m, r) => Math.max(m, r.totalAmount), 1);
-
   return (
     <section className="panel-grid">
       {adminMessage && (
@@ -53,38 +49,6 @@ export default function AdminOverviewTab({ customers, accounts, adminReport, adm
       <article className="panel metric-card">
         <h3>Frozen / Suspended</h3>
         <p className="metric">{metrics.frozenAccounts}</p>
-      </article>
-
-      <article className="panel wide">
-        <h3>7-Day Transaction Volume</h3>
-        <div className="mini-chart">
-          {txDays.map((row) => {
-            const height = Math.max(8, Math.round((row.count / countMax) * 100));
-            return (
-              <div key={row.day} className="mini-chart-col">
-                <div className="mini-bar" style={{ height: `${height}%` }} />
-                <span className="mini-chart-label">{row.day.slice(-5)}</span>
-                <span className="mini-chart-value">{row.count}</span>
-              </div>
-            );
-          })}
-        </div>
-      </article>
-
-      <article className="panel wide">
-        <h3>7-Day Transaction Amount (FJD)</h3>
-        <div className="mini-chart">
-          {txDays.map((row) => {
-            const height = Math.max(8, Math.round((row.totalAmount / amtMax) * 100));
-            return (
-              <div key={row.day} className="mini-chart-col">
-                <div className="mini-bar amount" style={{ height: `${height}%` }} />
-                <span className="mini-chart-label">{row.day.slice(-5)}</span>
-                <span className="mini-chart-value">{Number(row.totalAmount).toFixed(0)}</span>
-              </div>
-            );
-          })}
-        </div>
       </article>
 
       <article className="panel wide">

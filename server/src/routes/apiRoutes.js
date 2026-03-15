@@ -16,6 +16,10 @@ const {
   getHighValueTransferThreshold,
   setHighValueTransferThreshold,
   getNotificationLogs,
+  getDashboard,
+  updateProfile,
+  getLoginLogs,
+  reverseTransaction,
 } = require("../store-mysql");
 const { Customer, Account, Bill, Investment, Loan, Transaction } = require("../models");
 
@@ -41,12 +45,17 @@ const toCustomerResponse = (c) => ({
   id: c.id,
   fullName: c.fullName,
   mobile: c.mobile,
+  nationalId: c.nationalId || "",
   residencyStatus: c.residencyStatus || "resident",
   tin: c.tin || "",
   identityVerified: Boolean(c.identityVerified),
   registrationStatus: c.registrationStatus || "approved",
   status: c.status,
   email: c.email,
+  emailVerified: Boolean(c.emailVerified),
+  failedLoginAttempts: Number(c.failedLoginAttempts || 0),
+  lockedUntil: c.lockedUntil,
+  lastLoginAt: c.lastLoginAt,
 });
 
 const toAccountResponse = (a) => ({
@@ -61,6 +70,12 @@ const toAccountResponse = (a) => ({
   createdAt: a.createdAt,
 });
 
+function parseScheduledAccountId(description) {
+  const text = String(description || "");
+  const match = text.match(/scheduled_account:(\d+)/i);
+  return match ? Number(match[1]) : null;
+}
+
 router.get("/health", (req, res) => {
   res.json({ status: "ok", service: "BoF Banking API", at: new Date().toISOString() });
 });
@@ -70,8 +85,61 @@ router.get("/requirements", (req, res) => {
 });
 
 router.get("/customers", asyncHandler(async (req, res) => {
-  const rows = await Customer.findAll({ order: [["createdAt", "ASC"]] });
+  const search = String(req.query.q || "").trim();
+  const where = search
+    ? {
+        [Op.or]: [
+          { fullName: { [Op.like]: `%${search}%` } },
+          { email: { [Op.like]: `%${search}%` } },
+          { mobile: { [Op.like]: `%${search}%` } },
+          { nationalId: { [Op.like]: `%${search}%` } },
+        ],
+      }
+    : undefined;
+  const rows = await Customer.findAll({ where, order: [["createdAt", "ASC"]] });
   res.json(rows.map(toCustomerResponse));
+}));
+
+router.get("/admin/customers", asyncHandler(async (req, res) => {
+  const search = String(req.query.q || "").trim();
+  const where = search
+    ? {
+        [Op.or]: [
+          { fullName: { [Op.like]: `%${search}%` } },
+          { email: { [Op.like]: `%${search}%` } },
+          { mobile: { [Op.like]: `%${search}%` } },
+          { nationalId: { [Op.like]: `%${search}%` } },
+        ],
+      }
+    : undefined;
+  const rows = await Customer.findAll({ where, order: [["createdAt", "ASC"]] });
+  res.json(rows.map(toCustomerResponse));
+}));
+
+router.get("/dashboard", asyncHandler(async (req, res) => {
+  const customerId = Number(req.query.customerId);
+  if (!Number.isFinite(customerId) || customerId <= 0) {
+    return res.status(400).json({ error: "Valid customerId query is required" });
+  }
+  const result = await getDashboard(customerId);
+  res.json(result);
+}));
+
+router.get("/profile/:customerId", asyncHandler(async (req, res) => {
+  const customer = await Customer.findByPk(req.params.customerId);
+  if (!customer) {
+    return res.status(404).json({ error: "Customer not found" });
+  }
+  res.json(toCustomerResponse(customer));
+}));
+
+router.put("/update-profile", asyncHandler(async (req, res) => {
+  const customerId = Number(req.body?.customerId);
+  if (!Number.isFinite(customerId) || customerId <= 0) {
+    return res.status(400).json({ error: "Valid customerId is required" });
+  }
+  const result = await updateProfile(customerId, req.body || {});
+  res.json(result);
 }));
 
 router.post("/customers", asyncHandler(async (req, res) => {
@@ -106,11 +174,16 @@ router.patch("/admin/customers/:id", asyncHandler(async (req, res) => {
   const allowed = [
     "fullName",
     "mobile",
+    "email",
+    "nationalId",
     "status",
     "tin",
     "residencyStatus",
     "identityVerified",
     "registrationStatus",
+    "emailVerified",
+    "lockedUntil",
+    "failedLoginAttempts",
   ];
 
   allowed.forEach((field) => {
@@ -235,6 +308,85 @@ router.post("/admin/accounts/:id/freeze", asyncHandler(async (req, res) => {
   res.json(toAccountResponse(account));
 }));
 
+router.post("/admin/create-account", asyncHandler(async (req, res) => {
+  const payload = req.body || {};
+  const providedAccountNumber = String(payload.accountNumber || "").trim();
+  const providedCustomerName = String(payload.customerName || "").trim();
+  if (!payload.type) {
+    return res.status(400).json({ error: "type is required" });
+  }
+  if (!["Simple Access", "Savings", "Current"].includes(payload.type)) {
+    return res.status(400).json({ error: "type must be Simple Access, Current or Savings" });
+  }
+  if (providedAccountNumber && !/^\d{12}$/.test(providedAccountNumber)) {
+    return res.status(400).json({ error: "Reenter 12 digit number" });
+  }
+
+  let customerId = payload.customerId;
+  if (customerId !== undefined && customerId !== null && customerId !== "") {
+    customerId = Number(customerId);
+    if (!Number.isFinite(customerId) || customerId <= 0) {
+      return res.status(400).json({ error: "customerId must be a positive number" });
+    }
+  } else {
+    if (!providedCustomerName) {
+      return res.status(400).json({ error: "customerName is required when customerId is not provided" });
+    }
+
+    const normalizedName = providedCustomerName.toLowerCase();
+    let customer = await Customer.findOne({
+      where: Customer.sequelize.where(
+        Customer.sequelize.fn("LOWER", Customer.sequelize.col("fullName")),
+        normalizedName
+      ),
+    });
+
+    if (!customer) {
+      const nonce = Date.now();
+      const safeName = providedCustomerName
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, ".")
+        .replace(/^\.+|\.+$/g, "") || "customer";
+
+      customer = await Customer.create({
+        fullName: providedCustomerName,
+        mobile: `+6799${String(nonce).slice(-6)}`,
+        email: `${safeName}.${nonce}@autocreated.local`,
+        nationalId: `AUTO-${nonce}`,
+        password: "temporary-password",
+        status: "active",
+        emailVerified: true,
+        tin: "",
+        residencyStatus: "resident",
+        identityVerified: false,
+        registrationStatus: "approved",
+      });
+    }
+
+    customerId = customer.id;
+  }
+
+  const account = await Account.create({
+    customerId,
+    accountNumber: providedAccountNumber || await generateRandomAccountNumber(),
+    accountType: payload.type,
+    balance: Number(payload.openingBalance || 0),
+    currency: "FJD",
+    status: "active",
+  });
+
+  res.status(201).json(toAccountResponse(account));
+}));
+
+router.put("/admin/freeze-account", asyncHandler(async (req, res) => {
+  const account = await Account.findByPk(req.body?.accountId);
+  if (!account) {
+    return res.status(404).json({ error: "Account not found" });
+  }
+  await account.update({ status: "frozen" });
+  res.json(toAccountResponse(account));
+}));
+
 router.get("/admin/transactions", asyncHandler(async (req, res) => {
   const accountNumber = String(req.query.accountNumber || "").trim();
   let accountIdFilter = null;
@@ -260,8 +412,20 @@ router.get("/admin/transactions", asyncHandler(async (req, res) => {
     amount: Number(t.amount),
     description: t.description,
     status: t.status,
+    suspicious: Number(t.amount) >= getHighValueTransferThreshold() || String(t.status || "").toLowerCase() === "reversed",
     createdAt: t.createdAt,
   })));
+}));
+
+router.get("/admin/login-logs", asyncHandler(async (req, res) => {
+  const limit = Number(req.query.limit || 200);
+  const rows = await getLoginLogs(limit);
+  res.json(rows);
+}));
+
+router.post("/admin/transactions/:id/reverse", asyncHandler(async (req, res) => {
+  const result = await reverseTransaction(req.params.id);
+  res.json(result);
 }));
 
 router.get("/transactions", asyncHandler(async (req, res) => {
@@ -282,6 +446,11 @@ router.get("/transactions", asyncHandler(async (req, res) => {
 }));
 
 router.post("/transfers/initiate", asyncHandler(async (req, res) => {
+  const result = await initiateTransfer(req.body || {});
+  res.json({ highValueThreshold: getHighValueTransferThreshold(), ...result });
+}));
+
+router.post("/transfer", asyncHandler(async (req, res) => {
   const result = await initiateTransfer(req.body || {});
   res.json({ highValueThreshold: getHighValueTransferThreshold(), ...result });
 }));
@@ -431,6 +600,18 @@ router.post("/bills/manual", asyncHandler(async (req, res) => {
   res.status(201).json(payment);
 }));
 
+router.post("/pay-bill", asyncHandler(async (req, res) => {
+  const payload = req.body || {};
+  const payment = await postBillPayment({
+    accountId: payload.accountId,
+    payee: payload.payee,
+    amount: Number(payload.amount),
+    mode: payload.mode || "manual",
+    scheduledDate: payload.scheduledDate || null,
+  });
+  res.status(201).json(payment);
+}));
+
 router.post("/bills/scheduled", asyncHandler(async (req, res) => {
   const payload = req.body || {};
   const row = await scheduleBillPayment({
@@ -447,7 +628,8 @@ router.get("/bills/scheduled", asyncHandler(async (req, res) => {
   res.json(
     rows.map((b) => ({
       id: b.id,
-      accountId: null,
+      accountId: parseScheduledAccountId(b.description),
+      customerId: b.customerId,
       payee: b.billType,
       amount: Number(b.amount),
       scheduledDate: b.dueDate,

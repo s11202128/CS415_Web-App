@@ -56,10 +56,17 @@ async function request(path, options = {}) {
 
 export const api = {
   register: (body) => request("/auth/register", { method: "POST", body: JSON.stringify(body) }),
+  verifyEmail: (body) => request("/auth/verify-email", { method: "POST", body: JSON.stringify(body) }),
   login: (body) => request("/auth/login", { method: "POST", body: JSON.stringify(body) }),
+  requestPasswordReset: (body) => request("/auth/forgot-password", { method: "POST", body: JSON.stringify(body) }),
+  resetPassword: (body) => request("/auth/reset-password", { method: "POST", body: JSON.stringify(body) }),
   verifyAdminCredentials: (body) => request("/auth/admin-verify", { method: "POST", body: JSON.stringify(body) }),
   getCustomers: () => request("/customers"),
+  getAdminCustomers: (query = "") => request(`/admin/customers${query ? `?q=${encodeURIComponent(query)}` : ""}`),
   updateCustomerAdmin: (id, body) => request(`/admin/customers/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
+  getDashboard: (customerId) => request(`/dashboard?customerId=${encodeURIComponent(customerId)}`),
+  getProfile: (customerId) => request(`/profile/${encodeURIComponent(customerId)}`),
+  updateProfile: (body) => request("/update-profile", { method: "PUT", body: JSON.stringify(body) }),
   getAccounts: () => request("/accounts"),
   createAccount: (body) => request("/accounts", { method: "POST", body: JSON.stringify(body) }),
   updateAccountAdmin: (id, body) => request(`/admin/accounts/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
@@ -69,6 +76,8 @@ export const api = {
     const suffix = accountNumber ? `?accountNumber=${encodeURIComponent(accountNumber)}` : "";
     return request(`/admin/transactions${suffix}`);
   },
+  getAdminLoginLogs: (limit = 200) => request(`/admin/login-logs?limit=${encodeURIComponent(limit)}`),
+  reverseTransactionAdmin: (id) => request(`/admin/transactions/${id}/reverse`, { method: "POST" }),
   getTransferHistoryAdmin: () => request("/admin/transfers"),
   getAdminDashboardReport: () => request("/admin/dashboard-report"),
   getTransferLimitAdmin: () => request("/admin/transfer-limit"),

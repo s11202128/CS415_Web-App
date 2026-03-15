@@ -34,8 +34,8 @@ export default function LoansTab({
         </table>
       </article>
 
-      <article className="panel">
-        <h2>Apply For Loan</h2>
+      <article className="panel wide loan-apply-panel">
+        <h2 className="loan-apply-title">Apply For Loan</h2>
         <form className="loan-form-horizontal" onSubmit={onSubmitLoan}>
           <label>
             Customer
@@ -101,7 +101,7 @@ export default function LoansTab({
           </label>
           <button type="submit">Submit Application</button>
         </form>
-        <p className="status">{loanMessage}</p>
+        <p className="status loan-apply-status">{loanMessage}</p>
       </article>
 
       <article className="panel wide">

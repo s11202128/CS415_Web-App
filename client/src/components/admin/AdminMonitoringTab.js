@@ -6,6 +6,8 @@ export default function AdminMonitoringTab({
   adminTransferLimit,
   setAdminTransferLimit,
   onAdminUpdateTransferLimit,
+  onAdminReverseTransaction,
+  adminLoginLogs,
   adminNotificationLogs,
 }) {
   return (
@@ -29,6 +31,8 @@ export default function AdminMonitoringTab({
               <th>Type</th>
               <th>Amount</th>
               <th>Description</th>
+              <th>Risk</th>
+              <th>Action</th>
             </tr>
           </thead>
           <tbody>
@@ -38,6 +42,12 @@ export default function AdminMonitoringTab({
                 <td>{t.kind}</td>
                 <td>FJD {Number(t.amount).toFixed(2)}</td>
                 <td>{t.description}</td>
+                <td>{t.suspicious ? "Flagged" : "Normal"}</td>
+                <td>
+                  <button type="button" disabled={t.status === "reversed"} onClick={() => onAdminReverseTransaction(t.id)}>
+                    Reverse
+                  </button>
+                </td>
               </tr>
             ))}
           </tbody>
@@ -70,6 +80,32 @@ export default function AdminMonitoringTab({
             </li>
           ))}
         </ul>
+      </article>
+
+      <article className="panel wide">
+        <h3>Login Activity</h3>
+        <table>
+          <thead>
+            <tr>
+              <th>Time</th>
+              <th>User Type</th>
+              <th>Email</th>
+              <th>Result</th>
+              <th>Reason</th>
+            </tr>
+          </thead>
+          <tbody>
+            {adminLoginLogs.map((log) => (
+              <tr key={log.id}>
+                <td>{new Date(log.createdAt).toLocaleString()}</td>
+                <td>{log.userType}</td>
+                <td>{log.email}</td>
+                <td>{log.success ? "Success" : "Failed"}</td>
+                <td>{log.failureReason || "-"}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </article>
     </section>
   );
