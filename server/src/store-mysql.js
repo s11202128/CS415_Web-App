@@ -569,6 +569,10 @@ async function generateStatement(accountId, from, to) {
   const fromDate = from ? new Date(from) : null;
   const toDate = to ? new Date(to) : null;
 
+  if (toDate) {
+    toDate.setHours(23, 59, 59, 999);
+  }
+
   const where = { accountId };
   if (fromDate || toDate) {
     if (fromDate && toDate) {

@@ -1,20 +1,28 @@
 import { useState } from "react";
-import { api } from "../../api";
 
 export default function StatementsTab({
   accounts,
   customers,
+  currentUser,
   statementAccount,
   setStatementAccount,
   statementRows,
   statementRequested,
+  statementRequests,
+  statementMessage,
+  setStatementMessage,
   fetchStatement,
+  onSubmitStatementRequest,
+  onDownloadStatement,
   notificationCustomer,
   setNotificationCustomer,
   notifications,
 }) {
   const [filterType, setFilterType] = useState("all");
   const [sortOrder, setSortOrder] = useState("desc");
+  const [requestForm, setRequestForm] = useState({ fromDate: "", toDate: "" });
+
+  const selectedAccount = accounts.find((account) => String(account.id) === String(statementAccount));
 
   // Filter transactions based on type
   const filteredRows = statementRows.filter((r) => {
@@ -37,19 +45,29 @@ export default function StatementsTab({
     .filter((r) => r.kind === "debit")
     .reduce((sum, r) => sum + r.amount, 0);
 
+  const approvedRequests = statementRequests.filter((request) => request.status === "approved");
+
+  const handleSubmitStatementRequest = async (e) => {
+    e.preventDefault();
+    if (!selectedAccount) {
+      setStatementMessage("Please select an account before submitting a statement request.");
+      return;
+    }
+    await onSubmitStatementRequest({
+      accountId: selectedAccount.id,
+      accountHolder: selectedAccount.accountHolder || currentUser?.fullName || "",
+      accountNumber: selectedAccount.accountNumber || "",
+      fromDate: requestForm.fromDate,
+      toDate: requestForm.toDate,
+    });
+    setRequestForm({ fromDate: "", toDate: "" });
+  };
+
   return (
     <section className="panel-grid">
       <article className="panel wide">
-        <h2>Transaction Statements & History</h2>
+        <h2>Approved Statement Preview</h2>
         <div className="inline-controls">
-          <label>
-            Account
-            <select value={statementAccount} onChange={(e) => setStatementAccount(e.target.value)}>
-              {accounts.map((a) => (
-                <option key={a.id} value={a.id}>{a.accountNumber || a.id}</option>
-              ))}
-            </select>
-          </label>
           <label>
             Filter by Type
             <select value={filterType} onChange={(e) => setFilterType(e.target.value)}>
@@ -65,21 +83,7 @@ export default function StatementsTab({
               <option value="asc">Oldest First</option>
             </select>
           </label>
-          <button onClick={fetchStatement}>View Statement</button>
-          <a
-            className="button-link"
-            href={statementRequested ? api.statementDownloadUrl(statementAccount) : undefined}
-            target="_blank"
-            rel="noreferrer"
-            onClick={(e) => {
-              if (!statementRequested) {
-                e.preventDefault();
-              }
-            }}
-            aria-disabled={!statementRequested}
-          >
-            📥 Download CSV
-          </a>
+          <p className="hint">Approved requests: {approvedRequests.length}</p>
         </div>
 
         {statementRequested && statementRows.length > 0 && (
@@ -99,36 +103,92 @@ export default function StatementsTab({
           </div>
         )}
 
+        {!statementRequested ? (
+          <p className="no-data">Submit a request and wait for admin approval before previewing statement data.</p>
+        ) : sortedRows.length === 0 ? (
+          <p className="no-data">No transactions found for the selected account.</p>
+        ) : null}
+      </article>
+
+      <article className="panel wide">
+        <h2>Statement Request Form</h2>
+        <form className="admin-form" onSubmit={handleSubmitStatementRequest}>
+          <label>
+            Account Holder
+            <input value={selectedAccount?.accountHolder || currentUser?.fullName || ""} readOnly />
+          </label>
+          <label>
+            Account Number
+            <select value={statementAccount} onChange={(e) => setStatementAccount(e.target.value)}>
+              {accounts.map((a) => (
+                <option key={a.id} value={a.id}>{a.accountNumber || `ID ${a.id}`}</option>
+              ))}
+            </select>
+          </label>
+          <label>
+            From Date
+            <input
+              type="date"
+              value={requestForm.fromDate}
+              onChange={(e) => setRequestForm({ ...requestForm, fromDate: e.target.value })}
+              required
+            />
+          </label>
+          <label>
+            To Date
+            <input
+              type="date"
+              value={requestForm.toDate}
+              onChange={(e) => setRequestForm({ ...requestForm, toDate: e.target.value })}
+              required
+            />
+          </label>
+          <button type="submit">Submit Statement Request</button>
+        </form>
+        {statementMessage && <p className="status">{statementMessage}</p>}
+      </article>
+
+      <article className="panel wide">
+        <h2>My Statement Requests</h2>
         <table>
           <thead>
             <tr>
-              <th>Time</th>
-              <th>Type</th>
-              <th>Amount</th>
-              <th>Description</th>
+              <th>Requested</th>
+              <th>Account Holder</th>
+              <th>Account Number</th>
+              <th>From</th>
+              <th>To</th>
+              <th>Status</th>
+              <th>Actions</th>
             </tr>
           </thead>
           <tbody>
-            {!statementRequested ? (
-              <tr>
-                <td colSpan="4" className="no-data">Select an account and click "View Statement" to load transactions on demand.</td>
-              </tr>
-            ) : sortedRows.length > 0 ? (
-              sortedRows.map((r) => (
-                <tr key={r.id} className={`tx-${r.kind}`}>
-                  <td>{new Date(r.createdAt).toLocaleString()}</td>
+            {statementRequests.map((request) => {
+              const isApproved = request.status === "approved";
+              return (
+                <tr key={request.id}>
+                  <td>{new Date(request.createdAt).toLocaleString()}</td>
+                  <td>{request.accountHolder}</td>
+                  <td>{request.accountNumber}</td>
+                  <td>{request.fromDate}</td>
+                  <td>{request.toDate}</td>
+                  <td>{request.status}</td>
                   <td>
-                    <span className={`badge badge-${r.kind}`}>
-                      {r.kind === "credit" ? "+" : "-"} {r.kind}
-                    </span>
+                    <div className="inline-controls">
+                      <button type="button" disabled={!isApproved} onClick={() => fetchStatement(request.id)}>
+                        View
+                      </button>
+                      <button type="button" disabled={!isApproved} onClick={() => onDownloadStatement(request.id)}>
+                        Download CSV
+                      </button>
+                    </div>
                   </td>
-                  <td className={`amount-${r.kind}`}>FJD {r.amount.toFixed(2)}</td>
-                  <td>{r.description}</td>
                 </tr>
-              ))
-            ) : (
+              );
+            })}
+            {statementRequests.length === 0 && (
               <tr>
-                <td colSpan="4" className="no-data">No transactions found for the selected account.</td>
+                <td colSpan="7" className="no-data">No statement requests submitted yet.</td>
               </tr>
             )}
           </tbody>

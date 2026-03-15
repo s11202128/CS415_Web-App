@@ -5,8 +5,9 @@ import AdminAccountsTab from "./admin/AdminAccountsTab";
 import AdminLoansTab from "./admin/AdminLoansTab";
 import AdminMonitoringTab from "./admin/AdminMonitoringTab";
 import AdminReportsTab from "./admin/AdminReportsTab";
+import AdminStatementsTab from "./admin/AdminStatementsTab";
 
-const ADMIN_SECTIONS = ["Overview", "Customers", "Accounts", "Loans", "Monitoring", "Reports"];
+const ADMIN_SECTIONS = ["Overview", "Customers", "Accounts", "Statement Requests", "Loans", "Monitoring", "Reports"];
 
 export default function AdminPage({
   customers,
@@ -32,6 +33,8 @@ export default function AdminPage({
   onAdminReverseTransaction,
   adminLoginLogs,
   adminNotificationLogs,
+  adminStatementRequests,
+  onAdminUpdateStatementRequest,
   adminReport,
   adminLastUpdated,
 }) {
@@ -84,6 +87,12 @@ export default function AdminPage({
               adminAccountMessage={adminAccountMessage}
               onAdminUpdateAccount={onAdminUpdateAccount}
               onAdminFreezeAccount={onAdminFreezeAccount}
+            />
+          )}
+          {activeSection === "Statement Requests" && (
+            <AdminStatementsTab
+              statementRequests={adminStatementRequests}
+              onAdminUpdateStatementRequest={onAdminUpdateStatementRequest}
             />
           )}
           {activeSection === "Loans" && (

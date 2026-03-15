@@ -54,6 +54,41 @@ async function request(path, options = {}) {
   return response.text();
 }
 
+async function requestBlob(path, options = {}) {
+  const headers = {
+    ...(options.headers || {}),
+  };
+  if (_authToken) {
+    headers["Authorization"] = `Bearer ${_authToken}`;
+  }
+
+  let response;
+  try {
+    response = await fetch(`${API_BASE}${path}`, {
+      ...options,
+      headers,
+    });
+  } catch (err) {
+    throw new Error("Cannot reach backend server. Start server on port 4000 and try again.");
+  }
+
+  if (!response.ok) {
+    let message = "Request failed";
+    try {
+      const payload = await response.json();
+      message = payload.error || message;
+    } catch (err) {
+      message = `${response.status} ${response.statusText}`;
+    }
+    throw new Error(message);
+  }
+
+  return {
+    blob: await response.blob(),
+    contentDisposition: response.headers.get("content-disposition") || "",
+  };
+}
+
 export const api = {
   register: (body) => request("/auth/register", { method: "POST", body: JSON.stringify(body) }),
   verifyEmail: (body) => request("/auth/verify-email", { method: "POST", body: JSON.stringify(body) }),
@@ -97,6 +132,12 @@ export const api = {
   getScheduledBills: () => request("/bills/scheduled"),
   runScheduledBill: (id) => request(`/bills/scheduled/${id}/run`, { method: "POST" }),
   getStatement: (accountId) => request(`/statements/${accountId}`),
+  createStatementRequest: (body) => request("/statements/request", { method: "POST", body: JSON.stringify(body) }),
+  getStatementRequests: () => request("/statements/requests"),
+  getAdminStatementRequests: () => request("/admin/statement-requests"),
+  updateAdminStatementRequest: (id, body) => request(`/admin/statement-requests/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
+  getStatementByRequest: (requestId) => request(`/statements/request/${encodeURIComponent(requestId)}`),
+  downloadStatementByRequest: (requestId) => requestBlob(`/statements/request/${encodeURIComponent(requestId)}/download`),
   getNotifications: (customerId) => request(`/notifications/${customerId}`),
   sendNotification: (body) => request("/notifications/send", { method: "POST", body: JSON.stringify(body) }),
   getNotificationHistory: (customerId = null, limit = 200) => {

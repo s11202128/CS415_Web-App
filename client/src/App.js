@@ -36,6 +36,9 @@ export default function App() {
   const [statementAccount, setStatementAccount] = useState("");
   const [statementRows, setStatementRows] = useState([]);
   const [statementRequested, setStatementRequested] = useState(false);
+  const [statementRequests, setStatementRequests] = useState([]);
+  const [statementMessage, setStatementMessage] = useState("");
+  const [adminStatementRequests, setAdminStatementRequests] = useState([]);
   const [notificationCustomer, setNotificationCustomer] = useState("");
   const [notifications, setNotifications] = useState([]);
   const [profileForm, setProfileForm] = useState({
@@ -127,7 +130,7 @@ export default function App() {
     setLoading(true);
     setError("");
     try {
-      const [customerRows, accountRows, scheduled, products, apps, invs, rate, sumRows] = await Promise.all([
+      const [customerRows, accountRows, scheduled, products, apps, invs, rate, sumRows, statementRequestRows] = await Promise.all([
         api.getCustomers(),
         api.getAccounts(),
         api.getScheduledBills(),
@@ -136,6 +139,7 @@ export default function App() {
         api.getInvestments(),
         api.getInterestRate(),
         api.getSummaries(),
+        api.getStatementRequests(),
       ]);
       const isAdminUser = Boolean(currentUser?.isAdmin);
       const activeCustomerId = currentUser?.customerId;
@@ -180,6 +184,10 @@ export default function App() {
       setInvestments(visibleInvestments);
       setInterestRate(rate.reserveBankMinSavingsInterestRate);
       setSummaries(visibleSummaries);
+      setStatementRequests(statementRequestRows);
+      if (isAdminUser) {
+        setAdminStatementRequests(statementRequestRows);
+      }
 
       if (visibleAccounts.length > 0) {
         setSelectedAccountForTx((prev) =>
@@ -276,12 +284,13 @@ export default function App() {
       const selected = accounts.find((a) => a.id === selectedAccountForTx);
       const accountNumber = selected?.accountNumber || "";
       try {
-        const [txRows, loginLogRows, notificationLogRows, limit, report] = await Promise.all([
+        const [txRows, loginLogRows, notificationLogRows, limit, report, statementReqRows] = await Promise.all([
           api.getAdminTransactions(accountNumber),
           api.getAdminLoginLogs(100),
           api.getNotificationLogsAdmin(100),
           api.getTransferLimitAdmin(),
           api.getAdminDashboardReport(),
+          api.getAdminStatementRequests(),
         ]);
         if (cancelled) {
           return;
@@ -291,6 +300,7 @@ export default function App() {
         setAdminNotificationLogs(notificationLogRows);
         setAdminTransferLimit(Number(limit.highValueTransferLimit || 1000));
         setAdminReport(report);
+        setAdminStatementRequests(statementReqRows);
         setAdminLastUpdated(new Date().toISOString());
       } catch (err) {
         if (!cancelled) {
@@ -329,6 +339,9 @@ export default function App() {
     setCurrentUser(null);
     setStatementRows([]);
     setStatementRequested(false);
+    setStatementRequests([]);
+    setAdminStatementRequests([]);
+    setStatementMessage("");
     setAdminAccessGranted(false);
     setAdminAuthForm({ email: "", password: "" });
     setAdminAuthMessage("");
@@ -404,13 +417,55 @@ export default function App() {
     }
   }
 
-  async function fetchStatement() {
+  async function onSubmitStatementRequest(payload) {
     try {
-      const rows = await api.getStatement(statementAccount);
+      await api.createStatementRequest(payload);
+      setStatementMessage("Statement request submitted. Status: pending admin approval.");
+      await loadInitialData();
+      setStatementRows([]);
+      setStatementRequested(false);
+    } catch (err) {
+      setStatementMessage(err.message);
+    }
+  }
+
+  async function fetchStatement(requestId) {
+    try {
+      const rows = await api.getStatementByRequest(requestId);
       setStatementRows(rows);
       setStatementRequested(true);
+      setStatementMessage("Statement approved and loaded.");
     } catch (err) {
-      setError(err.message);
+      setStatementMessage(err.message);
+    }
+  }
+
+  async function onDownloadStatement(requestId) {
+    try {
+      const { blob, contentDisposition } = await api.downloadStatementByRequest(requestId);
+      const match = contentDisposition.match(/filename=\"?([^\";]+)\"?/i);
+      const fileName = match?.[1] || `statement-request-${requestId}.csv`;
+      const objectUrl = window.URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = objectUrl;
+      link.download = fileName;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(objectUrl);
+    } catch (err) {
+      setStatementMessage(err.message);
+    }
+  }
+
+  async function onAdminUpdateStatementRequest(requestId, status) {
+    setAdminMessage("");
+    try {
+      await api.updateAdminStatementRequest(requestId, { status });
+      setAdminMessage(`Statement request ${status}.`);
+      await loadInitialData();
+    } catch (err) {
+      setAdminMessage(err.message);
     }
   }
 
@@ -642,6 +697,8 @@ export default function App() {
             onAdminReverseTransaction={onAdminReverseTransaction}
             adminLoginLogs={adminLoginLogs}
             adminNotificationLogs={adminNotificationLogs}
+            adminStatementRequests={adminStatementRequests}
+            onAdminUpdateStatementRequest={onAdminUpdateStatementRequest}
             adminReport={adminReport}
             adminLastUpdated={adminLastUpdated}
           />
@@ -748,7 +805,13 @@ export default function App() {
               setStatementAccount={setStatementAccount}
               statementRows={statementRows}
               statementRequested={statementRequested}
+              statementRequests={statementRequests}
+              statementMessage={statementMessage}
+              setStatementMessage={setStatementMessage}
+              currentUser={currentUser}
               fetchStatement={fetchStatement}
+              onSubmitStatementRequest={onSubmitStatementRequest}
+              onDownloadStatement={onDownloadStatement}
               notificationCustomer={notificationCustomer}
               setNotificationCustomer={setNotificationCustomer}
               notifications={notifications}

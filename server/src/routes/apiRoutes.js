@@ -24,7 +24,7 @@ const {
   getOtpAttempts,
   reverseTransaction,
 } = require("../store-mysql");
-const { Customer, Account, Bill, Investment, Loan, Transaction, OtpVerification } = require("../models");
+const { Customer, Account, Bill, Investment, Loan, Transaction, OtpVerification, StatementRequest } = require("../models");
 
 const loanProducts = [
   { id: "LP-001", name: "Personal Loan", annualRate: 0.089, maxAmount: 30000, minTermMonths: 6, maxTermMonths: 60 },
@@ -86,6 +86,23 @@ const toAccountResponse = (a) => ({
   currency: a.currency,
   status: a.status,
   createdAt: a.createdAt,
+});
+
+const toStatementRequestResponse = (row) => ({
+  id: row.id,
+  customerId: row.customerId,
+  accountId: row.accountId,
+  fullName: row.fullName,
+  accountHolder: row.accountHolder,
+  accountNumber: row.accountNumber,
+  fromDate: row.fromDate,
+  toDate: row.toDate,
+  status: row.status,
+  adminNote: row.adminNote,
+  reviewedBy: row.reviewedBy,
+  reviewedAt: row.reviewedAt,
+  createdAt: row.createdAt,
+  updatedAt: row.updatedAt,
 });
 
 async function getCustomerForAccountPayload(payload, options = {}) {
@@ -818,13 +835,141 @@ router.post("/investments", asyncHandler(async (req, res) => {
   res.status(201).json(row);
 }));
 
-router.get("/statements/:accountId", asyncHandler(async (req, res) => {
-  const rows = await generateStatement(req.params.accountId, req.query.from, req.query.to);
+router.post("/statements/request", requireAuth, asyncHandler(async (req, res) => {
+  const payload = req.body || {};
+  const accountId = Number(payload.accountId);
+  const fromDate = String(payload.fromDate || "").trim();
+  const toDate = String(payload.toDate || "").trim();
+
+  if (!Number.isFinite(accountId) || accountId <= 0) {
+    return res.status(400).json({ error: "Valid accountId is required" });
+  }
+  if (!fromDate || !toDate) {
+    return res.status(400).json({ error: "fromDate and toDate are required" });
+  }
+  if (new Date(fromDate).getTime() > new Date(toDate).getTime()) {
+    return res.status(400).json({ error: "fromDate must be earlier than or equal to toDate" });
+  }
+
+  const account = await Account.findByPk(accountId);
+  if (!account) {
+    return res.status(404).json({ error: "Account not found" });
+  }
+
+  if (!isAdmin(req) && account.customerId !== getAuthenticatedCustomerId(req)) {
+    return res.status(403).json({ error: "Forbidden" });
+  }
+
+  const customer = await Customer.findByPk(account.customerId);
+  if (!customer) {
+    return res.status(404).json({ error: "Customer not found" });
+  }
+
+  const requestRow = await StatementRequest.create({
+    customerId: customer.id,
+    accountId: account.id,
+    fullName: payload.fullName || customer.fullName,
+    accountHolder: payload.accountHolder || account.accountHolder || customer.fullName,
+    accountNumber: payload.accountNumber || account.accountNumber,
+    fromDate,
+    toDate,
+    status: "pending",
+  });
+
+  res.status(201).json(toStatementRequestResponse(requestRow));
+}));
+
+router.get("/statements/requests", requireAuth, asyncHandler(async (req, res) => {
+  const where = isAdmin(req) ? undefined : { customerId: getAuthenticatedCustomerId(req) };
+  const rows = await StatementRequest.findAll({
+    where,
+    order: [["createdAt", "DESC"]],
+    limit: 500,
+  });
+
+  res.json(rows.map(toStatementRequestResponse));
+}));
+
+router.get("/admin/statement-requests", requireAuth, requireAdmin, asyncHandler(async (req, res) => {
+  const rows = await StatementRequest.findAll({
+    order: [["createdAt", "DESC"]],
+    limit: 500,
+  });
+
+  res.json(rows.map(toStatementRequestResponse));
+}));
+
+router.patch("/admin/statement-requests/:id", requireAuth, requireAdmin, asyncHandler(async (req, res) => {
+  const payload = req.body || {};
+  const status = String(payload.status || "").trim().toLowerCase();
+  if (!status || !["approved", "rejected", "pending"].includes(status)) {
+    return res.status(400).json({ error: "status must be approved, rejected or pending" });
+  }
+
+  const requestRow = await StatementRequest.findByPk(req.params.id);
+  if (!requestRow) {
+    return res.status(404).json({ error: "Statement request not found" });
+  }
+
+  const updates = {
+    status,
+    adminNote: payload.adminNote ? String(payload.adminNote).trim() : null,
+    reviewedBy: req.auth?.email || "admin",
+    reviewedAt: new Date(),
+  };
+
+  if (status === "pending") {
+    updates.reviewedBy = null;
+    updates.reviewedAt = null;
+    updates.adminNote = null;
+  }
+
+  await requestRow.update(updates);
+  res.json(toStatementRequestResponse(requestRow));
+}));
+
+async function resolveApprovedStatementRequest(req, res) {
+  const requestId = Number(req.params.requestId);
+  if (!Number.isFinite(requestId) || requestId <= 0) {
+    res.status(400).json({ error: "Valid requestId is required" });
+    return null;
+  }
+
+  const requestRow = await StatementRequest.findByPk(requestId);
+  if (!requestRow) {
+    res.status(404).json({ error: "Statement request not found" });
+    return null;
+  }
+
+  if (!isAdmin(req) && requestRow.customerId !== getAuthenticatedCustomerId(req)) {
+    res.status(403).json({ error: "Forbidden" });
+    return null;
+  }
+
+  if (requestRow.status !== "approved") {
+    res.status(403).json({ error: "Statement request is not approved yet" });
+    return null;
+  }
+
+  return requestRow;
+}
+
+router.get("/statements/request/:requestId", requireAuth, asyncHandler(async (req, res) => {
+  const requestRow = await resolveApprovedStatementRequest(req, res);
+  if (!requestRow) {
+    return;
+  }
+  const rows = await generateStatement(requestRow.accountId, requestRow.fromDate, requestRow.toDate);
   res.json(rows);
 }));
 
-router.get("/statements/:accountId/download", asyncHandler(async (req, res) => {
-  const rows = await generateStatement(req.params.accountId, req.query.from, req.query.to);
+router.get("/statements/request/:requestId/download", requireAuth, asyncHandler(async (req, res) => {
+  const requestRow = await resolveApprovedStatementRequest(req, res);
+  if (!requestRow) {
+    return;
+  }
+
+  const rows = await generateStatement(requestRow.accountId, requestRow.fromDate, requestRow.toDate);
   const lines = ["transactionId,createdAt,kind,amount,description,counterparty"];
   rows.forEach((r) => {
     lines.push(
@@ -834,7 +979,81 @@ router.get("/statements/:accountId/download", asyncHandler(async (req, res) => {
 
   const csv = lines.join("\n");
   res.setHeader("Content-Type", "text/csv");
-  res.setHeader("Content-Disposition", `attachment; filename=statement-${req.params.accountId}.csv`);
+  res.setHeader("Content-Disposition", `attachment; filename=statement-request-${requestRow.id}.csv`);
+  res.send(csv);
+}));
+
+router.get("/statements/:accountId", requireAuth, asyncHandler(async (req, res) => {
+  const accountId = Number(req.params.accountId);
+  if (!Number.isFinite(accountId) || accountId <= 0) {
+    return res.status(400).json({ error: "Valid accountId is required" });
+  }
+
+  const account = await Account.findByPk(accountId);
+  if (!account) {
+    return res.status(404).json({ error: "Account not found" });
+  }
+
+  if (!isAdmin(req) && account.customerId !== getAuthenticatedCustomerId(req)) {
+    return res.status(403).json({ error: "Forbidden" });
+  }
+
+  const approvedRequest = await StatementRequest.findOne({
+    where: {
+      accountId,
+      status: "approved",
+      ...(isAdmin(req) ? {} : { customerId: getAuthenticatedCustomerId(req) }),
+    },
+    order: [["reviewedAt", "DESC"]],
+  });
+
+  if (!approvedRequest) {
+    return res.status(403).json({ error: "Statement request has not been approved for this account" });
+  }
+
+  const rows = await generateStatement(accountId, req.query.from, req.query.to);
+  res.json(rows);
+}));
+
+router.get("/statements/:accountId/download", requireAuth, asyncHandler(async (req, res) => {
+  const accountId = Number(req.params.accountId);
+  if (!Number.isFinite(accountId) || accountId <= 0) {
+    return res.status(400).json({ error: "Valid accountId is required" });
+  }
+
+  const account = await Account.findByPk(accountId);
+  if (!account) {
+    return res.status(404).json({ error: "Account not found" });
+  }
+
+  if (!isAdmin(req) && account.customerId !== getAuthenticatedCustomerId(req)) {
+    return res.status(403).json({ error: "Forbidden" });
+  }
+
+  const approvedRequest = await StatementRequest.findOne({
+    where: {
+      accountId,
+      status: "approved",
+      ...(isAdmin(req) ? {} : { customerId: getAuthenticatedCustomerId(req) }),
+    },
+    order: [["reviewedAt", "DESC"]],
+  });
+
+  if (!approvedRequest) {
+    return res.status(403).json({ error: "Statement request has not been approved for this account" });
+  }
+
+  const rows = await generateStatement(accountId, req.query.from, req.query.to);
+  const lines = ["transactionId,createdAt,kind,amount,description,counterparty"];
+  rows.forEach((r) => {
+    lines.push(
+      `${r.id},${r.createdAt},${r.type || r.kind},${r.amount},"${(r.description || "").replace(/\"/g, '""')}",${r.counterpartyAccountId || ""}`
+    );
+  });
+
+  const csv = lines.join("\n");
+  res.setHeader("Content-Type", "text/csv");
+  res.setHeader("Content-Disposition", `attachment; filename=statement-${accountId}.csv`);
   res.send(csv);
 }));
 
