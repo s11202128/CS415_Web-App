@@ -23,25 +23,19 @@ export default function TransfersTab({
               <option value="">Select</option>
               {accounts.map((a) => (
                 <option key={a.id} value={a.id}>
-                  {a.id} - FJD {a.balance.toFixed(2)}
+                  {a.accountNumber || `ID ${a.id}`}
                 </option>
               ))}
             </select>
           </label>
           <label>
             To Account
-            <select
-              value={transferForm.toAccountId}
-              onChange={(e) => setTransferForm({ ...transferForm, toAccountId: e.target.value })}
+            <input
+              value={transferForm.toAccountNumber || ""}
+              onChange={(e) => setTransferForm({ ...transferForm, toAccountNumber: e.target.value })}
+              placeholder="Enter destination account number"
               required
-            >
-              <option value="">Select</option>
-              {accounts.map((a) => (
-                <option key={a.id} value={a.id}>
-                  {a.id} - {a.type}
-                </option>
-              ))}
-            </select>
+            />
           </label>
           <label>
             Amount (FJD)

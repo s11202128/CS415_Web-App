@@ -22,6 +22,11 @@ const Account = sequelize.define('Account', {
       },
     },
   },
+  accountHolder: {
+    type: DataTypes.STRING,
+    allowNull: false,
+    defaultValue: '',
+  },
   accountType: {
     type: DataTypes.STRING,
     allowNull: false,

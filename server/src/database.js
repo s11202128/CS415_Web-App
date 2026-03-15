@@ -6,6 +6,7 @@ const {
   Customer,
   Account,
   Admin,
+  NotificationLog,
 } = require("./models");
 
 const DB_NAME = process.env.DB_NAME || "bof_banking_db";
@@ -82,6 +83,7 @@ const initializeDatabase = async () => {
     const hasRegistrationsTable = normalizedTables.includes("registrations");
     const hasAdminsTable = normalizedTables.includes("admins");
     const hasLoginLogsTable = normalizedTables.includes("login_logs");
+    const hasNotificationLogsTable = normalizedTables.includes("notification_logs");
 
     let requiresCustomerIdMigration = false;
     let requiresAccountIdMigration = false;
@@ -93,6 +95,7 @@ const initializeDatabase = async () => {
     let requiresRegistrationIdMigration = false;
     let requiresAdminIdMigration = false;
     let requiresLoginLogIdMigration = false;
+    let requiresNotificationLogIdMigration = false;
     
     if (hasCustomersTable) {
       const customerColumns = await queryInterface.describeTable("customers");
@@ -134,11 +137,15 @@ const initializeDatabase = async () => {
       const loginLogColumns = await queryInterface.describeTable("login_logs");
       requiresLoginLogIdMigration = isLegacyRegistrationIdType(loginLogColumns?.id?.type);
     }
+    if (hasNotificationLogsTable) {
+      const notificationLogColumns = await queryInterface.describeTable("notification_logs");
+      requiresNotificationLogIdMigration = isLegacyRegistrationIdType(notificationLogColumns?.id?.type);
+    }
 
     if (requiresCustomerIdMigration || requiresAccountIdMigration || requiresLoanIdMigration || 
         requiresBillIdMigration || requiresInvestmentIdMigration || requiresOtpVerificationIdMigration || 
         requiresTransactionIdMigration || requiresRegistrationIdMigration || requiresAdminIdMigration ||
-        requiresLoginLogIdMigration) {
+        requiresLoginLogIdMigration || requiresNotificationLogIdMigration) {
       console.warn("Detected legacy UUID IDs. Rebuilding schema to use integer auto-increment IDs.");
       console.warn("Existing local data will be recreated from seed data after migration.");
       await sequelize.sync({ force: true });
@@ -212,6 +219,27 @@ const initializeDatabase = async () => {
       });
     }
 
+    const accountColumns = await queryInterface.describeTable("accounts");
+    if (!accountColumns.accountHolder) {
+      await queryInterface.addColumn("accounts", "accountHolder", {
+        type: DataTypes.STRING,
+        allowNull: true,
+      });
+    }
+
+    await sequelize.query(`
+      UPDATE accounts a
+      INNER JOIN customers c ON c.id = a.customerId
+      SET a.accountHolder = c.fullName
+      WHERE a.accountHolder IS NULL OR TRIM(a.accountHolder) = ''
+    `);
+
+    await queryInterface.changeColumn("accounts", "accountHolder", {
+      type: DataTypes.STRING,
+      allowNull: false,
+      defaultValue: "",
+    });
+
     const registrationColumns = await queryInterface.describeTable("registrations");
     if (!registrationColumns.nationalId) {
       await queryInterface.addColumn("registrations", "nationalId", {
@@ -256,6 +284,26 @@ const initializeDatabase = async () => {
     if (!otpColumns.metadata) {
       await queryInterface.addColumn("otp_verifications", "metadata", {
         type: DataTypes.TEXT,
+        allowNull: true,
+      });
+    }
+    if (!otpColumns.attempts) {
+      await queryInterface.addColumn("otp_verifications", "attempts", {
+        type: DataTypes.INTEGER,
+        allowNull: false,
+        defaultValue: 0,
+      });
+    }
+    if (!otpColumns.maxAttempts) {
+      await queryInterface.addColumn("otp_verifications", "maxAttempts", {
+        type: DataTypes.INTEGER,
+        allowNull: false,
+        defaultValue: 3,
+      });
+    }
+    if (!otpColumns.lastAttemptAt) {
+      await queryInterface.addColumn("otp_verifications", "lastAttemptAt", {
+        type: DataTypes.DATE,
         allowNull: true,
       });
     }
@@ -321,6 +369,11 @@ const initializeDatabase = async () => {
       await sequelize.query("ALTER TABLE login_logs AUTO_INCREMENT = 1");
     }
 
+    const [[{ totalNotificationLogs }]] = await sequelize.query("SELECT COUNT(*) AS totalNotificationLogs FROM notification_logs");
+    if (Number(totalNotificationLogs || 0) === 0) {
+      await sequelize.query("ALTER TABLE notification_logs AUTO_INCREMENT = 1");
+    }
+
     console.log("Database tables synchronized");
 
     // Check if database already has data
@@ -376,6 +429,7 @@ const seedDatabase = async () => {
     await Account.create({
       customerId: customer1.id,
       accountNumber: "235673489789",
+      accountHolder: customer1.fullName,
       accountType: "Savings",
       balance: 15000,
       currency: "FJD",
@@ -385,6 +439,7 @@ const seedDatabase = async () => {
     await Account.create({
       customerId: customer2.id,
       accountNumber: "918274635402",
+      accountHolder: customer2.fullName,
       accountType: "Current",
       balance: 25000,
       currency: "FJD",
@@ -394,6 +449,7 @@ const seedDatabase = async () => {
     await Account.create({
       customerId: customer3.id,
       accountNumber: "603957214886",
+      accountHolder: customer3.fullName,
       accountType: "Savings",
       balance: 18500,
       currency: "FJD",

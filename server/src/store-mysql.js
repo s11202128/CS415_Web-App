@@ -1,6 +1,8 @@
 const { v4: uuid } = require("uuid");
+const crypto = require("crypto");
 const bcrypt = require("bcryptjs");
 const { Op } = require("sequelize");
+const { sendSms } = require("./services/smsService");
 const {
   Customer,
   Account,
@@ -12,14 +14,16 @@ const {
   Registration,
   Admin,
   LoginLog,
+  NotificationLog,
 } = require("./models");
 
-let HIGH_VALUE_OTP_THRESHOLD = 1000;
+let HIGH_VALUE_OTP_THRESHOLD = 5000;
+const OTP_EXPIRY_MINUTES = 5;
+const OTP_MAX_ATTEMPTS = 3;
 const WITHHOLDING_TAX_RATE = 0.15;
 const SAVINGS_INTEREST_RATE = 0.0325;
 const MAX_FAILED_LOGIN_ATTEMPTS = 5;
 const ACCOUNT_LOCK_MINUTES = 15;
-const notificationLogs = [];
 
 function nowIso() {
   return new Date().toISOString();
@@ -30,7 +34,11 @@ function makeId(prefix) {
 }
 
 function makeSixDigitCode() {
-  return `${Math.floor(100000 + Math.random() * 900000)}`;
+  return String(crypto.randomInt(0, 1000000)).padStart(6, "0");
+}
+
+function hashOtp(otp) {
+  return crypto.createHash("sha256").update(String(otp || "")).digest("hex");
 }
 
 function normalizeEmail(value) {
@@ -109,22 +117,42 @@ async function getAccount(accountId) {
   return await Account.findByPk(accountId);
 }
 
-// Add notification (for now, just log it)
-async function addNotification(customerId, message, type = "SMS") {
-  console.log(`[${type}] Customer ${customerId}: ${message}`);
-  const logEntry = {
-    id: makeId("NTF"),
-    customerId,
-    type,
-    message,
-    createdAt: nowIso(),
-  };
-  notificationLogs.unshift(logEntry);
-  if (notificationLogs.length > 1000) {
-    notificationLogs.pop();
+async function addNotification(customerId, message, notificationType = "SMS_ALERT") {
+  const customer = await getCustomer(customerId);
+  if (!customer) {
+    throw new Error("Customer not found");
   }
-  // In future, store notifications in a Notifications table
-  return logEntry;
+
+  let deliveryStatus = "queued";
+  let providerMessageId = null;
+
+  try {
+    const smsResult = await sendSms({ to: customer.mobile, message: String(message || "") });
+    deliveryStatus = smsResult.status || "queued";
+    providerMessageId = smsResult.providerMessageId;
+  } catch (error) {
+    deliveryStatus = "failed";
+    console.error(`SMS delivery failed for customer ${customerId}:`, error.message);
+  }
+
+  const row = await NotificationLog.create({
+    userId: customer.id,
+    phoneNumber: customer.mobile,
+    message: String(message || ""),
+    notificationType,
+    deliveryStatus,
+    providerMessageId,
+  });
+
+  return {
+    id: row.id,
+    userId: row.userId,
+    phoneNumber: row.phoneNumber,
+    message: row.message,
+    notificationType: row.notificationType,
+    deliveryStatus: row.deliveryStatus,
+    timestamp: row.createdAt,
+  };
 }
 
 function isAccountLocked(customer) {
@@ -152,8 +180,24 @@ function setHighValueTransferThreshold(value) {
   return HIGH_VALUE_OTP_THRESHOLD;
 }
 
-function getNotificationLogs(limit = 200) {
-  return notificationLogs.slice(0, Number(limit) || 200);
+async function getNotificationLogs(limit = 200, userId = null) {
+  const where = userId ? { userId: Number(userId) } : undefined;
+  const rows = await NotificationLog.findAll({
+    where,
+    order: [["createdAt", "DESC"]],
+    limit: Number(limit) || 200,
+  });
+
+  return rows.map((row) => ({
+    id: row.id,
+    userId: row.userId,
+    phoneNumber: row.phoneNumber,
+    message: row.message,
+    notificationType: row.notificationType,
+    deliveryStatus: row.deliveryStatus,
+    providerMessageId: row.providerMessageId,
+    timestamp: row.createdAt,
+  }));
 }
 
 // Create a transaction in the database
@@ -201,6 +245,25 @@ async function getAccountTransactions(accountId) {
   return transactions;
 }
 
+async function resolveDestinationAccountId(payload) {
+  const rawToAccountId = Number(payload?.toAccountId);
+  if (Number.isFinite(rawToAccountId) && rawToAccountId > 0) {
+    return rawToAccountId;
+  }
+
+  const accountNumber = String(payload?.toAccountNumber || "").trim();
+  if (!accountNumber) {
+    throw new Error("toAccountId or toAccountNumber is required");
+  }
+
+  const destination = await Account.findOne({ where: { accountNumber } });
+  if (!destination) {
+    throw new Error("Destination account not found");
+  }
+
+  return destination.id;
+}
+
 // Perform a transfer between two accounts
 async function transfer({ fromAccountId, toAccountId, amount, description }) {
   if (amount <= 0) {
@@ -246,10 +309,10 @@ async function transfer({ fromAccountId, toAccountId, amount, description }) {
   const toCustomer = await getCustomer(toAccount.customerId);
 
   if (toCustomer) {
-    await addNotification(toCustomer.id, `You received FJD ${amount.toFixed(2)} into account ${toAccount.id}.`);
+    await addNotification(toCustomer.id, `You received FJD ${amount.toFixed(2)} into account ${toAccount.id}.`, "MONEY_RECEIVED");
   }
   if (fromCustomer) {
-    await addNotification(fromCustomer.id, `Transfer of FJD ${amount.toFixed(2)} from account ${fromAccount.id} processed.`);
+    await addNotification(fromCustomer.id, `Transfer of FJD ${amount.toFixed(2)} from account ${fromAccount.id} processed.`, "TRANSFER_SENT");
   }
 
   return { debitTx, creditTx };
@@ -259,11 +322,16 @@ async function transfer({ fromAccountId, toAccountId, amount, description }) {
 async function initiateTransfer(payload) {
   const amount = Number(payload.amount || 0);
   const requiresOtp = amount >= HIGH_VALUE_OTP_THRESHOLD;
+  const toAccountId = await resolveDestinationAccountId(payload);
+
+  if (amount <= 0) {
+    throw new Error("Amount must be greater than 0");
+  }
 
   if (!requiresOtp) {
     const result = await transfer({
       fromAccountId: payload.fromAccountId,
-      toAccountId: payload.toAccountId,
+      toAccountId,
       amount,
       description: payload.description,
     });
@@ -278,6 +346,7 @@ async function initiateTransfer(payload) {
 
   const transferId = makeId("TRF");
   const otp = makeSixDigitCode();
+  const hashedOtp = hashOtp(otp);
 
   const sourceAccount = await getAccount(payload.fromAccountId);
   if (!sourceAccount) {
@@ -288,22 +357,25 @@ async function initiateTransfer(payload) {
   await OtpVerification.create({
     referenceCode: transferId,
     customerId: sourceAccount.customerId,
-    otp,
+    otp: hashedOtp,
     transactionType: "transfer",
     amount,
     metadata: JSON.stringify({
       fromAccountId: payload.fromAccountId,
-      toAccountId: payload.toAccountId,
+      toAccountId,
       description: payload.description || "Transfer sent",
     }),
-    expiresAt: new Date(Date.now() + 5 * 60 * 1000), // 5 minutes
+    expiresAt: new Date(Date.now() + OTP_EXPIRY_MINUTES * 60 * 1000),
     verified: false,
+    attempts: 0,
+    maxAttempts: OTP_MAX_ATTEMPTS,
   });
 
   if (sourceAccount) {
     await addNotification(
       sourceAccount.customerId,
-      `OTP ${otp} for high-value transfer of FJD ${amount.toFixed(2)} from account ${sourceAccount.id}.`
+      `OTP ${otp} for high-value transfer of FJD ${amount.toFixed(2)} from account ${sourceAccount.id}.`,
+      "OTP_VERIFICATION"
     );
   }
 
@@ -311,7 +383,8 @@ async function initiateTransfer(payload) {
     status: "pending_verification",
     requiresOtp: true,
     transferId,
-    otp,
+    expiresInSeconds: OTP_EXPIRY_MINUTES * 60,
+    attemptsRemaining: OTP_MAX_ATTEMPTS,
   };
 }
 
@@ -324,11 +397,26 @@ async function verifyTransfer({ transferId, otp }) {
   if (pending.verified) {
     throw new Error("Transfer already verified");
   }
-  if (pending.otp !== String(otp)) {
-    throw new Error("Invalid OTP");
-  }
   if (new Date(pending.expiresAt).getTime() < Date.now()) {
     throw new Error("OTP has expired");
+  }
+  if (Number(pending.attempts || 0) >= Number(pending.maxAttempts || OTP_MAX_ATTEMPTS)) {
+    throw new Error("OTP attempts exceeded");
+  }
+
+  const submittedHash = hashOtp(String(otp || "").trim());
+  if (pending.otp !== submittedHash) {
+    const nextAttempts = Number(pending.attempts || 0) + 1;
+    await pending.update({
+      attempts: nextAttempts,
+      lastAttemptAt: new Date(),
+    });
+
+    const remaining = Math.max(Number(pending.maxAttempts || OTP_MAX_ATTEMPTS) - nextAttempts, 0);
+    if (remaining <= 0) {
+      throw new Error("OTP attempts exceeded");
+    }
+    throw new Error(`Invalid OTP. ${remaining} attempt(s) remaining.`);
   }
 
   const metadata = safeParseMetadata(pending.metadata);
@@ -339,7 +427,7 @@ async function verifyTransfer({ transferId, otp }) {
     description: metadata.description,
   });
 
-  await pending.update({ verified: true });
+  await pending.update({ verified: true, attempts: Number(pending.attempts || 0) + 1, lastAttemptAt: new Date() });
   return { status: "completed", transferId: pending.referenceCode, result };
 }
 
@@ -373,7 +461,8 @@ async function postBillPayment({ accountId, payee, amount, mode, scheduledDate }
     dueDate: scheduledDate || null,
   });
 
-  await addNotification(account.customerId, `Bill payment of FJD ${amount.toFixed(2)} to ${payee} processed.`);
+  const paymentType = /credit\s*card/i.test(String(payee || "")) ? "CREDIT_CARD_PAYMENT" : "BILL_PAYMENT";
+  await addNotification(account.customerId, `Bill payment of FJD ${amount.toFixed(2)} to ${payee} processed.`, paymentType);
   return {
     id: payment.id,
     accountId,
@@ -597,7 +686,7 @@ async function registerUser({ fullName, mobile, email, password, confirmPassword
     registrationStatus: "pending",
   });
 
-  await addNotification(customer.id, `Registration verification code: ${verificationCode}`, "EMAIL");
+  await addNotification(customer.id, `Registration verification code: ${verificationCode}`, "REGISTRATION_OTP");
 
   return {
     userId: customer.id,
@@ -739,19 +828,22 @@ async function requestPasswordReset({ email }) {
 
   const resetId = makeId("RST");
   const otp = makeSixDigitCode();
+  const hashedOtp = hashOtp(otp);
   await OtpVerification.create({
     referenceCode: resetId,
     customerId: customer.id,
-    otp,
+    otp: hashedOtp,
     transactionType: "password_reset",
     amount: null,
     metadata: JSON.stringify({ email: normalizedEmail }),
     expiresAt: new Date(Date.now() + 10 * 60 * 1000),
     verified: false,
+    attempts: 0,
+    maxAttempts: OTP_MAX_ATTEMPTS,
   });
 
-  await addNotification(customer.id, `Password reset code: ${otp}`, "EMAIL");
-  return { resetId, simulatedResetCode: otp, message: "Password reset code generated." };
+  await addNotification(customer.id, `Password reset code: ${otp}`, "PASSWORD_RESET_OTP");
+  return { resetId, message: "Password reset code sent to your registered mobile number." };
 }
 
 async function resetPassword({ email, resetId, otp, newPassword }) {
@@ -778,8 +870,19 @@ async function resetPassword({ email, resetId, otp, newPassword }) {
   if (new Date(resetRecord.expiresAt).getTime() < Date.now()) {
     throw new Error("Password reset code has expired");
   }
-  if (String(resetRecord.otp) !== String(otp || "").trim()) {
-    throw new Error("Invalid password reset code");
+  if (Number(resetRecord.attempts || 0) >= Number(resetRecord.maxAttempts || OTP_MAX_ATTEMPTS)) {
+    throw new Error("Password reset attempts exceeded");
+  }
+
+  const submittedHash = hashOtp(String(otp || "").trim());
+  if (String(resetRecord.otp) !== submittedHash) {
+    const nextAttempts = Number(resetRecord.attempts || 0) + 1;
+    await resetRecord.update({ attempts: nextAttempts, lastAttemptAt: new Date() });
+    const remaining = Math.max(Number(resetRecord.maxAttempts || OTP_MAX_ATTEMPTS) - nextAttempts, 0);
+    if (remaining <= 0) {
+      throw new Error("Password reset attempts exceeded");
+    }
+    throw new Error(`Invalid password reset code. ${remaining} attempt(s) remaining.`);
   }
 
   await customer.update({
@@ -788,7 +891,7 @@ async function resetPassword({ email, resetId, otp, newPassword }) {
     lockedUntil: null,
     status: customer.status === "locked" ? "active" : customer.status,
   });
-  await resetRecord.update({ verified: true });
+  await resetRecord.update({ verified: true, attempts: Number(resetRecord.attempts || 0) + 1, lastAttemptAt: new Date() });
   return { status: "password_reset_completed" };
 }
 
@@ -815,6 +918,7 @@ async function getDashboard(customerId) {
     accounts: accounts.map((account) => ({
       id: account.id,
       accountNumber: account.accountNumber,
+      accountHolder: account.accountHolder,
       accountType: account.accountType,
       balance: Number(account.balance),
       status: account.status,
@@ -859,10 +963,6 @@ async function updateProfile(customerId, payload) {
     }
     updates.email = normalizedEmail;
   }
-  if (payload.nationalId !== undefined) {
-    validateNationalId(payload.nationalId);
-    updates.nationalId = String(payload.nationalId).trim();
-  }
   if (payload.newPassword) {
     if (!payload.currentPassword) {
       throw new Error("Current password is required to change password");
@@ -876,6 +976,13 @@ async function updateProfile(customerId, payload) {
   }
 
   await customer.update(updates);
+  if (updates.fullName !== undefined) {
+    await Account.update(
+      { accountHolder: customer.fullName },
+      { where: { customerId: customer.id } }
+    );
+  }
+
   return {
     id: customer.id,
     fullName: customer.fullName,
@@ -898,6 +1005,27 @@ async function getLoginLogs(limit = 200) {
     failureReason: row.failureReason,
     ipAddress: row.ipAddress,
     userAgent: row.userAgent,
+    createdAt: row.createdAt,
+  }));
+}
+
+async function getOtpAttempts(limit = 200) {
+  const rows = await OtpVerification.findAll({
+    order: [["createdAt", "DESC"]],
+    limit: Number(limit) || 200,
+  });
+
+  return rows.map((row) => ({
+    id: row.id,
+    referenceCode: row.referenceCode,
+    customerId: row.customerId,
+    transactionType: row.transactionType,
+    amount: row.amount !== null && row.amount !== undefined ? Number(row.amount) : null,
+    attempts: Number(row.attempts || 0),
+    maxAttempts: Number(row.maxAttempts || OTP_MAX_ATTEMPTS),
+    verified: Boolean(row.verified),
+    expiresAt: row.expiresAt,
+    lastAttemptAt: row.lastAttemptAt,
     createdAt: row.createdAt,
   }));
 }
@@ -954,5 +1082,6 @@ module.exports = {
   getDashboard,
   updateProfile,
   getLoginLogs,
+  getOtpAttempts,
   reverseTransaction,
 };

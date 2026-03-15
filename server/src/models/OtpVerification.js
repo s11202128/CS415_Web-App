@@ -39,6 +39,20 @@ const OtpVerification = sequelize.define('OtpVerification', {
     type: DataTypes.BOOLEAN,
     defaultValue: false,
   },
+  attempts: {
+    type: DataTypes.INTEGER,
+    allowNull: false,
+    defaultValue: 0,
+  },
+  maxAttempts: {
+    type: DataTypes.INTEGER,
+    allowNull: false,
+    defaultValue: 3,
+  },
+  lastAttemptAt: {
+    type: DataTypes.DATE,
+    allowNull: true,
+  },
 }, {
   tableName: 'otp_verifications',
   timestamps: true,

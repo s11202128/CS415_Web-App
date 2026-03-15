@@ -24,7 +24,7 @@ export default function HomePage({
           <select value={selectedAccountForTx} onChange={(e) => setSelectedAccountForTx(e.target.value)}>
             {accounts.map((a) => (
               <option key={a.id} value={a.id}>
-                {a.id} ({a.type})
+                {(a.accountNumber || `ID ${a.id}`)} ({a.type})
               </option>
             ))}
           </select>

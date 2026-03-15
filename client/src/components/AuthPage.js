@@ -1,6 +1,5 @@
 import { useState } from "react";
 import { api, setToken } from "../api";
-import SiteFooter from "./SiteFooter";
 
 export default function AuthPage({ onLoginSuccess, currentYear }) {
   const [authView, setAuthView] = useState("login");
@@ -351,8 +350,6 @@ export default function AuthPage({ onLoginSuccess, currentYear }) {
         </article>
 
       </section>
-
-      <SiteFooter currentYear={currentYear} />
     </div>
   );
 }

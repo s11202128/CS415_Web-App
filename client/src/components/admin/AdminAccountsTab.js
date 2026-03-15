@@ -56,12 +56,13 @@ export default function AdminAccountsTab({
       </article>
 
       <article className="panel wide">
-        <h3>Account Controls</h3>
+        <h3>Account Details</h3>
         <table>
           <thead>
             <tr>
               <th>Account ID</th>
               <th>Customer ID</th>
+              <th>Account Holder</th>
               <th>Account Number</th>
               <th>Type</th>
               <th>Balance</th>
@@ -74,12 +75,15 @@ export default function AdminAccountsTab({
               <tr key={a.id}>
                 <td>{a.id}</td>
                 <td>{a.customerId}</td>
+                <td>{a.accountHolder || "-"}</td>
                 <td>{a.accountNumber || "-"}</td>
                 <td>{a.type}</td>
                 <td>FJD {Number(a.balance).toFixed(2)}</td>
                 <td>{a.status || "active"}</td>
                 <td>
                   <div className="inline-controls">
+                    <button type="button" onClick={() => onAdminUpdateAccount(a.id, { status: "active" })}>Approve</button>
+                    <button type="button" onClick={() => onAdminUpdateAccount(a.id, { status: "rejected" })}>Reject</button>
                     <button type="button" onClick={() => onAdminUpdateAccount(a.id, { type: "Simple Access" })}>Set Simple</button>
                     <button type="button" onClick={() => onAdminUpdateAccount(a.id, { type: "Savings" })}>Set Savings</button>
                     <button type="button" onClick={() => onAdminUpdateAccount(a.id, { status: "suspended" })}>Suspend</button>

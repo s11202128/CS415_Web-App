@@ -30,14 +30,6 @@ export default function ProfileTab({ profileForm, setProfileForm, onUpdateProfil
             />
           </label>
           <label>
-            National ID / Passport
-            <input
-              value={profileForm.nationalId}
-              onChange={(e) => setProfileForm({ ...profileForm, nationalId: e.target.value })}
-              required
-            />
-          </label>
-          <label>
             Current Password
             <input
               type="password"

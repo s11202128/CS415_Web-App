@@ -3,17 +3,14 @@ import { api } from "../../api";
 
 export default function AccountsTab({
   accounts,
-  customers,
-  customerMap,
   currentUser,
   accountMessage,
   setAccountMessage,
-  onCreateAccount,
 }) {
-  const [showCreateForm, setShowCreateForm] = useState(false);
   const [newAccountForm, setNewAccountForm] = useState({
     type: "Savings",
     openingBalance: "0",
+    accountNumber: "",
   });
 
   const activeCustomerId = currentUser?.customerId || currentUser?.userId || currentUser?.id || "";
@@ -31,14 +28,14 @@ export default function AccountsTab({
       return;
     }
     try {
-      await api.createAccount({
+      await api.createAccountRequest({
         customerId: Number(activeCustomerId),
         type: newAccountForm.type,
         openingBalance: Number(newAccountForm.openingBalance || 0),
+        accountNumber: newAccountForm.accountNumber || undefined,
       });
-      setAccountMessage("✅ Account created successfully!");
-      setNewAccountForm({ type: "Savings", openingBalance: "0" });
-      setShowCreateForm(false);
+      setAccountMessage("✅ Account request submitted. It will be activated after admin approval.");
+      setNewAccountForm({ type: "Savings", openingBalance: "0", accountNumber: "" });
       // Refresh would be done by parent component
       setTimeout(() => setAccountMessage(""), 3000);
     } catch (err) {
@@ -78,7 +75,7 @@ export default function AccountsTab({
   return (
     <section className="panel-grid">
       <article className="panel">
-        <h2>💳 Account Summary</h2>
+        <h2>Account Summary</h2>
         <div className="account-summary">
           <div className="summary-item">
             <span className="label">Total Accounts:</span>
@@ -93,57 +90,56 @@ export default function AccountsTab({
             <span className="value">{currentUser?.fullName || "N/A"}</span>
           </div>
         </div>
-        <button
-          className="primary-btn"
-          onClick={() => setShowCreateForm(!showCreateForm)}
-          style={{ marginTop: "16px", width: "100%" }}
-        >
-          {showCreateForm ? "Cancel" : "+ Open New Account"}
-        </button>
+        <p className="hint">New account requests must be approved by admin before becoming active.</p>
       </article>
 
-      {showCreateForm && (
-        <article className="panel">
-          <h2>📋 Open New Account</h2>
-          <form onSubmit={handleCreateAccount}>
-            <label>
-              Customer ID
-              <input value={activeCustomerId} readOnly />
-            </label>
-            <label>
-              Account Type
-              <select
-                value={newAccountForm.type}
-                onChange={(e) => setNewAccountForm({ ...newAccountForm, type: e.target.value })}
-                required
-              >
-                <option value="Simple Access">Simple Access (FJD 2.50/month fee)</option>
-                <option value="Savings">Savings (3.25% p.a. interest)</option>
-              </select>
-            </label>
-            <label>
-              Opening Balance (FJD)
-              <input
-                type="number"
-                min="0"
-                step="0.01"
-                value={newAccountForm.openingBalance}
-                onChange={(e) => setNewAccountForm({ ...newAccountForm, openingBalance: e.target.value })}
-                required
-              />
-            </label>
-            <button type="submit" className="success-btn">Create Account</button>
-            {accountMessage && (
-              <p className={`status ${accountMessage.includes("✅") ? "success" : "error"}`}>
-                {accountMessage}
-              </p>
-            )}
-          </form>
-        </article>
-      )}
+      <article className="panel wide">
+        <h2>Open New Account Request</h2>
+        <form className="admin-form" onSubmit={handleCreateAccount}>
+          <label>
+            Customer ID
+            <input value={activeCustomerId} readOnly />
+          </label>
+          <label>
+            Account Type
+            <select
+              value={newAccountForm.type}
+              onChange={(e) => setNewAccountForm({ ...newAccountForm, type: e.target.value })}
+              required
+            >
+              <option value="Simple Access">Simple Access</option>
+              <option value="Savings">Savings</option>
+            </select>
+          </label>
+          <label>
+            Opening Balance
+            <input
+              type="number"
+              min="0"
+              step="0.01"
+              value={newAccountForm.openingBalance}
+              onChange={(e) => setNewAccountForm({ ...newAccountForm, openingBalance: e.target.value })}
+            />
+          </label>
+          <label>
+            Account Number (optional — 12 digits)
+            <input
+              value={newAccountForm.accountNumber}
+              onChange={(e) => setNewAccountForm({ ...newAccountForm, accountNumber: e.target.value })}
+              placeholder="Leave blank to auto-generate"
+            />
+          </label>
+          <button type="submit">Submit Request</button>
+        </form>
+        {accountMessage && (
+          <p className={`status ${accountMessage.includes("✅") ? "success" : "error"}`}>
+            {accountMessage}
+          </p>
+        )}
+      </article>
 
       <article className="panel wide">
-        <h2>📊 Your Accounts</h2>
+        <h2>My Accounts</h2>
         {userAccounts.length === 0 ? (
           <p className="no-data">You have no accounts yet. Open a new account to get started.</p>
         ) : (
@@ -151,6 +147,7 @@ export default function AccountsTab({
             <thead>
               <tr>
                 <th>Account #</th>
+                <th>Account Holder</th>
                 <th>Type</th>
                 <th>Balance</th>
                 <th>Fee/Interest</th>
@@ -164,6 +161,7 @@ export default function AccountsTab({
                 return (
                   <tr key={a.id} className={`account-row account-${a.status}`}>
                     <td className="account-number">{a.accountNumber}</td>
+                    <td>{a.accountHolder || currentUser?.fullName || "N/A"}</td>
                     <td>
                       <div>
                         <strong>{a.type}</strong>
@@ -196,7 +194,7 @@ export default function AccountsTab({
       </article>
 
       <article className="panel wide">
-        <h2>📚 Account Types Explained</h2>
+        <h2>Account Types Explained</h2>
         <div className="account-types-grid">
           {["Simple Access", "Savings"].map((type) => {
             const info = getAccountTypeDescription(type);
@@ -219,7 +217,7 @@ export default function AccountsTab({
       </article>
 
       <article className="panel">
-        <h2>❓ Account Management Tips</h2>
+        <h2>Account Management Tips</h2>
         <ul className="tips-list">
           <li><strong>Simple Access:</strong> Pay FJD 2.50 per month for instant access to funds.</li>
           <li><strong>Savings Account:</strong> Earn 3.25% annual interest on your balance.</li>

@@ -9,6 +9,7 @@ const OtpVerification = require('./OtpVerification');
 const Registration = require('./Registration');
 const Admin = require('./Admin');
 const LoginLog = require('./LoginLog');
+const NotificationLog = require('./NotificationLog');
 
 // Define associations
 Customer.hasMany(Account, { foreignKey: 'customerId' });
@@ -29,6 +30,9 @@ Loan.belongsTo(Customer, { foreignKey: 'customerId' });
 Customer.hasMany(OtpVerification, { foreignKey: 'customerId' });
 OtpVerification.belongsTo(Customer, { foreignKey: 'customerId' });
 
+Customer.hasMany(NotificationLog, { foreignKey: 'userId' });
+NotificationLog.belongsTo(Customer, { foreignKey: 'userId' });
+
 Customer.hasMany(LoginLog, { foreignKey: 'userId', constraints: false, scope: { userType: 'customer' } });
 Admin.hasMany(LoginLog, { foreignKey: 'userId', constraints: false, scope: { userType: 'admin' } });
 
@@ -44,4 +48,5 @@ module.exports = {
   Registration,
   Admin,
   LoginLog,
+  NotificationLog,
 };

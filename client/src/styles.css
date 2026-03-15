@@ -22,6 +22,7 @@
 
   --shadow-sm: 0 3px 14px rgba(17, 37, 70, 0.08);
   --shadow-md: 0 12px 28px rgba(17, 37, 70, 0.13);
+  --shadow-glow: 0 0 0 1px rgba(34, 122, 219, 0.18), 0 10px 24px rgba(16, 84, 160, 0.2);
   --radius-sm: 10px;
   --radius-md: 14px;
   --radius-lg: 18px;
@@ -47,12 +48,38 @@ body {
     radial-gradient(1000px 500px at 110% 0%, #d8f7ef 0%, rgba(216, 247, 239, 0) 65%),
     linear-gradient(180deg, var(--bg-top), var(--bg-bottom));
   line-height: 1.45;
+  position: relative;
+  overflow-x: hidden;
+}
+
+body::before,
+body::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: -1;
+}
+
+body::before {
+  opacity: 0.32;
+  background:
+    linear-gradient(transparent 96%, rgba(46, 120, 202, 0.1) 100%),
+    linear-gradient(90deg, transparent 96%, rgba(26, 112, 192, 0.08) 100%);
+  background-size: 44px 44px;
+}
+
+body::after {
+  background: linear-gradient(120deg, rgba(41, 139, 230, 0.08), rgba(41, 139, 230, 0) 30%);
+  transform: translateX(-100%);
+  animation: techSweep 14s linear infinite;
 }
 
 .app-shell {
   max-width: 1220px;
   margin: 0 auto;
   padding: 20px;
+  animation: fadeInUp 0.55s ease;
 }
 
 .hero {
@@ -64,6 +91,18 @@ body {
   margin-bottom: 16px;
   box-shadow: var(--shadow-md);
   border: 1px solid rgba(255, 255, 255, 0.32);
+  position: relative;
+  overflow: hidden;
+}
+
+.hero::after {
+  content: "";
+  position: absolute;
+  inset: auto -16% -65% -16%;
+  height: 80%;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(217, 236, 255, 0.3), rgba(217, 236, 255, 0));
+  animation: pulseFloat 8s ease-in-out infinite;
 }
 
 .hero h1 {
@@ -92,6 +131,7 @@ body {
   gap: 8px;
   font-size: 0.92rem;
   color: #eff9ff;
+  flex-wrap: wrap;
 }
 
 .tabs {
@@ -114,7 +154,7 @@ body {
   background: var(--surface);
   border: 1px solid rgba(255, 255, 255, 0.9);
   border-radius: var(--radius-md);
-  box-shadow: var(--shadow-sm);
+  box-shadow: var(--shadow-glow);
   padding: 12px;
 }
 
@@ -147,14 +187,15 @@ body {
   border-radius: 999px;
   cursor: pointer;
   font-weight: 600;
-  transition: 0.18s ease;
+  transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease, color 0.2s ease;
 }
 
 .tab:hover,
 .admin-tab:hover {
   border-color: var(--primary);
   color: var(--primary-strong);
-  transform: translateY(-1px);
+  transform: translateY(-2px);
+  box-shadow: 0 8px 16px rgba(16, 84, 160, 0.16);
 }
 
 .tab.active,
@@ -184,10 +225,34 @@ body {
   border-radius: var(--radius-md);
   padding: 16px;
   box-shadow: var(--shadow-sm);
+  animation: fadeInUp 0.42s ease both;
+  min-width: 0;
+  overflow-x: auto;
 }
 
 .panel:hover {
-  box-shadow: 0 12px 26px rgba(17, 37, 70, 0.11);
+  box-shadow: 0 16px 30px rgba(17, 37, 70, 0.14);
+  transform: translateY(-2px);
+}
+
+.panel-grid > .panel:nth-child(1),
+.admin-grid > .panel:nth-child(1) {
+  animation-delay: 0.04s;
+}
+
+.panel-grid > .panel:nth-child(2),
+.admin-grid > .panel:nth-child(2) {
+  animation-delay: 0.08s;
+}
+
+.panel-grid > .panel:nth-child(3),
+.admin-grid > .panel:nth-child(3) {
+  animation-delay: 0.12s;
+}
+
+.panel-grid > .panel:nth-child(4),
+.admin-grid > .panel:nth-child(4) {
+  animation-delay: 0.16s;
 }
 
 .panel.wide {
@@ -237,7 +302,10 @@ select {
   border: 1px solid var(--line-strong);
   background: #ffffff;
   color: var(--text);
-  transition: border-color 0.18s ease, box-shadow 0.18s ease;
+  transition: border-color 0.18s ease, box-shadow 0.18s ease, transform 0.18s ease;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
 }
 
 input:focus,
@@ -245,6 +313,7 @@ select:focus {
   outline: none;
   border-color: var(--primary);
   box-shadow: 0 0 0 3px rgba(15, 107, 207, 0.16);
+  transform: translateY(-1px);
 }
 
 button {
@@ -255,12 +324,13 @@ button {
   color: #ffffff;
   font-weight: 600;
   cursor: pointer;
-  transition: transform 0.15s ease, box-shadow 0.15s ease, opacity 0.15s ease;
+  transition: transform 0.18s ease, box-shadow 0.18s ease, opacity 0.15s ease, filter 0.18s ease;
 }
 
 button:hover {
-  transform: translateY(-1px);
+  transform: translateY(-2px);
   box-shadow: 0 8px 18px rgba(15, 107, 207, 0.24);
+  filter: saturate(1.04);
 }
 
 button:disabled {
@@ -290,6 +360,10 @@ a.button-link {
   margin-bottom: 10px;
 }
 
+.inline-controls > * {
+  min-width: 0;
+}
+
 .inline-controls button {
   background: #f4f8ff;
   border: 1px solid var(--line);
@@ -303,13 +377,16 @@ a.button-link {
 }
 
 table {
-  width: 100%;
+  width: max(100%, 760px);
+  min-width: 760px;
   border-collapse: separate;
   border-spacing: 0;
   overflow: hidden;
   border-radius: 12px;
   border: 1px solid var(--line);
   background: #ffffff;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.75);
+  table-layout: auto;
 }
 
 th,
@@ -318,6 +395,7 @@ td {
   padding: 10px;
   text-align: left;
   font-size: 0.9rem;
+  white-space: nowrap;
 }
 
 th {
@@ -334,10 +412,19 @@ tbody tr:nth-child(2n) {
   background: #f9fbff;
 }
 
+tbody tr {
+  transition: background-color 0.2s ease, transform 0.2s ease;
+}
+
+tbody tr:hover {
+  background: #eef5ff;
+}
+
 .status {
   margin-top: 8px;
   color: var(--text);
   font-weight: 500;
+  overflow-wrap: anywhere;
 }
 
 .status.error {
@@ -421,6 +508,19 @@ tbody tr:nth-child(2n) {
   grid-column: span 2;
 }
 
+.admin-total-deposit-card {
+  background: linear-gradient(140deg, #e8f3ff, #f4f9ff);
+  border: 1px solid #c7dcf5;
+}
+
+.admin-total-deposit-value {
+  color: #0f5fb8;
+  font-family: "IBM Plex Mono", "Consolas", monospace;
+  font-size: clamp(1.15rem, 2.1vw, 1.65rem);
+  letter-spacing: 0;
+  word-break: break-word;
+}
+
 .mini-chart {
   min-height: 220px;
   display: flex;
@@ -467,6 +567,7 @@ tbody tr:nth-child(2n) {
   font-size: 0.88rem;
   color: #7b5407;
   margin-bottom: 12px;
+  overflow-wrap: anywhere;
 }
 
 .site-footer {
@@ -478,6 +579,38 @@ tbody tr:nth-child(2n) {
   font-size: 0.88rem;
   background: rgba(255, 255, 255, 0.7);
   border-radius: 12px;
+}
+
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes techSweep {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(140%);
+  }
+}
+
+@keyframes pulseFloat {
+  0%,
+  100% {
+    transform: translateY(0) scale(1);
+    opacity: 0.38;
+  }
+  50% {
+    transform: translateY(-10px) scale(1.03);
+    opacity: 0.56;
+  }
 }
 
 .site-footer p {
@@ -830,6 +963,63 @@ tbody tr:nth-child(2n) {
   overflow-x: auto;
 }
 
+.admin-customers-panel {
+  background: linear-gradient(180deg, rgba(247, 251, 255, 0.9), rgba(241, 248, 255, 0.88));
+}
+
+.admin-customers-toolbar {
+  margin-bottom: 12px;
+}
+
+.admin-customers-toolbar label {
+  min-width: min(420px, 100%);
+}
+
+.admin-customers-table-wrap {
+  border: 1px solid #d4e3f5;
+  border-radius: 12px;
+  background: #ffffff;
+}
+
+.admin-customers-table {
+  width: max(100%, 1240px);
+  min-width: 1240px;
+}
+
+.admin-customers-table th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: #e9f2ff;
+}
+
+.admin-customers-table td:nth-child(2),
+.admin-customers-table td:nth-child(3) {
+  min-width: 180px;
+}
+
+.admin-customers-table td:nth-child(11) {
+  min-width: 420px;
+}
+
+.admin-customer-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 0;
+}
+
+.admin-customer-actions input {
+  width: 120px;
+}
+
+.admin-customer-actions button {
+  padding: 6px 9px;
+  font-size: 0.78rem;
+  border-radius: 7px;
+}
+
 .summary-row {
   border-top: 1px solid #e2ebf7;
   transition: background-color 0.2s;
@@ -883,13 +1073,19 @@ tbody tr:nth-child(2n) {
   .left-tabs .tabs,
   .left-tabs .admin-tabs {
     flex-direction: row;
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    overflow-y: hidden;
+    white-space: nowrap;
+    -webkit-overflow-scrolling: touch;
+    padding-bottom: 4px;
   }
 
   .left-tabs .tab,
   .left-tabs .admin-tab {
     width: auto;
     text-align: center;
+    flex: 0 0 auto;
   }
 
   .panel {
@@ -914,6 +1110,20 @@ tbody tr:nth-child(2n) {
 
   .account-types-grid {
     grid-template-columns: 1fr;
+  }
+
+  table {
+    width: max(100%, 680px);
+    min-width: 680px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation: none !important;
+    transition: none !important;
   }
 }
 
@@ -943,12 +1153,18 @@ tbody tr:nth-child(2n) {
     grid-template-columns: 1fr;
   }
 
+  .summary-item {
+    flex-wrap: wrap;
+    align-items: flex-start;
+    gap: 6px;
+  }
+
   .loan-form-horizontal button {
     width: 100%;
   }
 
   table {
-    display: block;
-    overflow-x: auto;
+    width: max(100%, 620px);
+    min-width: 620px;
   }
 }

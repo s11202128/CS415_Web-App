@@ -14,9 +14,9 @@ export default function AdminCustomersTab({ customers, onAdminUpdateCustomer }) 
   });
 
   return (
-    <article className="panel wide">
+    <article className="panel wide admin-customers-panel">
       <h3>Customer Management</h3>
-      <div className="inline-controls">
+      <div className="inline-controls admin-customers-toolbar">
         <label>
           Search Customers
           <input
@@ -26,59 +26,61 @@ export default function AdminCustomersTab({ customers, onAdminUpdateCustomer }) 
           />
         </label>
       </div>
-      <table>
-        <thead>
-          <tr>
-            <th>Customer ID</th>
-            <th>Full Name</th>
-            <th>Email</th>
-            <th>Mobile</th>
-            <th>National ID</th>
-            <th>Residency</th>
-            <th>TIN</th>
-            <th>Verification</th>
-            <th>Registration</th>
-            <th>Status</th>
-            <th>Actions</th>
-          </tr>
-        </thead>
-        <tbody>
-          {filteredCustomers.map((c) => (
-            <tr key={c.id}>
-              <td>{c.id}</td>
-              <td>{c.fullName}</td>
-              <td>{c.email}</td>
-              <td>{c.mobile}</td>
-              <td>{c.nationalId || "-"}</td>
-              <td>{c.residencyStatus || "resident"}</td>
-              <td>{c.tin || "-"}</td>
-              <td>{c.identityVerified ? "Verified" : c.emailVerified ? "Email Verified" : "Pending"}</td>
-              <td>{c.registrationStatus || "approved"}</td>
-              <td>{c.status || "active"}</td>
-              <td>
-                <div className="inline-controls">
-                  <input
-                    placeholder="TIN"
-                    value={tinInputs[c.id] ?? c.tin ?? ""}
-                    onChange={(e) => setTinInputs({ ...tinInputs, [c.id]: e.target.value })}
-                  />
-                  <button type="button" onClick={() => onAdminUpdateCustomer(c.id, { tin: tinInputs[c.id] ?? c.tin ?? "" })}>
-                    Update TIN
-                  </button>
-                  <button type="button" onClick={() => onAdminUpdateCustomer(c.id, { residencyStatus: "resident" })}>Resident</button>
-                  <button type="button" onClick={() => onAdminUpdateCustomer(c.id, { residencyStatus: "non-resident" })}>Non-Resident</button>
-                  <button type="button" onClick={() => onAdminUpdateCustomer(c.id, { identityVerified: true })}>Verify ID</button>
-                  <button type="button" onClick={() => onAdminUpdateCustomer(c.id, { emailVerified: true })}>Verify Email</button>
-                  <button type="button" onClick={() => onAdminUpdateCustomer(c.id, { registrationStatus: "approved" })}>Approve</button>
-                  <button type="button" onClick={() => onAdminUpdateCustomer(c.id, { status: "disabled" })}>Disable</button>
-                  <button type="button" onClick={() => onAdminUpdateCustomer(c.id, { status: "locked" })}>Lock</button>
-                  <button type="button" onClick={() => onAdminUpdateCustomer(c.id, { status: "active", failedLoginAttempts: 0, lockedUntil: null })}>Unlock</button>
-                </div>
-              </td>
+      <div className="table-wrapper admin-customers-table-wrap">
+        <table className="admin-customers-table">
+          <thead>
+            <tr>
+              <th>Customer ID</th>
+              <th>Full Name</th>
+              <th>Email</th>
+              <th>Mobile</th>
+              <th>National ID</th>
+              <th>Residency</th>
+              <th>TIN</th>
+              <th>Verification</th>
+              <th>Registration</th>
+              <th>Status</th>
+              <th>Actions</th>
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {filteredCustomers.map((c) => (
+              <tr key={c.id}>
+                <td className="monospace">{c.id}</td>
+                <td>{c.fullName}</td>
+                <td>{c.email}</td>
+                <td className="monospace">{c.mobile}</td>
+                <td className="monospace">{c.nationalId || "-"}</td>
+                <td>{c.residencyStatus || "resident"}</td>
+                <td className="monospace">{c.tin || "-"}</td>
+                <td>{c.identityVerified ? "Verified" : c.emailVerified ? "Email Verified" : "Pending"}</td>
+                <td>{c.registrationStatus || "approved"}</td>
+                <td>{c.status || "active"}</td>
+                <td>
+                  <div className="inline-controls admin-customer-actions">
+                    <input
+                      placeholder="TIN"
+                      value={tinInputs[c.id] ?? c.tin ?? ""}
+                      onChange={(e) => setTinInputs({ ...tinInputs, [c.id]: e.target.value })}
+                    />
+                    <button type="button" onClick={() => onAdminUpdateCustomer(c.id, { tin: tinInputs[c.id] ?? c.tin ?? "" })}>
+                      Update TIN
+                    </button>
+                    <button type="button" onClick={() => onAdminUpdateCustomer(c.id, { residencyStatus: "resident" })}>Resident</button>
+                    <button type="button" onClick={() => onAdminUpdateCustomer(c.id, { residencyStatus: "non-resident" })}>Non-Resident</button>
+                    <button type="button" onClick={() => onAdminUpdateCustomer(c.id, { identityVerified: true })}>Verify ID</button>
+                    <button type="button" onClick={() => onAdminUpdateCustomer(c.id, { emailVerified: true })}>Verify Email</button>
+                    <button type="button" onClick={() => onAdminUpdateCustomer(c.id, { registrationStatus: "approved" })}>Approve</button>
+                    <button type="button" onClick={() => onAdminUpdateCustomer(c.id, { status: "disabled" })}>Disable</button>
+                    <button type="button" onClick={() => onAdminUpdateCustomer(c.id, { status: "locked" })}>Lock</button>
+                    <button type="button" onClick={() => onAdminUpdateCustomer(c.id, { status: "active", failedLoginAttempts: 0, lockedUntil: null })}>Unlock</button>
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </article>
   );
 }

@@ -1,6 +1,7 @@
 const express = require("express");
 const { Op } = require("sequelize");
 const requirementsData = require("../config/requirementsData");
+const { requireAuth, requireAdmin } = require("../middleware/auth");
 const {
   getAccountTransactions,
   initiateTransfer,
@@ -16,12 +17,14 @@ const {
   getHighValueTransferThreshold,
   setHighValueTransferThreshold,
   getNotificationLogs,
+  addNotification,
   getDashboard,
   updateProfile,
   getLoginLogs,
+  getOtpAttempts,
   reverseTransaction,
 } = require("../store-mysql");
-const { Customer, Account, Bill, Investment, Loan, Transaction } = require("../models");
+const { Customer, Account, Bill, Investment, Loan, Transaction, OtpVerification } = require("../models");
 
 const loanProducts = [
   { id: "LP-001", name: "Personal Loan", annualRate: 0.089, maxAmount: 30000, minTermMonths: 6, maxTermMonths: 60 },
@@ -40,6 +43,20 @@ const asyncHandler = (fn) => async (req, res) => {
     res.status(400).json({ error: error.message });
   }
 };
+
+function isAdmin(req) {
+  return Boolean(req.auth?.isAdmin);
+}
+
+function getAuthenticatedCustomerId(req) {
+  return Number(req.auth?.userId || 0);
+}
+
+function canAccessCustomer(req, customerId) {
+  return isAdmin(req) || getAuthenticatedCustomerId(req) === Number(customerId);
+}
+
+router.use("/admin", requireAuth, requireAdmin);
 
 const toCustomerResponse = (c) => ({
   id: c.id,
@@ -62,6 +79,7 @@ const toAccountResponse = (a) => ({
   id: a.id,
   accountNumber: a.accountNumber,
   customerId: a.customerId,
+  accountHolder: a.accountHolder || a.Customer?.fullName || "",
   type: a.accountType,
   balance: Number(a.balance),
   maintenanceFee: a.accountType === "Simple Access" ? 2.5 : 0,
@@ -69,6 +87,67 @@ const toAccountResponse = (a) => ({
   status: a.status,
   createdAt: a.createdAt,
 });
+
+async function getCustomerForAccountPayload(payload, options = {}) {
+  const providedCustomerName = String(payload.customerName || "").trim();
+  let customerId = payload.customerId;
+
+  if (customerId !== undefined && customerId !== null && customerId !== "") {
+    const numericCustomerId = Number(customerId);
+    if (!Number.isFinite(numericCustomerId) || numericCustomerId <= 0) {
+      throw new Error("customerId must be a positive number");
+    }
+
+    const customer = await Customer.findByPk(numericCustomerId);
+    if (!customer) {
+      throw new Error("Customer not found");
+    }
+
+    return customer;
+  }
+
+  if (!providedCustomerName) {
+    throw new Error("customerName is required when customerId is not provided");
+  }
+
+  const normalizedName = providedCustomerName.toLowerCase();
+  let customer = await Customer.findOne({
+    where: Customer.sequelize.where(
+      Customer.sequelize.fn("LOWER", Customer.sequelize.col("fullName")),
+      normalizedName
+    ),
+  });
+
+  if (!customer) {
+    const nonce = Date.now();
+    const safeName = providedCustomerName
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, ".")
+      .replace(/^\.+|\.+$/g, "") || "customer";
+
+    customer = await Customer.create({
+      fullName: providedCustomerName,
+      mobile: `+6799${String(nonce).slice(-6)}`,
+      email: `${safeName}.${nonce}@autocreated.local`,
+      password: "temporary-password",
+      status: "active",
+      tin: "",
+      residencyStatus: "resident",
+      identityVerified: false,
+      registrationStatus: "approved",
+      ...options.customerDefaults,
+    });
+  }
+
+  return customer;
+}
+
+async function syncCustomerAccountHolders(customerId, fullName) {
+  await Account.update(
+    { accountHolder: String(fullName || "").trim() },
+    { where: { customerId: Number(customerId) } }
+  );
+}
 
 function parseScheduledAccountId(description) {
   const text = String(description || "");
@@ -84,10 +163,12 @@ router.get("/requirements", (req, res) => {
   res.json(requirementsData);
 });
 
-router.get("/customers", asyncHandler(async (req, res) => {
+router.get("/customers", requireAuth, asyncHandler(async (req, res) => {
   const search = String(req.query.q || "").trim();
+  const baseWhere = isAdmin(req) ? {} : { id: getAuthenticatedCustomerId(req) };
   const where = search
     ? {
+        ...baseWhere,
         [Op.or]: [
           { fullName: { [Op.like]: `%${search}%` } },
           { email: { [Op.like]: `%${search}%` } },
@@ -95,7 +176,7 @@ router.get("/customers", asyncHandler(async (req, res) => {
           { nationalId: { [Op.like]: `%${search}%` } },
         ],
       }
-    : undefined;
+    : baseWhere;
   const rows = await Customer.findAll({ where, order: [["createdAt", "ASC"]] });
   res.json(rows.map(toCustomerResponse));
 }));
@@ -116,16 +197,22 @@ router.get("/admin/customers", asyncHandler(async (req, res) => {
   res.json(rows.map(toCustomerResponse));
 }));
 
-router.get("/dashboard", asyncHandler(async (req, res) => {
+router.get("/dashboard", requireAuth, asyncHandler(async (req, res) => {
   const customerId = Number(req.query.customerId);
   if (!Number.isFinite(customerId) || customerId <= 0) {
     return res.status(400).json({ error: "Valid customerId query is required" });
+  }
+  if (!canAccessCustomer(req, customerId)) {
+    return res.status(403).json({ error: "Forbidden" });
   }
   const result = await getDashboard(customerId);
   res.json(result);
 }));
 
-router.get("/profile/:customerId", asyncHandler(async (req, res) => {
+router.get("/profile/:customerId", requireAuth, asyncHandler(async (req, res) => {
+  if (!canAccessCustomer(req, req.params.customerId)) {
+    return res.status(403).json({ error: "Forbidden" });
+  }
   const customer = await Customer.findByPk(req.params.customerId);
   if (!customer) {
     return res.status(404).json({ error: "Customer not found" });
@@ -133,10 +220,13 @@ router.get("/profile/:customerId", asyncHandler(async (req, res) => {
   res.json(toCustomerResponse(customer));
 }));
 
-router.put("/update-profile", asyncHandler(async (req, res) => {
+router.put("/update-profile", requireAuth, asyncHandler(async (req, res) => {
   const customerId = Number(req.body?.customerId);
   if (!Number.isFinite(customerId) || customerId <= 0) {
     return res.status(400).json({ error: "Valid customerId is required" });
+  }
+  if (!canAccessCustomer(req, customerId)) {
+    return res.status(403).json({ error: "Forbidden" });
   }
   const result = await updateProfile(customerId, req.body || {});
   res.json(result);
@@ -193,18 +283,21 @@ router.patch("/admin/customers/:id", asyncHandler(async (req, res) => {
   });
 
   await customer.update(updates);
+  if (updates.fullName !== undefined) {
+    await syncCustomerAccountHolders(customer.id, customer.fullName);
+  }
   res.json(toCustomerResponse(customer));
 }));
 
-router.get("/accounts", asyncHandler(async (req, res) => {
-  const rows = await Account.findAll({ order: [["createdAt", "ASC"]] });
+router.get("/accounts", requireAuth, asyncHandler(async (req, res) => {
+  const where = isAdmin(req) ? undefined : { customerId: getAuthenticatedCustomerId(req) };
+  const rows = await Account.findAll({ where, order: [["createdAt", "ASC"]] });
   res.json(rows.map(toAccountResponse));
 }));
 
 router.post("/accounts", asyncHandler(async (req, res) => {
   const payload = req.body || {};
   const providedAccountNumber = String(payload.accountNumber || "").trim();
-  const providedCustomerName = String(payload.customerName || "").trim();
   if (!payload.type) {
     return res.status(400).json({ error: "type is required" });
   }
@@ -215,56 +308,53 @@ router.post("/accounts", asyncHandler(async (req, res) => {
     return res.status(400).json({ error: "Reenter 12 digit number" });
   }
 
-  let customerId = payload.customerId;
-  if (customerId !== undefined && customerId !== null && customerId !== "") {
-    const numericCustomerId = Number(customerId);
-    if (!Number.isFinite(numericCustomerId) || numericCustomerId <= 0) {
-      return res.status(400).json({ error: "customerId must be a positive number" });
-    }
-    customerId = numericCustomerId;
-  } else {
-    if (!providedCustomerName) {
-      return res.status(400).json({ error: "customerName is required when customerId is not provided" });
-    }
+  const customer = await getCustomerForAccountPayload(payload);
 
-    const normalizedName = providedCustomerName.toLowerCase();
-    let customer = await Customer.findOne({
-      where: Customer.sequelize.where(
-        Customer.sequelize.fn("LOWER", Customer.sequelize.col("fullName")),
-        normalizedName
-      ),
-    });
+  const account = await Account.create({
+    customerId: customer.id,
+    accountNumber: providedAccountNumber || await generateRandomAccountNumber(),
+    accountHolder: customer.fullName,
+    accountType: payload.type,
+    balance: Number(payload.openingBalance || 0),
+    currency: "FJD",
+    status: "active",
+  });
 
-    if (!customer) {
-      const nonce = Date.now();
-      const safeName = providedCustomerName
-        .toLowerCase()
-        .replace(/[^a-z0-9]+/g, ".")
-        .replace(/^\.+|\.+$/g, "") || "customer";
+  res.status(201).json(toAccountResponse(account));
+}));
 
-      customer = await Customer.create({
-        fullName: providedCustomerName,
-        mobile: `+6799${String(nonce).slice(-6)}`,
-        email: `${safeName}.${nonce}@autocreated.local`,
-        password: "temporary-password",
-        status: "active",
-        tin: "",
-        residencyStatus: "resident",
-        identityVerified: false,
-        registrationStatus: "approved",
-      });
-    }
+router.post("/accounts/request", asyncHandler(async (req, res) => {
+  const payload = req.body || {};
+  if (!payload.type) {
+    return res.status(400).json({ error: "type is required" });
+  }
+  if (!["Simple Access", "Savings"].includes(payload.type)) {
+    return res.status(400).json({ error: "type must be Simple Access or Savings" });
+  }
 
-    customerId = customer.id;
+  const customerId = Number(payload.customerId);
+  if (!Number.isFinite(customerId) || customerId <= 0) {
+    return res.status(400).json({ error: "Valid customerId is required" });
+  }
+
+  const customer = await Customer.findByPk(customerId);
+  if (!customer) {
+    return res.status(404).json({ error: "Customer not found" });
+  }
+
+  const providedAccountNumber = String(payload.accountNumber || "").trim();
+  if (providedAccountNumber && !/^\d{12}$/.test(providedAccountNumber)) {
+    return res.status(400).json({ error: "Reenter 12 digit number" });
   }
 
   const account = await Account.create({
     customerId,
     accountNumber: providedAccountNumber || await generateRandomAccountNumber(),
+    accountHolder: customer.fullName,
     accountType: payload.type,
     balance: Number(payload.openingBalance || 0),
     currency: "FJD",
-    status: "active",
+    status: "pending_approval",
   });
 
   res.status(201).json(toAccountResponse(account));
@@ -294,6 +384,13 @@ router.patch("/admin/accounts/:id", asyncHandler(async (req, res) => {
     }
     updates.accountNumber = candidate;
   }
+  if (payload.accountHolder !== undefined) {
+    const candidateHolder = String(payload.accountHolder || "").trim();
+    if (!candidateHolder) {
+      return res.status(400).json({ error: "accountHolder cannot be empty" });
+    }
+    updates.accountHolder = candidateHolder;
+  }
 
   await account.update(updates);
   res.json(toAccountResponse(account));
@@ -311,7 +408,6 @@ router.post("/admin/accounts/:id/freeze", asyncHandler(async (req, res) => {
 router.post("/admin/create-account", asyncHandler(async (req, res) => {
   const payload = req.body || {};
   const providedAccountNumber = String(payload.accountNumber || "").trim();
-  const providedCustomerName = String(payload.customerName || "").trim();
   if (!payload.type) {
     return res.status(400).json({ error: "type is required" });
   }
@@ -322,53 +418,17 @@ router.post("/admin/create-account", asyncHandler(async (req, res) => {
     return res.status(400).json({ error: "Reenter 12 digit number" });
   }
 
-  let customerId = payload.customerId;
-  if (customerId !== undefined && customerId !== null && customerId !== "") {
-    customerId = Number(customerId);
-    if (!Number.isFinite(customerId) || customerId <= 0) {
-      return res.status(400).json({ error: "customerId must be a positive number" });
-    }
-  } else {
-    if (!providedCustomerName) {
-      return res.status(400).json({ error: "customerName is required when customerId is not provided" });
-    }
-
-    const normalizedName = providedCustomerName.toLowerCase();
-    let customer = await Customer.findOne({
-      where: Customer.sequelize.where(
-        Customer.sequelize.fn("LOWER", Customer.sequelize.col("fullName")),
-        normalizedName
-      ),
-    });
-
-    if (!customer) {
-      const nonce = Date.now();
-      const safeName = providedCustomerName
-        .toLowerCase()
-        .replace(/[^a-z0-9]+/g, ".")
-        .replace(/^\.+|\.+$/g, "") || "customer";
-
-      customer = await Customer.create({
-        fullName: providedCustomerName,
-        mobile: `+6799${String(nonce).slice(-6)}`,
-        email: `${safeName}.${nonce}@autocreated.local`,
-        nationalId: `AUTO-${nonce}`,
-        password: "temporary-password",
-        status: "active",
-        emailVerified: true,
-        tin: "",
-        residencyStatus: "resident",
-        identityVerified: false,
-        registrationStatus: "approved",
-      });
-    }
-
-    customerId = customer.id;
-  }
+  const customer = await getCustomerForAccountPayload(payload, {
+    customerDefaults: {
+      nationalId: `AUTO-${Date.now()}`,
+      emailVerified: true,
+    },
+  });
 
   const account = await Account.create({
-    customerId,
+    customerId: customer.id,
     accountNumber: providedAccountNumber || await generateRandomAccountNumber(),
+    accountHolder: customer.fullName,
     accountType: payload.type,
     balance: Number(payload.openingBalance || 0),
     currency: "FJD",
@@ -445,14 +505,74 @@ router.get("/transactions", asyncHandler(async (req, res) => {
   })));
 }));
 
-router.post("/transfers/initiate", asyncHandler(async (req, res) => {
-  const result = await initiateTransfer(req.body || {});
+router.post("/transfers/initiate", requireAuth, asyncHandler(async (req, res) => {
+  const payload = req.body || {};
+  const fromAccount = await Account.findByPk(payload.fromAccountId);
+  if (!fromAccount) {
+    return res.status(404).json({ error: "Source account not found" });
+  }
+  if (!isAdmin(req) && fromAccount.customerId !== getAuthenticatedCustomerId(req)) {
+    return res.status(403).json({ error: "Forbidden" });
+  }
+  const result = await initiateTransfer(payload);
   res.json({ highValueThreshold: getHighValueTransferThreshold(), ...result });
 }));
 
-router.post("/transfer", asyncHandler(async (req, res) => {
-  const result = await initiateTransfer(req.body || {});
+router.post("/transaction/initiate", requireAuth, asyncHandler(async (req, res) => {
+  const payload = req.body || {};
+  const fromAccount = await Account.findByPk(payload.fromAccountId);
+  if (!fromAccount) {
+    return res.status(404).json({ error: "Source account not found" });
+  }
+  if (!isAdmin(req) && fromAccount.customerId !== getAuthenticatedCustomerId(req)) {
+    return res.status(403).json({ error: "Forbidden" });
+  }
+  const result = await initiateTransfer(payload);
   res.json({ highValueThreshold: getHighValueTransferThreshold(), ...result });
+}));
+
+router.post("/transfer", requireAuth, asyncHandler(async (req, res) => {
+  const payload = req.body || {};
+  const fromAccount = await Account.findByPk(payload.fromAccountId);
+  if (!fromAccount) {
+    return res.status(404).json({ error: "Source account not found" });
+  }
+  if (!isAdmin(req) && fromAccount.customerId !== getAuthenticatedCustomerId(req)) {
+    return res.status(403).json({ error: "Forbidden" });
+  }
+  const result = await initiateTransfer(payload);
+  res.json({ highValueThreshold: getHighValueTransferThreshold(), ...result });
+}));
+
+router.post("/otp/send", requireAuth, asyncHandler(async (req, res) => {
+  const payload = req.body || {};
+  const transferPayload = payload.transaction || payload;
+  const amount = Number(transferPayload.amount || 0);
+  if (!Number.isFinite(amount) || amount < getHighValueTransferThreshold()) {
+    return res.status(400).json({ error: `OTP is only required for amounts >= ${getHighValueTransferThreshold()}` });
+  }
+  const fromAccount = await Account.findByPk(transferPayload.fromAccountId);
+  if (!fromAccount) {
+    return res.status(404).json({ error: "Source account not found" });
+  }
+  if (!isAdmin(req) && fromAccount.customerId !== getAuthenticatedCustomerId(req)) {
+    return res.status(403).json({ error: "Forbidden" });
+  }
+  const result = await initiateTransfer(transferPayload);
+  res.json({ highValueThreshold: getHighValueTransferThreshold(), ...result });
+}));
+
+router.post("/otp/verify", requireAuth, asyncHandler(async (req, res) => {
+  const transferId = String(req.body?.transferId || "").trim();
+  const pending = await OtpVerification.findOne({ where: { referenceCode: transferId, transactionType: "transfer" } });
+  if (!pending) {
+    return res.status(404).json({ error: "Pending transfer not found" });
+  }
+  if (!isAdmin(req) && pending.customerId !== getAuthenticatedCustomerId(req)) {
+    return res.status(403).json({ error: "Forbidden" });
+  }
+  const result = await verifyTransfer(req.body || {});
+  res.json(result);
 }));
 
 router.get("/admin/transfers", asyncHandler(async (req, res) => {
@@ -584,13 +704,28 @@ router.get("/admin/dashboard-report", asyncHandler(async (req, res) => {
   });
 }));
 
-router.post("/transfers/verify", asyncHandler(async (req, res) => {
+router.post("/transfers/verify", requireAuth, asyncHandler(async (req, res) => {
+  const transferId = String(req.body?.transferId || "").trim();
+  const pending = await OtpVerification.findOne({ where: { referenceCode: transferId, transactionType: "transfer" } });
+  if (!pending) {
+    return res.status(404).json({ error: "Pending transfer not found" });
+  }
+  if (!isAdmin(req) && pending.customerId !== getAuthenticatedCustomerId(req)) {
+    return res.status(403).json({ error: "Forbidden" });
+  }
   const result = await verifyTransfer(req.body || {});
   res.json(result);
 }));
 
-router.post("/bills/manual", asyncHandler(async (req, res) => {
+router.post("/bills/manual", requireAuth, asyncHandler(async (req, res) => {
   const payload = req.body || {};
+  const account = await Account.findByPk(payload.accountId);
+  if (!account) {
+    return res.status(404).json({ error: "Account not found" });
+  }
+  if (!isAdmin(req) && account.customerId !== getAuthenticatedCustomerId(req)) {
+    return res.status(403).json({ error: "Forbidden" });
+  }
   const payment = await postBillPayment({
     accountId: payload.accountId,
     payee: payload.payee,
@@ -600,8 +735,15 @@ router.post("/bills/manual", asyncHandler(async (req, res) => {
   res.status(201).json(payment);
 }));
 
-router.post("/pay-bill", asyncHandler(async (req, res) => {
+router.post("/pay-bill", requireAuth, asyncHandler(async (req, res) => {
   const payload = req.body || {};
+  const account = await Account.findByPk(payload.accountId);
+  if (!account) {
+    return res.status(404).json({ error: "Account not found" });
+  }
+  if (!isAdmin(req) && account.customerId !== getAuthenticatedCustomerId(req)) {
+    return res.status(403).json({ error: "Forbidden" });
+  }
   const payment = await postBillPayment({
     accountId: payload.accountId,
     payee: payload.payee,
@@ -612,8 +754,15 @@ router.post("/pay-bill", asyncHandler(async (req, res) => {
   res.status(201).json(payment);
 }));
 
-router.post("/bills/scheduled", asyncHandler(async (req, res) => {
+router.post("/bills/scheduled", requireAuth, asyncHandler(async (req, res) => {
   const payload = req.body || {};
+  const account = await Account.findByPk(payload.accountId);
+  if (!account) {
+    return res.status(404).json({ error: "Account not found" });
+  }
+  if (!isAdmin(req) && account.customerId !== getAuthenticatedCustomerId(req)) {
+    return res.status(403).json({ error: "Forbidden" });
+  }
   const row = await scheduleBillPayment({
     accountId: payload.accountId,
     payee: payload.payee,
@@ -689,15 +838,57 @@ router.get("/statements/:accountId/download", asyncHandler(async (req, res) => {
   res.send(csv);
 }));
 
-router.get("/notifications/:customerId", (req, res) => {
-  // Notifications are not persisted yet in MySQL. Keep API stable.
-  res.json([]);
-});
-
-router.get("/admin/notifications/logs", (req, res) => {
+router.get("/notifications/:customerId", requireAuth, asyncHandler(async (req, res) => {
+  const customerId = Number(req.params.customerId);
+  if (!canAccessCustomer(req, customerId)) {
+    return res.status(403).json({ error: "Forbidden" });
+  }
   const limit = Number(req.query.limit || 200);
-  res.json(getNotificationLogs(limit));
-});
+  const logs = await getNotificationLogs(limit, customerId);
+  res.json(logs);
+}));
+
+router.post("/notifications/send", requireAuth, asyncHandler(async (req, res) => {
+  const customerId = Number(req.body?.customerId);
+  const message = String(req.body?.message || "").trim();
+  const notificationType = String(req.body?.notificationType || "SMS_ALERT").trim();
+
+  if (!Number.isFinite(customerId) || customerId <= 0) {
+    return res.status(400).json({ error: "Valid customerId is required" });
+  }
+  if (!message) {
+    return res.status(400).json({ error: "message is required" });
+  }
+  if (!canAccessCustomer(req, customerId)) {
+    return res.status(403).json({ error: "Forbidden" });
+  }
+
+  const log = await addNotification(customerId, message, notificationType);
+  res.status(201).json(log);
+}));
+
+router.get("/notifications/history", requireAuth, asyncHandler(async (req, res) => {
+  const limit = Number(req.query.limit || 200);
+  const requestedCustomerId = req.query.customerId ? Number(req.query.customerId) : null;
+
+  if (requestedCustomerId && !canAccessCustomer(req, requestedCustomerId)) {
+    return res.status(403).json({ error: "Forbidden" });
+  }
+
+  const customerId = requestedCustomerId || (isAdmin(req) ? null : getAuthenticatedCustomerId(req));
+  const logs = await getNotificationLogs(limit, customerId);
+  res.json(logs);
+}));
+
+router.get("/admin/notifications/logs", asyncHandler(async (req, res) => {
+  const limit = Number(req.query.limit || 200);
+  res.json(await getNotificationLogs(limit));
+}));
+
+router.get("/admin/otp-attempts", asyncHandler(async (req, res) => {
+  const limit = Number(req.query.limit || 200);
+  res.json(await getOtpAttempts(limit));
+}));
 
 router.get("/config/interest-rate", (req, res) => {
   res.json({ reserveBankMinSavingsInterestRate });

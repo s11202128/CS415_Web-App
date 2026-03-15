@@ -35,20 +35,20 @@ export default function App() {
   const [transactions, setTransactions] = useState([]);
   const [statementAccount, setStatementAccount] = useState("");
   const [statementRows, setStatementRows] = useState([]);
+  const [statementRequested, setStatementRequested] = useState(false);
   const [notificationCustomer, setNotificationCustomer] = useState("");
   const [notifications, setNotifications] = useState([]);
   const [profileForm, setProfileForm] = useState({
     fullName: "",
     email: "",
     mobile: "",
-    nationalId: "",
     currentPassword: "",
     newPassword: "",
   });
   const [profileMessage, setProfileMessage] = useState("");
 
   const [accountMessage, setAccountMessage] = useState("");
-  const [transferForm, setTransferForm] = useState({ fromAccountId: "", toAccountId: "", amount: "", description: "" });
+  const [transferForm, setTransferForm] = useState({ fromAccountId: "", toAccountNumber: "", amount: "", description: "" });
   const [transferMessage, setTransferMessage] = useState("");
   const [pendingTransfer, setPendingTransfer] = useState({ transferId: "", otp: "" });
 
@@ -98,6 +98,9 @@ export default function App() {
     return map;
   }, [customers]);
 
+  const isAdminUser = Boolean(currentUser?.isAdmin);
+  const effectiveShowAdmin = showAdmin || isAdminUser;
+
   useEffect(() => {
     if (authToken) loadInitialData();
   }, [authToken, currentUser?.customerId, currentUser?.isAdmin]);
@@ -115,7 +118,6 @@ export default function App() {
       fullName: profile.fullName || "",
       email: profile.email || currentUser.email || "",
       mobile: profile.mobile || currentUser.mobile || "",
-      nationalId: profile.nationalId || currentUser.nationalId || "",
       currentPassword: "",
       newPassword: "",
     }));
@@ -190,6 +192,8 @@ export default function App() {
         setSelectedAccountForTx("");
         setStatementAccount("");
       }
+      setStatementRows([]);
+      setStatementRequested(false);
       if (visibleCustomers.length > 0) {
         setNotificationCustomer((prev) =>
           visibleCustomers.some((c) => String(c.id) === String(prev)) ? prev : visibleCustomers[0].id
@@ -316,12 +320,15 @@ export default function App() {
   function handleLoginSuccess(token, user) {
     setAuthToken(token);
     setCurrentUser(user);
+    setShowAdmin(Boolean(user?.isAdmin));
   }
 
   function onLogout() {
     clearToken();
     setAuthToken(null);
     setCurrentUser(null);
+    setStatementRows([]);
+    setStatementRequested(false);
     setAdminAccessGranted(false);
     setAdminAuthForm({ email: "", password: "" });
     setAdminAuthMessage("");
@@ -401,6 +408,7 @@ export default function App() {
     try {
       const rows = await api.getStatement(statementAccount);
       setStatementRows(rows);
+      setStatementRequested(true);
     } catch (err) {
       setError(err.message);
     }
@@ -452,7 +460,6 @@ export default function App() {
         fullName: updatedProfile.fullName,
         email: updatedProfile.email,
         mobile: updatedProfile.mobile,
-        nationalId: updatedProfile.nationalId,
       }));
       setProfileForm((prev) => ({ ...prev, currentPassword: "", newPassword: "" }));
       setProfileMessage("Profile updated successfully.");
@@ -583,7 +590,7 @@ export default function App() {
   }
 
   // ── Admin page view ───────────────────────────────────────────────────────
-  if (showAdmin) {
+  if (effectiveShowAdmin) {
     return (
       <div className="app-shell">
         <header className="hero">
@@ -595,7 +602,7 @@ export default function App() {
             {currentUser && (
               <div className="hero-user">
                 <span>Welcome, <strong>{currentUser.fullName}</strong></span>
-                <button className="home-btn" onClick={() => setShowAdmin(false)}>Home</button>
+                  {!isAdminUser && <button className="home-btn" onClick={() => setShowAdmin(false)}>Home</button>}
                 <button className="logout-btn" onClick={onLogout}>Logout</button>
               </div>
             )}
@@ -657,7 +664,7 @@ export default function App() {
           {currentUser && (
             <div className="hero-user">
               <span>Welcome, <strong>{currentUser.fullName}</strong></span>
-              <button className="admin-btn" onClick={() => { setShowAdmin(true); setAdminAuthMessage(""); }}>Admin</button>
+              {!isAdminUser && <button className="admin-btn" onClick={() => { setShowAdmin(true); setAdminAuthMessage(""); }}>Admin</button>}
               <button className="logout-btn" onClick={onLogout}>Logout</button>
             </div>
           )}
@@ -740,6 +747,7 @@ export default function App() {
               statementAccount={statementAccount}
               setStatementAccount={setStatementAccount}
               statementRows={statementRows}
+              statementRequested={statementRequested}
               fetchStatement={fetchStatement}
               notificationCustomer={notificationCustomer}
               setNotificationCustomer={setNotificationCustomer}

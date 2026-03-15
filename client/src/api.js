@@ -5,7 +5,7 @@ export function setToken(token) { _authToken = token; }
 export function clearToken() { _authToken = null; }
 
 async function request(path, options = {}) {
-  if (path === "/accounts" && String(options.method || "GET").toUpperCase() === "POST" && options.body) {
+  if ((path === "/accounts" || path === "/accounts/request") && String(options.method || "GET").toUpperCase() === "POST" && options.body) {
     try {
       const payload = JSON.parse(options.body);
       const accountNumber = String(payload?.accountNumber || "").trim();
@@ -69,6 +69,7 @@ export const api = {
   updateProfile: (body) => request("/update-profile", { method: "PUT", body: JSON.stringify(body) }),
   getAccounts: () => request("/accounts"),
   createAccount: (body) => request("/accounts", { method: "POST", body: JSON.stringify(body) }),
+  createAccountRequest: (body) => request("/accounts/request", { method: "POST", body: JSON.stringify(body) }),
   updateAccountAdmin: (id, body) => request(`/admin/accounts/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
   freezeAccountAdmin: (id) => request(`/admin/accounts/${id}/freeze`, { method: "POST" }),
   getTransactions: (accountId) => request(`/transactions?accountId=${encodeURIComponent(accountId)}`),
@@ -87,6 +88,9 @@ export const api = {
       body: JSON.stringify({ highValueTransferLimit: Number(highValueTransferLimit) }),
     }),
   initiateTransfer: (body) => request("/transfers/initiate", { method: "POST", body: JSON.stringify(body) }),
+  initiateTransaction: (body) => request("/transaction/initiate", { method: "POST", body: JSON.stringify(body) }),
+  sendOtp: (body) => request("/otp/send", { method: "POST", body: JSON.stringify(body) }),
+  verifyOtp: (body) => request("/otp/verify", { method: "POST", body: JSON.stringify(body) }),
   verifyTransfer: (body) => request("/transfers/verify", { method: "POST", body: JSON.stringify(body) }),
   payBillManual: (body) => request("/bills/manual", { method: "POST", body: JSON.stringify(body) }),
   scheduleBill: (body) => request("/bills/scheduled", { method: "POST", body: JSON.stringify(body) }),
@@ -94,6 +98,15 @@ export const api = {
   runScheduledBill: (id) => request(`/bills/scheduled/${id}/run`, { method: "POST" }),
   getStatement: (accountId) => request(`/statements/${accountId}`),
   getNotifications: (customerId) => request(`/notifications/${customerId}`),
+  sendNotification: (body) => request("/notifications/send", { method: "POST", body: JSON.stringify(body) }),
+  getNotificationHistory: (customerId = null, limit = 200) => {
+    const params = new URLSearchParams();
+    params.set("limit", String(limit));
+    if (customerId !== null && customerId !== undefined) {
+      params.set("customerId", String(customerId));
+    }
+    return request(`/notifications/history?${params.toString()}`);
+  },
   getInvestments: () => request("/investments"),
   addInvestment: (body) => request("/investments", { method: "POST", body: JSON.stringify(body) }),
   getInterestRate: () => request("/config/interest-rate"),
@@ -109,5 +122,6 @@ export const api = {
   getLoanApplications: () => request("/loan-applications"),
   updateLoanApplicationAdmin: (id, body) => request(`/admin/loan-applications/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
   getNotificationLogsAdmin: (limit = 200) => request(`/admin/notifications/logs?limit=${encodeURIComponent(limit)}`),
+  getOtpAttemptsAdmin: (limit = 200) => request(`/admin/otp-attempts?limit=${encodeURIComponent(limit)}`),
   statementDownloadUrl: (accountId) => `${API_BASE}/statements/${accountId}/download`,
 };

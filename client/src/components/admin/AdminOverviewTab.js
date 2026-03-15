@@ -34,9 +34,9 @@ export default function AdminOverviewTab({ customers, accounts, adminReport, adm
         <h3>Total Accounts</h3>
         <p className="metric">{metrics.totalAccounts}</p>
       </article>
-      <article className="panel metric-card">
+      <article className="panel metric-card admin-total-deposit-card">
         <h3>Total Deposits</h3>
-        <p className="metric">FJD {Number(metrics.totalDeposits || 0).toFixed(2)}</p>
+        <p className="metric admin-total-deposit-value">FJD {Number(metrics.totalDeposits || 0).toFixed(2)}</p>
       </article>
       <article className="panel metric-card">
         <h3>Today's Transactions</h3>

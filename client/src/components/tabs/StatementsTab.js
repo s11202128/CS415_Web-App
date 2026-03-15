@@ -7,6 +7,7 @@ export default function StatementsTab({
   statementAccount,
   setStatementAccount,
   statementRows,
+  statementRequested,
   fetchStatement,
   notificationCustomer,
   setNotificationCustomer,
@@ -45,7 +46,7 @@ export default function StatementsTab({
             Account
             <select value={statementAccount} onChange={(e) => setStatementAccount(e.target.value)}>
               {accounts.map((a) => (
-                <option key={a.id} value={a.id}>{a.id}</option>
+                <option key={a.id} value={a.id}>{a.accountNumber || a.id}</option>
               ))}
             </select>
           </label>
@@ -64,13 +65,24 @@ export default function StatementsTab({
               <option value="asc">Oldest First</option>
             </select>
           </label>
-          <button onClick={fetchStatement}>Refresh Statement</button>
-          <a className="button-link" href={api.statementDownloadUrl(statementAccount)} target="_blank" rel="noreferrer">
+          <button onClick={fetchStatement}>View Statement</button>
+          <a
+            className="button-link"
+            href={statementRequested ? api.statementDownloadUrl(statementAccount) : undefined}
+            target="_blank"
+            rel="noreferrer"
+            onClick={(e) => {
+              if (!statementRequested) {
+                e.preventDefault();
+              }
+            }}
+            aria-disabled={!statementRequested}
+          >
             📥 Download CSV
           </a>
         </div>
 
-        {statementRows.length > 0 && (
+        {statementRequested && statementRows.length > 0 && (
           <div className="statement-summary">
             <div className="summary-card">
               <strong>Total Credits:</strong> FJD {totalCredit.toFixed(2)}
@@ -97,7 +109,11 @@ export default function StatementsTab({
             </tr>
           </thead>
           <tbody>
-            {sortedRows.length > 0 ? (
+            {!statementRequested ? (
+              <tr>
+                <td colSpan="4" className="no-data">Select an account and click "View Statement" to load transactions on demand.</td>
+              </tr>
+            ) : sortedRows.length > 0 ? (
               sortedRows.map((r) => (
                 <tr key={r.id} className={`tx-${r.kind}`}>
                   <td>{new Date(r.createdAt).toLocaleString()}</td>
@@ -112,7 +128,7 @@ export default function StatementsTab({
               ))
             ) : (
               <tr>
-                <td colSpan="4" className="no-data">No transactions found. Click "Refresh Statement" to load.</td>
+                <td colSpan="4" className="no-data">No transactions found for the selected account.</td>
               </tr>
             )}
           </tbody>
