@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { api, clearToken } from "./api";
 import { tabs } from "./constants/tabs";
 import AuthPage from "./components/AuthPage";
+import BankBrand from "./components/BankBrand";
 import HomePage from "./components/HomePage";
 import AdminPage from "./components/AdminPage";
 import SiteFooter from "./components/SiteFooter";
@@ -20,6 +21,7 @@ export default function App() {
   const [showAdmin, setShowAdmin] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [lastUpdatedAt, setLastUpdatedAt] = useState(() => new Date().toISOString());
 
   const [authToken, setAuthToken] = useState(null);
   const [currentUser, setCurrentUser] = useState(null);
@@ -32,7 +34,6 @@ export default function App() {
   const [summaries, setSummaries] = useState([]);
   const [interestRate, setInterestRate] = useState(0);
   const [selectedAccountForTx, setSelectedAccountForTx] = useState("");
-  const [transactions, setTransactions] = useState([]);
   const [statementAccount, setStatementAccount] = useState("");
   const [statementRows, setStatementRows] = useState([]);
   const [statementRequested, setStatementRequested] = useState(false);
@@ -185,20 +186,32 @@ export default function App() {
       setInterestRate(rate.reserveBankMinSavingsInterestRate);
       setSummaries(visibleSummaries);
       setStatementRequests(statementRequestRows);
+      setLastUpdatedAt(new Date().toISOString());
       if (isAdminUser) {
         setAdminStatementRequests(statementRequestRows);
       }
 
       if (visibleAccounts.length > 0) {
+        const defaultAccountId = String(visibleAccounts[0].id);
         setSelectedAccountForTx((prev) =>
           visibleAccounts.some((a) => String(a.id) === String(prev)) ? prev : visibleAccounts[0].id
         );
         setStatementAccount((prev) =>
           visibleAccounts.some((a) => String(a.id) === String(prev)) ? prev : visibleAccounts[0].id
         );
+        setManualBillForm((prev) => ({
+          ...prev,
+          accountId: visibleAccounts.some((a) => String(a.id) === String(prev.accountId)) ? prev.accountId : defaultAccountId,
+        }));
+        setScheduleBillForm((prev) => ({
+          ...prev,
+          accountId: visibleAccounts.some((a) => String(a.id) === String(prev.accountId)) ? prev.accountId : defaultAccountId,
+        }));
       } else {
         setSelectedAccountForTx("");
         setStatementAccount("");
+        setManualBillForm((prev) => ({ ...prev, accountId: "" }));
+        setScheduleBillForm((prev) => ({ ...prev, accountId: "" }));
       }
       setStatementRows([]);
       setStatementRequested(false);
@@ -227,47 +240,6 @@ export default function App() {
       setLoading(false);
     }
   }
-
-  useEffect(() => {
-    if (!accounts.length) {
-      setTransactions([]);
-      return;
-    }
-
-    let cancelled = false;
-    const loadOverviewTransactions = async () => {
-      try {
-        if (currentUser?.isAdmin) {
-          if (!selectedAccountForTx) {
-            setTransactions([]);
-            return;
-          }
-          const rows = await api.getTransactions(selectedAccountForTx);
-          if (!cancelled) {
-            setTransactions(rows);
-          }
-          return;
-        }
-
-        const rowsByAccount = await Promise.all(accounts.map((account) => api.getTransactions(account.id)));
-        const merged = rowsByAccount
-          .flat()
-          .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-        if (!cancelled) {
-          setTransactions(merged);
-        }
-      } catch (err) {
-        if (!cancelled) {
-          setError(err.message);
-        }
-      }
-    };
-
-    loadOverviewTransactions();
-    return () => {
-      cancelled = true;
-    };
-  }, [accounts, currentUser?.isAdmin, selectedAccountForTx]);
 
   useEffect(() => {
     if (!notificationCustomer) return;
@@ -650,10 +622,13 @@ export default function App() {
       <div className="app-shell">
         <header className="hero">
           <div className="hero-row">
-            <div>
-              <h1>Bank of Fiji — Admin</h1>
-              <p>Admin dashboard — live updates every 10 seconds.</p>
-            </div>
+            <BankBrand
+              className="hero-brand"
+              compact
+              eyebrow="Administration"
+              title="Bank of Fiji"
+              subtitle="Admin dashboard with live monitoring and controls."
+            />
             {currentUser && (
               <div className="hero-user">
                 <span>Welcome, <strong>{currentUser.fullName}</strong></span>
@@ -714,10 +689,13 @@ export default function App() {
     <div className="app-shell">
       <header className="hero">
         <div className="hero-row">
-          <div>
-            <h1>Bank of Fiji Online Banking</h1>
-            <p>Home Dashboard</p>
-          </div>
+          <BankBrand
+            className="hero-brand"
+            compact
+            eyebrow="Online Banking"
+            title="Bank of Fiji"
+            subtitle="Home dashboard"
+          />
           {currentUser && (
             <div className="hero-user">
               <span>Welcome, <strong>{currentUser.fullName}</strong></span>
@@ -749,23 +727,20 @@ export default function App() {
 
           {!loading && activeTab === "Overview" && (
             <HomePage
-              accounts={accounts}
               totalBalance={totalBalance}
-              selectedAccountForTx={selectedAccountForTx}
-              setSelectedAccountForTx={setSelectedAccountForTx}
-              transactions={transactions}
+              currentUser={currentUser}
+              lastUpdatedAt={lastUpdatedAt}
+              onRefreshOverview={loadInitialData}
+              isRefreshing={loading}
             />
           )}
 
           {!loading && activeTab === "Accounts" && (
             <AccountsTab
               accounts={accounts}
-              customers={customers}
-              customerMap={customerMap}
               currentUser={currentUser}
               accountMessage={accountMessage}
               setAccountMessage={setAccountMessage}
-              onCreateAccount={onCreateAdminAccount}
             />
           )}
 
@@ -784,7 +759,6 @@ export default function App() {
 
           {!loading && activeTab === "Bill Payments" && (
             <BillPaymentsTab
-              accounts={accounts}
               manualBillForm={manualBillForm}
               setManualBillForm={setManualBillForm}
               onManualBill={onManualBill}

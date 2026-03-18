@@ -91,7 +91,6 @@ async function requestBlob(path, options = {}) {
 
 export const api = {
   register: (body) => request("/auth/register", { method: "POST", body: JSON.stringify(body) }),
-  verifyEmail: (body) => request("/auth/verify-email", { method: "POST", body: JSON.stringify(body) }),
   login: (body) => request("/auth/login", { method: "POST", body: JSON.stringify(body) }),
   requestPasswordReset: (body) => request("/auth/forgot-password", { method: "POST", body: JSON.stringify(body) }),
   resetPassword: (body) => request("/auth/reset-password", { method: "POST", body: JSON.stringify(body) }),
@@ -123,6 +122,8 @@ export const api = {
       body: JSON.stringify({ highValueTransferLimit: Number(highValueTransferLimit) }),
     }),
   initiateTransfer: (body) => request("/transfers/initiate", { method: "POST", body: JSON.stringify(body) }),
+  validateTransferDestination: (body) =>
+    request("/transfers/validate-destination", { method: "POST", body: JSON.stringify(body) }),
   initiateTransaction: (body) => request("/transaction/initiate", { method: "POST", body: JSON.stringify(body) }),
   sendOtp: (body) => request("/otp/send", { method: "POST", body: JSON.stringify(body) }),
   verifyOtp: (body) => request("/otp/verify", { method: "POST", body: JSON.stringify(body) }),

@@ -11,7 +11,7 @@ const {
 
 const DB_NAME = process.env.DB_NAME || "bof_banking_db";
 const DB_USER = process.env.DB_USER || "root";
-const DB_PASSWORD = process.env.DB_PASSWORD || "root";
+const DB_PASSWORD = "DB_PASSWORD" in process.env ? process.env.DB_PASSWORD : "";
 const DB_HOST = process.env.DB_HOST || "localhost";
 const DB_PORT = Number(process.env.DB_PORT || 3306);
 const DB_SYNC_ALTER = String(process.env.DB_SYNC_ALTER || "false").toLowerCase() === "true";
@@ -54,6 +54,19 @@ function isLegacyTransactionIdType(columnType) {
 function isLegacyRegistrationIdType(columnType) {
   const normalized = String(columnType || "").toLowerCase();
   return normalized.includes("char") || normalized.includes("uuid");
+}
+
+// Idempotent addColumn: silently ignores ER_DUP_FIELDNAME so concurrent nodemon
+// restarts cannot crash the migration when two processes race to add the same column.
+async function safeAddColumn(queryInterface, tableName, columnName, definition) {
+  try {
+    await queryInterface.addColumn(tableName, columnName, definition);
+  } catch (err) {
+    const code = err?.parent?.code || err?.original?.code || err?.code;
+    if (code !== "ER_DUP_FIELDNAME") {
+      throw err;
+    }
+  }
 }
 
 const initializeDatabase = async () => {
@@ -158,62 +171,62 @@ const initializeDatabase = async () => {
     const customerColumns = await queryInterface.describeTable("customers");
 
     if (!customerColumns.tin) {
-      await queryInterface.addColumn("customers", "tin", {
+      await safeAddColumn(queryInterface, "customers", "tin", {
         type: DataTypes.STRING,
         allowNull: true,
         defaultValue: "",
       });
     }
     if (!customerColumns.residencyStatus) {
-      await queryInterface.addColumn("customers", "residencyStatus", {
+      await safeAddColumn(queryInterface, "customers", "residencyStatus", {
         type: DataTypes.STRING,
         allowNull: true,
         defaultValue: "resident",
       });
     }
     if (!customerColumns.identityVerified) {
-      await queryInterface.addColumn("customers", "identityVerified", {
+      await safeAddColumn(queryInterface, "customers", "identityVerified", {
         type: DataTypes.BOOLEAN,
         allowNull: true,
         defaultValue: false,
       });
     }
     if (!customerColumns.registrationStatus) {
-      await queryInterface.addColumn("customers", "registrationStatus", {
+      await safeAddColumn(queryInterface, "customers", "registrationStatus", {
         type: DataTypes.STRING,
         allowNull: true,
         defaultValue: "approved",
       });
     }
     if (!customerColumns.nationalId) {
-      await queryInterface.addColumn("customers", "nationalId", {
+      await safeAddColumn(queryInterface, "customers", "nationalId", {
         type: DataTypes.STRING,
         allowNull: true,
         defaultValue: "",
       });
     }
     if (!customerColumns.emailVerified) {
-      await queryInterface.addColumn("customers", "emailVerified", {
+      await safeAddColumn(queryInterface, "customers", "emailVerified", {
         type: DataTypes.BOOLEAN,
         allowNull: true,
         defaultValue: false,
       });
     }
     if (!customerColumns.failedLoginAttempts) {
-      await queryInterface.addColumn("customers", "failedLoginAttempts", {
+      await safeAddColumn(queryInterface, "customers", "failedLoginAttempts", {
         type: DataTypes.INTEGER,
         allowNull: true,
         defaultValue: 0,
       });
     }
     if (!customerColumns.lockedUntil) {
-      await queryInterface.addColumn("customers", "lockedUntil", {
+      await safeAddColumn(queryInterface, "customers", "lockedUntil", {
         type: DataTypes.DATE,
         allowNull: true,
       });
     }
     if (!customerColumns.lastLoginAt) {
-      await queryInterface.addColumn("customers", "lastLoginAt", {
+      await safeAddColumn(queryInterface, "customers", "lastLoginAt", {
         type: DataTypes.DATE,
         allowNull: true,
       });
@@ -221,7 +234,7 @@ const initializeDatabase = async () => {
 
     const accountColumns = await queryInterface.describeTable("accounts");
     if (!accountColumns.accountHolder) {
-      await queryInterface.addColumn("accounts", "accountHolder", {
+      await safeAddColumn(queryInterface, "accounts", "accountHolder", {
         type: DataTypes.STRING,
         allowNull: true,
       });
@@ -242,27 +255,27 @@ const initializeDatabase = async () => {
 
     const registrationColumns = await queryInterface.describeTable("registrations");
     if (!registrationColumns.nationalId) {
-      await queryInterface.addColumn("registrations", "nationalId", {
+      await safeAddColumn(queryInterface, "registrations", "nationalId", {
         type: DataTypes.STRING,
         allowNull: true,
         defaultValue: "",
       });
     }
     if (!registrationColumns.verificationCode) {
-      await queryInterface.addColumn("registrations", "verificationCode", {
+      await safeAddColumn(queryInterface, "registrations", "verificationCode", {
         type: DataTypes.STRING,
         allowNull: true,
       });
     }
     if (!registrationColumns.verificationStatus) {
-      await queryInterface.addColumn("registrations", "verificationStatus", {
+      await safeAddColumn(queryInterface, "registrations", "verificationStatus", {
         type: DataTypes.STRING,
         allowNull: true,
         defaultValue: "pending",
       });
     }
     if (!registrationColumns.verifiedAt) {
-      await queryInterface.addColumn("registrations", "verifiedAt", {
+      await safeAddColumn(queryInterface, "registrations", "verifiedAt", {
         type: DataTypes.DATE,
         allowNull: true,
       });
@@ -270,7 +283,7 @@ const initializeDatabase = async () => {
 
     const otpColumns = await queryInterface.describeTable("otp_verifications");
     if (!otpColumns.referenceCode) {
-      await queryInterface.addColumn("otp_verifications", "referenceCode", {
+      await safeAddColumn(queryInterface, "otp_verifications", "referenceCode", {
         type: DataTypes.STRING,
         allowNull: true,
       });
@@ -282,27 +295,27 @@ const initializeDatabase = async () => {
       });
     }
     if (!otpColumns.metadata) {
-      await queryInterface.addColumn("otp_verifications", "metadata", {
+      await safeAddColumn(queryInterface, "otp_verifications", "metadata", {
         type: DataTypes.TEXT,
         allowNull: true,
       });
     }
     if (!otpColumns.attempts) {
-      await queryInterface.addColumn("otp_verifications", "attempts", {
+      await safeAddColumn(queryInterface, "otp_verifications", "attempts", {
         type: DataTypes.INTEGER,
         allowNull: false,
         defaultValue: 0,
       });
     }
     if (!otpColumns.maxAttempts) {
-      await queryInterface.addColumn("otp_verifications", "maxAttempts", {
+      await safeAddColumn(queryInterface, "otp_verifications", "maxAttempts", {
         type: DataTypes.INTEGER,
         allowNull: false,
         defaultValue: 3,
       });
     }
     if (!otpColumns.lastAttemptAt) {
-      await queryInterface.addColumn("otp_verifications", "lastAttemptAt", {
+      await safeAddColumn(queryInterface, "otp_verifications", "lastAttemptAt", {
         type: DataTypes.DATE,
         allowNull: true,
       });
@@ -310,14 +323,14 @@ const initializeDatabase = async () => {
 
     const loanColumns = await queryInterface.describeTable("loans");
     if (!loanColumns.loanProductId) {
-      await queryInterface.addColumn("loans", "loanProductId", {
+      await safeAddColumn(queryInterface, "loans", "loanProductId", {
         type: DataTypes.STRING,
         allowNull: true,
         defaultValue: "",
       });
     }
     if (!loanColumns.termMonths) {
-      await queryInterface.addColumn("loans", "termMonths", {
+      await safeAddColumn(queryInterface, "loans", "termMonths", {
         type: DataTypes.INTEGER,
         allowNull: true,
         defaultValue: 0,

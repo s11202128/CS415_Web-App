@@ -1,7 +1,7 @@
 const { v4: uuid } = require("uuid");
 const bcrypt = require("bcryptjs");
 
-const HIGH_VALUE_OTP_THRESHOLD = 1000;
+const HIGH_VALUE_OTP_THRESHOLD = 5000;
 const WITHHOLDING_TAX_RATE = 0.15;
 
 const db = {

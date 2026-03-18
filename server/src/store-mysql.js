@@ -18,6 +18,7 @@ const {
 } = require("./models");
 
 let HIGH_VALUE_OTP_THRESHOLD = 5000;
+const MIN_OTP_TRIGGER_AMOUNT = 5000;
 const OTP_EXPIRY_MINUTES = 5;
 const OTP_MAX_ATTEMPTS = 3;
 const WITHHOLDING_TAX_RATE = 0.15;
@@ -173,8 +174,8 @@ function getHighValueTransferThreshold() {
 
 function setHighValueTransferThreshold(value) {
   const threshold = Number(value);
-  if (!Number.isFinite(threshold) || threshold <= 0) {
-    throw new Error("High-value transfer limit must be a positive number");
+  if (!Number.isFinite(threshold) || threshold < MIN_OTP_TRIGGER_AMOUNT) {
+    throw new Error(`High-value transfer limit must be at least FJD ${MIN_OTP_TRIGGER_AMOUNT}`);
   }
   HIGH_VALUE_OTP_THRESHOLD = threshold;
   return HIGH_VALUE_OTP_THRESHOLD;
@@ -321,14 +322,13 @@ async function transfer({ fromAccountId, toAccountId, amount, description }) {
 // Initiate a transfer (may require OTP)
 async function initiateTransfer(payload) {
   const amount = Number(payload.amount || 0);
-  const requiresOtp = amount >= HIGH_VALUE_OTP_THRESHOLD;
   const toAccountId = await resolveDestinationAccountId(payload);
 
   if (amount <= 0) {
     throw new Error("Amount must be greater than 0");
   }
 
-  if (!requiresOtp) {
+  if (amount < HIGH_VALUE_OTP_THRESHOLD) {
     const result = await transfer({
       fromAccountId: payload.fromAccountId,
       toAccountId,
@@ -342,50 +342,48 @@ async function initiateTransfer(payload) {
       otp: null,
       result,
     };
-  }
+  } else {
+    const transferId = makeId("TRF");
+    const otp = makeSixDigitCode();
+    const hashedOtp = hashOtp(otp);
 
-  const transferId = makeId("TRF");
-  const otp = makeSixDigitCode();
-  const hashedOtp = hashOtp(otp);
+    const sourceAccount = await getAccount(payload.fromAccountId);
+    if (!sourceAccount) {
+      throw new Error("Source account not found");
+    }
 
-  const sourceAccount = await getAccount(payload.fromAccountId);
-  if (!sourceAccount) {
-    throw new Error("Source account not found");
-  }
+    // Store pending transfer as OtpVerification record.
+    await OtpVerification.create({
+      referenceCode: transferId,
+      customerId: sourceAccount.customerId,
+      otp: hashedOtp,
+      transactionType: "transfer",
+      amount,
+      metadata: JSON.stringify({
+        fromAccountId: payload.fromAccountId,
+        toAccountId,
+        description: payload.description || "Transfer sent",
+      }),
+      expiresAt: new Date(Date.now() + OTP_EXPIRY_MINUTES * 60 * 1000),
+      verified: false,
+      attempts: 0,
+      maxAttempts: OTP_MAX_ATTEMPTS,
+    });
 
-  // Store pending transfer as OtpVerification record
-  await OtpVerification.create({
-    referenceCode: transferId,
-    customerId: sourceAccount.customerId,
-    otp: hashedOtp,
-    transactionType: "transfer",
-    amount,
-    metadata: JSON.stringify({
-      fromAccountId: payload.fromAccountId,
-      toAccountId,
-      description: payload.description || "Transfer sent",
-    }),
-    expiresAt: new Date(Date.now() + OTP_EXPIRY_MINUTES * 60 * 1000),
-    verified: false,
-    attempts: 0,
-    maxAttempts: OTP_MAX_ATTEMPTS,
-  });
-
-  if (sourceAccount) {
     await addNotification(
       sourceAccount.customerId,
       `OTP ${otp} for high-value transfer of FJD ${amount.toFixed(2)} from account ${sourceAccount.id}.`,
       "OTP_VERIFICATION"
     );
-  }
 
-  return {
-    status: "pending_verification",
-    requiresOtp: true,
-    transferId,
-    expiresInSeconds: OTP_EXPIRY_MINUTES * 60,
-    attemptsRemaining: OTP_MAX_ATTEMPTS,
-  };
+    return {
+      status: "pending_verification",
+      requiresOtp: true,
+      transferId,
+      expiresInSeconds: OTP_EXPIRY_MINUTES * 60,
+      attemptsRemaining: OTP_MAX_ATTEMPTS,
+    };
+  }
 }
 
 // Verify and complete a transfer using OTP
@@ -669,15 +667,15 @@ async function registerUser({ fullName, mobile, email, password, confirmPassword
   }
 
   const passwordHash = await bcrypt.hash(password, 10);
-  const verificationCode = makeSixDigitCode();
 
   await Registration.create({
     fullName,
     mobile: normalizedMobile,
     email: normalizedEmail,
     password: passwordHash,
-    verificationCode,
-    verificationStatus: "pending",
+    verificationCode: null,
+    verificationStatus: "verified",
+    verifiedAt: new Date(),
   });
 
   const customer = await Customer.create({
@@ -686,42 +684,18 @@ async function registerUser({ fullName, mobile, email, password, confirmPassword
     email: normalizedEmail,
     password: passwordHash,
     status: "active",
-    emailVerified: false,
-    registrationStatus: "pending",
+    emailVerified: true,
+    registrationStatus: "approved",
   });
-
-  await addNotification(customer.id, `Registration verification code: ${verificationCode}`, "REGISTRATION_OTP");
 
   return {
     userId: customer.id,
     customerId: customer.id,
     fullName,
     email: customer.email,
-    emailVerified: false,
-    simulatedVerificationCode: verificationCode,
-    message: "Registration created. Use the verification code to activate your login.",
+    emailVerified: true,
+    message: "Registration successful. You can now sign in.",
   };
-}
-
-async function verifyEmail({ email, code }) {
-  const normalizedEmail = normalizeEmail(email);
-  const registration = await Registration.findOne({ where: { email: normalizedEmail }, order: [["createdAt", "DESC"]] });
-  if (!registration) {
-    throw new Error("Registration not found");
-  }
-  if (registration.verificationStatus === "verified") {
-    return { email: normalizedEmail, status: "verified" };
-  }
-  if (String(registration.verificationCode) !== String(code || "").trim()) {
-    throw new Error("Invalid verification code");
-  }
-
-  await registration.update({ verificationStatus: "verified", verifiedAt: new Date() });
-  const customer = await Customer.findOne({ where: { email: normalizedEmail } });
-  if (customer) {
-    await customer.update({ emailVerified: true, registrationStatus: "approved" });
-  }
-  return { email: normalizedEmail, status: "verified" };
 }
 
 // Login a user
@@ -761,11 +735,6 @@ async function loginUser({ email, password, ipAddress, userAgent }) {
   if (isAccountLocked(customer)) {
     await recordLoginAttempt({ userType: "customer", userId: customer.id, email: normalizedEmail, success: false, failureReason: "Account locked", ipAddress, userAgent });
     throw new Error("Account locked due to repeated failed logins. Try again later.");
-  }
-
-  if (!customer.emailVerified) {
-    await recordLoginAttempt({ userType: "customer", userId: customer.id, email: normalizedEmail, success: false, failureReason: "Email not verified", ipAddress, userAgent });
-    throw new Error("Please verify your email before logging in");
   }
 
   if (["disabled", "locked", "suspended"].includes(String(customer.status || "").toLowerCase())) {
@@ -1078,7 +1047,6 @@ module.exports = {
   getNotificationLogs,
   generateRandomAccountNumber,
   registerUser,
-  verifyEmail,
   loginUser,
   verifyAdminCredentials,
   requestPasswordReset,

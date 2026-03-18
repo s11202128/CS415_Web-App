@@ -1,3 +1,75 @@
+import { useEffect, useState } from "react";
+import { api } from "../../api";
+
+const TRANSFER_OPTIONS = [
+  {
+    id: "bof-customer-transfer",
+    label: "BANK OF FIJI TRANSFER",
+    description: "Transfer funds to another Bank of Fiji customer account within the same bank.",
+  },
+  {
+    id: "local-bank-transfer",
+    label: "LOCAL BANK TRANSFER",
+    description: "Transfer funds to another local Fiji bank account.",
+  },
+  {
+    id: "international-transfer",
+    label: "INTERNATIONAL TRANSFER",
+    description: "Set up overseas transfer details and foreign beneficiary information.",
+  },
+  {
+    id: "wallet-provider-transfer",
+    label: "TRANSFER TO WALLET PROVIDER",
+    description: "Send funds to approved wallet providers in Fiji.",
+  },
+
+  {
+    id: "transfer-limits",
+    label: "TRANSFER LIMITS",
+    description: "View your transfer limits for daily, weekly, and monthly periods.",
+  },
+];
+
+const CUSTOMER_TRANSFER_LIMITS = {
+  daily: 2000,
+  weekly: 10000,
+  monthly: 40000,
+};
+
+const FIJI_DIGITAL_WALLETS = [
+  {
+    name: "M-PAiSA",
+    provider: "Vodafone Fiji",
+  },
+  {
+    name: "MyCash",
+    provider: "Digicel Fiji",
+  },
+  {
+    name: "Inkk Mobile Wallet",
+    provider: "HFC Bank",
+  },
+];
+
+const FIJI_LOCAL_BANKS = [
+  "ANZ Fiji",
+  "Westpac Fiji",
+  "BSP Financial Group",
+  "HFC Bank",
+  "BRED Bank Fiji",
+  "Bank of Baroda Fiji",
+  "Fiji Development Bank",
+];
+
+function displayAccountType(type) {
+  return type === "Simple Access" ? "Cheque" : type;
+}
+
+function toAmount(value) {
+  const parsed = Number(value || 0);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
+}
+
 export default function TransfersTab({
   accounts,
   transferForm,
@@ -8,85 +80,338 @@ export default function TransfersTab({
   onVerifyTransfer,
   transferMessage,
 }) {
+  const [open, setOpen] = useState(true);
+  const [activeOption, setActiveOption] = useState("bof-customer-transfer");
+  const [destinationValidation, setDestinationValidation] = useState({
+    status: "idle",
+    customerName: "",
+    accountNumber: "",
+    message: "",
+  });
+  const [localBankForm, setLocalBankForm] = useState({ recipientName: "", accountNumber: "", bankName: "", amount: "", description: "" });
+  const [localBankMessage, setLocalBankMessage] = useState("");
+
+  const activeTransferOption = TRANSFER_OPTIONS.find((option) => option.id === activeOption) || TRANSFER_OPTIONS[0];
+
+  const showTransferForm = activeOption === "bof-customer-transfer";
+  const showLocalBankForm = activeOption === "local-bank-transfer";
+  const showLimitsContent = activeOption === "transfer-limits";
+  const showWalletContent = activeOption === "wallet-provider-transfer";
+  const sourceAccount =
+    accounts.find((account) => String(account.id) === String(transferForm.fromAccountId || "")) ||
+    accounts[0] ||
+    null;
+  const normalizedToAccountNumber = String(transferForm.toAccountNumber || "").trim();
+  const hasValidToAccountFormat = /^\d{12}$/.test(normalizedToAccountNumber);
+  const destinationIsValidated =
+    destinationValidation.status === "success" &&
+    destinationValidation.accountNumber === normalizedToAccountNumber;
+  const currentTransferAmount = toAmount(transferForm.amount);
+  const limitRows = [
+    { label: "Daily", value: CUSTOMER_TRANSFER_LIMITS.daily },
+    { label: "Weekly", value: CUSTOMER_TRANSFER_LIMITS.weekly },
+    { label: "Monthly", value: CUSTOMER_TRANSFER_LIMITS.monthly },
+  ];
+
+  useEffect(() => {
+    if (!showTransferForm) {
+      return;
+    }
+
+    const fromAccountId = Number(transferForm.fromAccountId || 0);
+    if (!fromAccountId || !normalizedToAccountNumber) {
+      setDestinationValidation({ status: "idle", customerName: "", accountNumber: "", message: "" });
+      return;
+    }
+    if (!hasValidToAccountFormat) {
+      setDestinationValidation({
+        status: "error",
+        customerName: "",
+        accountNumber: normalizedToAccountNumber,
+        message: "Destination account number must be 12 digits",
+      });
+      return;
+    }
+
+    let cancelled = false;
+    const timeoutId = setTimeout(async () => {
+      setDestinationValidation((prev) => ({
+        ...prev,
+        status: "loading",
+        accountNumber: normalizedToAccountNumber,
+        message: "Validating destination account...",
+      }));
+
+      try {
+        const result = await api.validateTransferDestination({
+          fromAccountId,
+          toAccountNumber: normalizedToAccountNumber,
+        });
+        if (cancelled) {
+          return;
+        }
+        setDestinationValidation({
+          status: "success",
+          customerName: result.customerName || "Unknown customer",
+          accountNumber: normalizedToAccountNumber,
+          message: "Destination account verified",
+        });
+      } catch (err) {
+        if (cancelled) {
+          return;
+        }
+        setDestinationValidation({
+          status: "error",
+          customerName: "",
+          accountNumber: normalizedToAccountNumber,
+          message: err.message || "Could not validate destination account",
+        });
+      }
+    }, 300);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timeoutId);
+    };
+  }, [showTransferForm, transferForm.fromAccountId, normalizedToAccountNumber, hasValidToAccountFormat]);
+
+  useEffect(() => {
+    if (!showTransferForm && !showLocalBankForm) {
+      return;
+    }
+    if (!sourceAccount) {
+      if (transferForm.fromAccountId) {
+        setTransferForm((prev) => ({ ...prev, fromAccountId: "" }));
+      }
+      return;
+    }
+    if (String(transferForm.fromAccountId || "") !== String(sourceAccount.id)) {
+      setTransferForm((prev) => ({ ...prev, fromAccountId: String(sourceAccount.id) }));
+    }
+  }, [showTransferForm, showLocalBankForm, sourceAccount, transferForm.fromAccountId, setTransferForm]);
+
+  function handleLocalBankSubmit(e) {
+    e.preventDefault();
+    setLocalBankMessage("Local bank transfer submitted. Processing may take 1\u20133 business days.");
+  }
+
   return (
-    <section className="panel-grid">
-      <article className="panel">
-        <h2>Initiate Transfer</h2>
-        <form onSubmit={onInitiateTransfer}>
-          <label>
-            From Account
-            <select
-              value={transferForm.fromAccountId}
-              onChange={(e) => setTransferForm({ ...transferForm, fromAccountId: e.target.value })}
-              required
-            >
-              <option value="">Select</option>
-              {accounts.map((a) => (
-                <option key={a.id} value={a.id}>
-                  {a.accountNumber || `ID ${a.id}`}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label>
-            To Account
-            <input
-              value={transferForm.toAccountNumber || ""}
-              onChange={(e) => setTransferForm({ ...transferForm, toAccountNumber: e.target.value })}
-              placeholder="Enter destination account number"
-              required
-            />
-          </label>
-          <label>
-            Amount (FJD)
-            <input
-              type="number"
-              min="1"
-              step="0.01"
-              value={transferForm.amount}
-              onChange={(e) => setTransferForm({ ...transferForm, amount: e.target.value })}
-              required
-            />
-          </label>
-          <label>
-            Description
-            <input
-              value={transferForm.description}
-              onChange={(e) => setTransferForm({ ...transferForm, description: e.target.value })}
-            />
-          </label>
-          <button type="submit">Send Transfer</button>
-        </form>
+    <section className="transfers-shell">
+      <article className="panel transfers-menu-panel">
+        <button type="button" className="transfers-header" onClick={() => setOpen((current) => !current)}>
+          <h2>My Transfers</h2>
+          <span className={open ? "transfers-arrow is-open" : "transfers-arrow"}>⌄</span>
+        </button>
+
+        {open && (
+          <div className="transfers-list" role="listbox" aria-label="Transfer options">
+            {TRANSFER_OPTIONS.map((option) => (
+              <button
+                key={option.id}
+                type="button"
+                className={option.id === activeOption ? "transfer-item is-active" : "transfer-item"}
+                onClick={() => setActiveOption(option.id)}
+              >
+                <span>{option.label}</span>
+                {option.id === activeOption && <span className="transfer-item__chevron">›</span>}
+              </button>
+            ))}
+          </div>
+        )}
       </article>
 
-      <article className="panel">
-        <h2>OTP Verification</h2>
-        <div className="otp-notice">
-          🔒 Transfers of <strong>FJD 1,000 or more</strong> require OTP verification before processing. The OTP is
-          sent via SMS to the account holder's mobile number.
+      <article className="panel transfers-detail-panel">
+        <div className="transfers-detail-head">
+          <h2>{activeTransferOption.label}</h2>
+          <p className="hint">{activeTransferOption.description}</p>
         </div>
-        <form onSubmit={onVerifyTransfer}>
-          <label>
-            Transfer ID
-            <input
-              value={pendingTransfer.transferId}
-              onChange={(e) => setPendingTransfer({ ...pendingTransfer, transferId: e.target.value })}
-              required
-            />
-          </label>
-          <label>
-            OTP
-            <input
-              value={pendingTransfer.otp}
-              onChange={(e) => setPendingTransfer({ ...pendingTransfer, otp: e.target.value })}
-              required
-            />
-          </label>
-          <button type="submit">Verify OTP</button>
-        </form>
-        <p className="status">{transferMessage}</p>
-        <p className="hint">OTP is required only for high-value transactions.</p>
+
+        {showTransferForm ? (
+          <form onSubmit={onInitiateTransfer}>
+            <label>
+              Account Type
+              <input value={sourceAccount ? displayAccountType(sourceAccount.type) : ""} readOnly placeholder="Auto-detected" />
+            </label>
+            <label>
+              My Account Number
+              <input
+                value={sourceAccount ? (sourceAccount.accountNumber || `ID ${sourceAccount.id}`) : ""}
+                readOnly
+                placeholder="Auto-detected"
+              />
+            </label>
+            {!sourceAccount && (
+              <p className="status error">No account found for this user. Please create an account first.</p>
+            )}
+            <label>
+              To Account
+              <input
+                value={transferForm.toAccountNumber || ""}
+                onChange={(e) => setTransferForm({ ...transferForm, toAccountNumber: e.target.value })}
+                placeholder="Enter destination account number"
+                required
+              />
+            </label>
+            {normalizedToAccountNumber ? (
+              <p className={destinationValidation.status === "success" ? "hint" : "status error"}>
+                {destinationValidation.status === "success"
+                  ? `Customer Name: ${destinationValidation.customerName}`
+                  : destinationValidation.message}
+              </p>
+            ) : null}
+            <label>
+              Amount (FJD)
+              <input
+                type="number"
+                min="1"
+                step="0.01"
+                value={transferForm.amount}
+                onChange={(e) => setTransferForm({ ...transferForm, amount: e.target.value })}
+                required
+              />
+            </label>
+            <label>
+              Reason of Transfer
+              <input
+                value={transferForm.description || ""}
+                onChange={(e) => setTransferForm({ ...transferForm, description: e.target.value })}
+                placeholder="Enter transfer reason"
+              />
+            </label>
+            <button type="submit" disabled={!sourceAccount || !destinationIsValidated}>
+              Send Transfer
+            </button>
+          </form>
+        ) : showLocalBankForm ? (
+          <form onSubmit={handleLocalBankSubmit}>
+            <label>
+              Account Type
+              <input value={sourceAccount ? displayAccountType(sourceAccount.type) : ""} readOnly placeholder="Auto-detected" />
+            </label>
+            <label>
+              My Account Number
+              <input
+                value={sourceAccount ? (sourceAccount.accountNumber || `ID ${sourceAccount.id}`) : ""}
+                readOnly
+                placeholder="Auto-detected"
+              />
+            </label>
+            {!sourceAccount && (
+              <p className="status error">No account found for this user. Please create an account first.</p>
+            )}
+            <label>
+              Recipient Name
+              <input
+                value={localBankForm.recipientName}
+                onChange={(e) => setLocalBankForm({ ...localBankForm, recipientName: e.target.value })}
+                placeholder="Enter recipient full name"
+                required
+              />
+            </label>
+            <label>
+              Destination Account Number
+              <input
+                value={localBankForm.accountNumber}
+                onChange={(e) => setLocalBankForm({ ...localBankForm, accountNumber: e.target.value })}
+                placeholder="Enter destination account number"
+                required
+              />
+            </label>
+            <label>
+              Bank
+              <select
+                value={localBankForm.bankName}
+                onChange={(e) => setLocalBankForm({ ...localBankForm, bankName: e.target.value })}
+                required
+              >
+                <option value="" disabled>Select a bank</option>
+                {FIJI_LOCAL_BANKS.map((bank) => (
+                  <option key={bank} value={bank}>{bank}</option>
+                ))}
+              </select>
+            </label>
+            <label>
+              Amount (FJD)
+              <input
+                type="number"
+                min="1"
+                step="0.01"
+                value={localBankForm.amount}
+                onChange={(e) => setLocalBankForm({ ...localBankForm, amount: e.target.value })}
+                required
+              />
+            </label>
+            <label>
+              Reason of Transfer
+              <input
+                value={localBankForm.description}
+                onChange={(e) => setLocalBankForm({ ...localBankForm, description: e.target.value })}
+                placeholder="Enter transfer reason"
+              />
+            </label>
+            {localBankMessage && <p className="hint">{localBankMessage}</p>}
+            <button type="submit" disabled={!sourceAccount}>
+              Send Transfer
+            </button>
+          </form>
+        ) : showLimitsContent ? (
+          <div className="transfers-placeholder">
+            <p className="hint">Current entered amount: FJD {currentTransferAmount.toLocaleString()}</p>
+            {limitRows.map((row) => {
+              const percent = Math.min(100, Math.round((currentTransferAmount / row.value) * 100));
+              return (
+                <div key={row.label}>
+                  <p className="metric">
+                    {row.label} Limit: FJD {row.value.toLocaleString()} ({percent}%)
+                  </p>
+                  <div
+                    style={{
+                      width: "100%",
+                      height: "10px",
+                      background: "#dfe9f6",
+                      borderRadius: "999px",
+                      overflow: "hidden",
+                      marginBottom: "10px",
+                    }}
+                  >
+                    <div
+                      style={{
+                        width: `${percent}%`,
+                        height: "100%",
+                        background: "linear-gradient(90deg, #0f6bcf, #37c0a0)",
+                      }}
+                    />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        ) : showWalletContent ? (
+          <div className="transfers-placeholder">
+            <p className="hint">Supported digital wallets in Fiji:</p>
+            <label>
+              Select Wallet Provider
+              <select defaultValue="">
+                <option value="" disabled>
+                  Choose digital wallet
+                </option>
+                {FIJI_DIGITAL_WALLETS.map((wallet) => (
+                  <option key={wallet.name} value={wallet.name}>
+                    {wallet.name} - {wallet.provider}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+        ) : (
+          <div className="transfers-placeholder">
+            <p className="hint">
+              Select a transfer option from the menu.
+            </p>
+          </div>
+        )}
       </article>
+
     </section>
   );
 }

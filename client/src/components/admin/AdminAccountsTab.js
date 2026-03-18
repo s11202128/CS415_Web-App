@@ -28,7 +28,7 @@ export default function AdminAccountsTab({
               onChange={(e) => setAdminAccountForm({ ...adminAccountForm, type: e.target.value })}
               required
             >
-              <option value="Simple Access">Simple Access</option>
+              <option value="Simple Access">Cheque</option>
               <option value="Savings">Savings</option>
             </select>
           </label>
@@ -77,14 +77,14 @@ export default function AdminAccountsTab({
                 <td>{a.customerId}</td>
                 <td>{a.accountHolder || "-"}</td>
                 <td>{a.accountNumber || "-"}</td>
-                <td>{a.type}</td>
+                <td>{a.type === "Simple Access" ? "Cheque" : a.type}</td>
                 <td>FJD {Number(a.balance).toFixed(2)}</td>
                 <td>{a.status || "active"}</td>
                 <td>
                   <div className="inline-controls">
                     <button type="button" onClick={() => onAdminUpdateAccount(a.id, { status: "active" })}>Approve</button>
                     <button type="button" onClick={() => onAdminUpdateAccount(a.id, { status: "rejected" })}>Reject</button>
-                    <button type="button" onClick={() => onAdminUpdateAccount(a.id, { type: "Simple Access" })}>Set Simple</button>
+                    <button type="button" onClick={() => onAdminUpdateAccount(a.id, { type: "Simple Access" })}>Set Cheque</button>
                     <button type="button" onClick={() => onAdminUpdateAccount(a.id, { type: "Savings" })}>Set Savings</button>
                     <button type="button" onClick={() => onAdminUpdateAccount(a.id, { status: "suspended" })}>Suspend</button>
                     <button type="button" onClick={() => onAdminUpdateAccount(a.id, { status: "closed" })}>Close</button>

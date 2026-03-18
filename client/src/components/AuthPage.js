@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { api, setToken } from "../api";
+import BankBrand from "./BankBrand";
 
 export default function AuthPage({ onLoginSuccess, currentYear }) {
   const [authView, setAuthView] = useState("login");
@@ -10,7 +11,6 @@ export default function AuthPage({ onLoginSuccess, currentYear }) {
     password: "",
     confirmPassword: "",
   });
-  const [verifyForm, setVerifyForm] = useState({ email: "", code: "" });
   const [resetForm, setResetForm] = useState({ email: "", resetId: "", code: "", newPassword: "", confirmPassword: "" });
   const [authMessage, setAuthMessage] = useState("");
   const [authHint, setAuthHint] = useState("");
@@ -56,24 +56,10 @@ export default function AuthPage({ onLoginSuccess, currentYear }) {
         password: authForm.password,
         confirmPassword: authForm.confirmPassword,
       });
-      setAuthMessage(result.message || "Registration successful. Verify your email before login.");
-      setAuthHint(result.simulatedVerificationCode ? `Verification code: ${result.simulatedVerificationCode}` : "");
-      setVerifyForm({ email: authForm.email, code: result.simulatedVerificationCode || "" });
-      setAuthView("verify");
-      setAuthForm({ ...authForm, password: "", confirmPassword: "" });
-    } catch (err) {
-      setAuthMessage(err.message);
-    }
-  }
-
-  async function onVerifyEmail(e) {
-    e.preventDefault();
-    setAuthMessage("");
-    try {
-      await api.verifyEmail(verifyForm);
-      setAuthMessage("Email verified. You can now sign in.");
+      setAuthMessage(result.message || "Registration successful. You can now sign in.");
       setAuthHint("");
       setAuthView("login");
+      setAuthForm({ ...authForm, password: "", confirmPassword: "" });
     } catch (err) {
       setAuthMessage(err.message);
     }
@@ -122,8 +108,11 @@ export default function AuthPage({ onLoginSuccess, currentYear }) {
   return (
     <div className="app-shell">
       <header className="hero">
-        <h1>Bank of Fiji Online Banking</h1>
-        <p>{authView === "login" ? "Sign in to access your banking dashboard." : "Create your online banking account."}</p>
+        <BankBrand
+          className="auth-hero-brand"
+          title="Bank of Fiji"
+          subtitle={authView === "login" ? "Sign in to access your banking dashboard." : "Create your online banking account."}
+        />
       </header>
       <section className="panel-grid">
         <article className="panel auth-card">
@@ -154,18 +143,20 @@ export default function AuthPage({ onLoginSuccess, currentYear }) {
                 <button type="submit" className="btn-primary">Sign In</button>
               </form>
               {authMessage && <p className={authMessage.startsWith("Registration") ? "status ok" : "status error"}>{authMessage}</p>}
-              <p className="auth-switch">
-                Don&apos;t have an account?{" "}
-                <button type="button" className="link-btn" onClick={() => onAuthViewChange("register")}>
-                  Register here
-                </button>
-              </p>
-              <p className="auth-switch">
-                Forgot your password?{" "}
-                <button type="button" className="link-btn" onClick={() => onAuthViewChange("forgot")}>
-                  Reset it here
-                </button>
-              </p>
+              <div className="auth-switch-row">
+                <p className="auth-switch">
+                  Don&apos;t have an account?{" "}
+                  <button type="button" className="link-btn" onClick={() => onAuthViewChange("register")}>
+                    Register here
+                  </button>
+                </p>
+                <p className="auth-switch">
+                  Forgot your password?{" "}
+                  <button type="button" className="link-btn" onClick={() => onAuthViewChange("forgot")}>
+                    Reset it here
+                  </button>
+                </p>
+              </div>
             </>
           ) : authView === "register" ? (
             <>
@@ -229,38 +220,6 @@ export default function AuthPage({ onLoginSuccess, currentYear }) {
                 Already have an account?{" "}
                 <button type="button" className="link-btn" onClick={() => onAuthViewChange("login")}>
                   Sign in here
-                </button>
-              </p>
-            </>
-          ) : authView === "verify" ? (
-            <>
-              <h2>Verify Email</h2>
-              <form onSubmit={onVerifyEmail}>
-                <label>
-                  Email Address
-                  <input
-                    type="email"
-                    value={verifyForm.email}
-                    onChange={(e) => setVerifyForm({ ...verifyForm, email: e.target.value })}
-                    required
-                  />
-                </label>
-                <label>
-                  Verification Code
-                  <input
-                    value={verifyForm.code}
-                    onChange={(e) => setVerifyForm({ ...verifyForm, code: e.target.value })}
-                    required
-                  />
-                </label>
-                <button type="submit" className="btn-primary">Verify Email</button>
-              </form>
-              {authMessage && <p className="status error">{authMessage}</p>}
-              {authHint && <p className="otp-notice">{authHint}</p>}
-              <p className="auth-switch">
-                Back to{" "}
-                <button type="button" className="link-btn" onClick={() => onAuthViewChange("login")}>
-                  Sign in
                 </button>
               </p>
             </>

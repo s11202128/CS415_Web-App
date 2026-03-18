@@ -2,7 +2,6 @@ const express = require("express");
 const jwt = require("jsonwebtoken");
 const {
   registerUser,
-  verifyEmail,
   loginUser,
   verifyAdminCredentials,
   requestPasswordReset,
@@ -25,15 +24,6 @@ router.post("/register", async (req, res) => {
   try {
     const result = await registerUser(req.body || {});
     res.status(201).json(result);
-  } catch (err) {
-    res.status(400).json({ error: err.message });
-  }
-});
-
-router.post("/auth/verify-email", async (req, res) => {
-  try {
-    const result = await verifyEmail(req.body || {});
-    res.json(result);
   } catch (err) {
     res.status(400).json({ error: err.message });
   }

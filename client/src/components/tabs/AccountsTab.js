@@ -46,11 +46,12 @@ export default function AccountsTab({
   const getAccountTypeDescription = (type) => {
     switch (type) {
       case "Simple Access":
+      case "Cheque":
         return {
-          desc: "Basic daily banking account",
+          desc: "Everyday transaction account for payments and transfers",
           fee: "FJD 2.50/month",
           interest: "None",
-          bestFor: "General spending & savings",
+          bestFor: "Daily transactions and cheque access",
         };
       case "Savings":
         return {
@@ -107,7 +108,7 @@ export default function AccountsTab({
               onChange={(e) => setNewAccountForm({ ...newAccountForm, type: e.target.value })}
               required
             >
-              <option value="Simple Access">Simple Access</option>
+              <option value="Simple Access">Cheque</option>
               <option value="Savings">Savings</option>
             </select>
           </label>
@@ -164,7 +165,7 @@ export default function AccountsTab({
                     <td>{a.accountHolder || currentUser?.fullName || "N/A"}</td>
                     <td>
                       <div>
-                        <strong>{a.type}</strong>
+                        <strong>{a.type === "Simple Access" ? "Cheque" : a.type}</strong>
                         <p className="hint">{typeInfo.desc}</p>
                       </div>
                     </td>
@@ -196,7 +197,7 @@ export default function AccountsTab({
       <article className="panel wide">
         <h2>Account Types Explained</h2>
         <div className="account-types-grid">
-          {["Simple Access", "Savings"].map((type) => {
+          {["Cheque", "Savings"].map((type) => {
             const info = getAccountTypeDescription(type);
             return (
               <div key={type} className="account-type-card">
@@ -219,7 +220,7 @@ export default function AccountsTab({
       <article className="panel">
         <h2>Account Management Tips</h2>
         <ul className="tips-list">
-          <li><strong>Simple Access:</strong> Pay FJD 2.50 per month for instant access to funds.</li>
+          <li><strong>Cheque Account:</strong> Pay FJD 2.50 per month for instant access to funds.</li>
           <li><strong>Savings Account:</strong> Earn 3.25% annual interest on your balance.</li>
           <li><strong>Multiple Accounts:</strong> You can open multiple accounts for organization.</li>
           <li><strong>Transfers:</strong> Move money between your own accounts instantly.</li>

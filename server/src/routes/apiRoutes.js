@@ -561,6 +561,46 @@ router.post("/transfer", requireAuth, asyncHandler(async (req, res) => {
   res.json({ highValueThreshold: getHighValueTransferThreshold(), ...result });
 }));
 
+router.post("/transfers/validate-destination", requireAuth, asyncHandler(async (req, res) => {
+  const payload = req.body || {};
+  const accountNumber = String(payload.toAccountNumber || "").trim();
+  const fromAccountId = Number(payload.fromAccountId || 0);
+
+  if (!fromAccountId) {
+    return res.status(400).json({ error: "fromAccountId is required" });
+  }
+  if (!/^\d{12}$/.test(accountNumber)) {
+    return res.status(400).json({ error: "Destination account number must be 12 digits" });
+  }
+
+  const fromAccount = await Account.findByPk(fromAccountId);
+  if (!fromAccount) {
+    return res.status(404).json({ error: "Source account not found" });
+  }
+  if (!isAdmin(req) && fromAccount.customerId !== getAuthenticatedCustomerId(req)) {
+    return res.status(403).json({ error: "Forbidden" });
+  }
+
+  const destination = await Account.findOne({
+    where: { accountNumber },
+    include: [{ model: Customer, attributes: ["id", "fullName"] }],
+  });
+
+  if (!destination) {
+    return res.status(404).json({ error: "Destination account not found" });
+  }
+  if (destination.id === fromAccount.id) {
+    return res.status(400).json({ error: "Destination account must be different from source account" });
+  }
+
+  res.json({
+    accountId: destination.id,
+    accountNumber: destination.accountNumber,
+    customerId: destination.customerId,
+    customerName: destination.Customer?.fullName || destination.accountHolder || "Unknown customer",
+  });
+}));
+
 router.post("/otp/send", requireAuth, asyncHandler(async (req, res) => {
   const payload = req.body || {};
   const transferPayload = payload.transaction || payload;

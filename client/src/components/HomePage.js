@@ -1,67 +1,53 @@
-export default function HomePage({
-  accounts,
-  totalBalance,
-  selectedAccountForTx,
-  setSelectedAccountForTx,
-  transactions,
-}) {
-  const selectedAccount = accounts.find((a) => String(a.id) === String(selectedAccountForTx));
+function formatLastUpdated(value) {
+  const date = value ? new Date(value) : new Date();
+  return date.toLocaleString("en-FJ", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+function formatCif(currentUser) {
+  const raw = currentUser?.customerId || currentUser?.userId || currentUser?.id || "";
+  return String(raw).padStart(7, "0");
+}
+
+export default function HomePage({ totalBalance, currentUser, lastUpdatedAt, onRefreshOverview, isRefreshing }) {
+  const displayName = (currentUser?.fullName || "Customer").toUpperCase();
+  const currentDate = new Date().toLocaleDateString("en-FJ", {
+    weekday: "long",
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  });
 
   return (
-    <section className="panel-grid">
-      <article className="panel">
-        <h2>My Accounts</h2>
-        <p className="metric">{accounts.length}</p>
-      </article>
-      <article className="panel">
-        <h2>Portfolio Balance</h2>
-        <p className="metric">FJD {totalBalance.toFixed(2)}</p>
-      </article>
-      <article className="panel">
-        <h2>Individual Account Balance</h2>
-        <label>
-          Choose Account
-          <select value={selectedAccountForTx} onChange={(e) => setSelectedAccountForTx(e.target.value)}>
-            {accounts.map((a) => (
-              <option key={a.id} value={a.id}>
-                {(a.accountNumber || `ID ${a.id}`)} ({a.type})
-              </option>
-            ))}
-          </select>
-        </label>
-        <p className="metric">FJD {selectedAccount ? Number(selectedAccount.balance || 0).toFixed(2) : "0.00"}</p>
-        <p className="hint">Showing current saved balance for selected account.</p>
+    <section className="overview-shell">
+      <article className="panel overview-header-card">
+        <div className="overview-header">
+          <div>
+            <p className="overview-date">{currentDate}</p>
+            <h2 className="overview-name">{displayName}</h2>
+          </div>
+
+          <div className="overview-meta">
+            <span>Last update {formatLastUpdated(lastUpdatedAt)}</span>
+            <button type="button" className="link-btn overview-refresh" onClick={onRefreshOverview} disabled={isRefreshing}>
+              {isRefreshing ? "Updating..." : "Update now"}
+            </button>
+            <p className="overview-cif">CIF: {formatCif(currentUser)}</p>
+          </div>
+        </div>
       </article>
 
-      <article className="panel wide">
-        <h2>My Activity Overview</h2>
-        <table>
-          <thead>
-            <tr>
-              <th>Time</th>
-              <th>Account</th>
-              <th>Type</th>
-              <th>Amount</th>
-              <th>Description</th>
-            </tr>
-          </thead>
-          <tbody>
-            {transactions.map((t) => (
-              <tr key={t.id}>
-                <td>{new Date(t.createdAt).toLocaleString()}</td>
-                <td>{t.accountId}</td>
-                <td>{t.kind}</td>
-                <td>FJD {t.amount.toFixed(2)}</td>
-                <td>{t.description}</td>
-              </tr>
-            ))}
-            {transactions.length === 0 && (
-              <tr>
-                <td colSpan="5" className="no-data">No account activity available yet.</td>
-              </tr>
-            )}
-          </tbody>
-        </table>
+      <article className="panel overview-balance-card">
+        <div className="overview-balance-icon" aria-hidden="true">$</div>
+        <div className="overview-balance-content">
+          <p className="overview-balance-label">Total balance by currency</p>
+          <h2 className="overview-balance-value">{totalBalance.toFixed(2)} FJD</h2>
+        </div>
       </article>
     </section>
   );
