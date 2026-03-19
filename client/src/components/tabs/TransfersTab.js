@@ -196,35 +196,24 @@ export default function TransfersTab({
   }
 
   return (
-    <section className="transfers-shell">
-      <article className="panel transfers-menu-panel">
-        <button type="button" className="transfers-header" onClick={() => setOpen((current) => !current)}>
-          <h2>My Transfers</h2>
-          <span className={open ? "transfers-arrow is-open" : "transfers-arrow"}>⌄</span>
-        </button>
+    <section className="panel-grid">
+      <article className="panel wide">
+        {/* Horizontal transfer type tab bar */}
+        <nav className="acct-tab-bar">
+          {TRANSFER_OPTIONS.map((option) => (
+            <button
+              key={option.id}
+              type="button"
+              className={`acct-tab-btn${option.id === activeOption ? " active" : ""}`}
+              onClick={() => setActiveOption(option.id)}
+            >
+              {option.label}
+            </button>
+          ))}
+        </nav>
 
-        {open && (
-          <div className="transfers-list" role="listbox" aria-label="Transfer options">
-            {TRANSFER_OPTIONS.map((option) => (
-              <button
-                key={option.id}
-                type="button"
-                className={option.id === activeOption ? "transfer-item is-active" : "transfer-item"}
-                onClick={() => setActiveOption(option.id)}
-              >
-                <span>{option.label}</span>
-                {option.id === activeOption && <span className="transfer-item__chevron">›</span>}
-              </button>
-            ))}
-          </div>
-        )}
-      </article>
-
-      <article className="panel transfers-detail-panel">
-        <div className="transfers-detail-head">
-          <h2>{activeTransferOption.label}</h2>
-          <p className="hint">{activeTransferOption.description}</p>
-        </div>
+        <div className="acct-tab-body">
+          <p className="hint transfers-tab-desc">{activeTransferOption.description}</p>
 
         {showTransferForm ? (
           <form onSubmit={onInitiateTransfer}>
@@ -410,8 +399,8 @@ export default function TransfersTab({
             </p>
           </div>
         )}
+        </div>
       </article>
-
     </section>
   );
 }

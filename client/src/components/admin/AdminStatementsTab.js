@@ -1,9 +1,9 @@
-export default function AdminStatementsTab({ statementRequests, onAdminUpdateStatementRequest }) {
+export default function AdminStatementsTab({ statementRequests }) {
   return (
     <section className="panel-grid">
       <article className="panel wide">
-        <h3>Statement Request Approval Queue</h3>
-        <p className="hint">Approve requests before customers can view or download statements.</p>
+        <h3>Statement Request Log</h3>
+        <p className="hint">Requests are immediately available to users and no admin approval is required.</p>
         <table>
           <thead>
             <tr>
@@ -14,7 +14,6 @@ export default function AdminStatementsTab({ statementRequests, onAdminUpdateSta
               <th>From</th>
               <th>To</th>
               <th>Status</th>
-              <th>Actions</th>
             </tr>
           </thead>
           <tbody>
@@ -27,18 +26,11 @@ export default function AdminStatementsTab({ statementRequests, onAdminUpdateSta
                 <td>{request.fromDate}</td>
                 <td>{request.toDate}</td>
                 <td>{request.status}</td>
-                <td>
-                  <div className="inline-controls">
-                    <button type="button" onClick={() => onAdminUpdateStatementRequest(request.id, "approved")}>Approve</button>
-                    <button type="button" onClick={() => onAdminUpdateStatementRequest(request.id, "rejected")}>Reject</button>
-                    <button type="button" onClick={() => onAdminUpdateStatementRequest(request.id, "pending")}>Reset</button>
-                  </div>
-                </td>
               </tr>
             ))}
             {statementRequests.length === 0 && (
               <tr>
-                <td colSpan="8" className="no-data">No statement requests yet.</td>
+                <td colSpan="7" className="no-data">No statement requests yet.</td>
               </tr>
             )}
           </tbody>

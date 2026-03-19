@@ -913,7 +913,9 @@ router.post("/statements/request", requireAuth, asyncHandler(async (req, res) =>
     accountNumber: payload.accountNumber || account.accountNumber,
     fromDate,
     toDate,
-    status: "pending",
+    status: "approved",
+    reviewedBy: "system",
+    reviewedAt: new Date(),
   });
 
   res.status(201).json(toStatementRequestResponse(requestRow));
@@ -968,7 +970,7 @@ router.patch("/admin/statement-requests/:id", requireAuth, requireAdmin, asyncHa
   res.json(toStatementRequestResponse(requestRow));
 }));
 
-async function resolveApprovedStatementRequest(req, res) {
+async function resolveStatementRequest(req, res) {
   const requestId = Number(req.params.requestId);
   if (!Number.isFinite(requestId) || requestId <= 0) {
     res.status(400).json({ error: "Valid requestId is required" });
@@ -986,16 +988,11 @@ async function resolveApprovedStatementRequest(req, res) {
     return null;
   }
 
-  if (requestRow.status !== "approved") {
-    res.status(403).json({ error: "Statement request is not approved yet" });
-    return null;
-  }
-
   return requestRow;
 }
 
 router.get("/statements/request/:requestId", requireAuth, asyncHandler(async (req, res) => {
-  const requestRow = await resolveApprovedStatementRequest(req, res);
+  const requestRow = await resolveStatementRequest(req, res);
   if (!requestRow) {
     return;
   }
@@ -1004,7 +1001,7 @@ router.get("/statements/request/:requestId", requireAuth, asyncHandler(async (re
 }));
 
 router.get("/statements/request/:requestId/download", requireAuth, asyncHandler(async (req, res) => {
-  const requestRow = await resolveApprovedStatementRequest(req, res);
+  const requestRow = await resolveStatementRequest(req, res);
   if (!requestRow) {
     return;
   }
@@ -1038,19 +1035,6 @@ router.get("/statements/:accountId", requireAuth, asyncHandler(async (req, res) 
     return res.status(403).json({ error: "Forbidden" });
   }
 
-  const approvedRequest = await StatementRequest.findOne({
-    where: {
-      accountId,
-      status: "approved",
-      ...(isAdmin(req) ? {} : { customerId: getAuthenticatedCustomerId(req) }),
-    },
-    order: [["reviewedAt", "DESC"]],
-  });
-
-  if (!approvedRequest) {
-    return res.status(403).json({ error: "Statement request has not been approved for this account" });
-  }
-
   const rows = await generateStatement(accountId, req.query.from, req.query.to);
   res.json(rows);
 }));
@@ -1068,19 +1052,6 @@ router.get("/statements/:accountId/download", requireAuth, asyncHandler(async (r
 
   if (!isAdmin(req) && account.customerId !== getAuthenticatedCustomerId(req)) {
     return res.status(403).json({ error: "Forbidden" });
-  }
-
-  const approvedRequest = await StatementRequest.findOne({
-    where: {
-      accountId,
-      status: "approved",
-      ...(isAdmin(req) ? {} : { customerId: getAuthenticatedCustomerId(req) }),
-    },
-    order: [["reviewedAt", "DESC"]],
-  });
-
-  if (!approvedRequest) {
-    return res.status(403).json({ error: "Statement request has not been approved for this account" });
   }
 
   const rows = await generateStatement(accountId, req.query.from, req.query.to);

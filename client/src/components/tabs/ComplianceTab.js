@@ -1,3 +1,5 @@
+import { useState } from "react";
+
 export default function ComplianceTab({
   interestRate,
   setInterestRate,
@@ -19,11 +21,21 @@ export default function ComplianceTab({
   );
 
   const residenceStatus = (status) => status === "resident" ? "🏠 Resident" : "🌍 Non-Resident";
+  const [activeSection, setActiveSection] = useState("Interest Rate");
 
   return (
     <section className="panel-grid">
-      <article className="panel">
-        <h2>📊 Reserve Bank Interest Rate</h2>
+      <article className="panel wide">
+        <nav className="acct-tab-bar">
+          {["Interest Rate", "Tax Reports", "Tax Info", "Year Summary", "Tax Table", "Guidelines"].map((s) => (
+            <button key={s} type="button" className={`acct-tab-btn${activeSection === s ? " active" : ""}`} onClick={() => setActiveSection(s)}>{s}</button>
+          ))}
+        </nav>
+        <div className="acct-tab-body">
+
+          {activeSection === "Interest Rate" && (
+            <>
+              <h2>📊 Reserve Bank Interest Rate</h2>
         <form onSubmit={onUpdateRate}>
           <label>
             Minimum Savings Interest Rate (decimal)
@@ -40,10 +52,12 @@ export default function ComplianceTab({
           </p>
           <button type="submit">✓ Update Rate</button>
         </form>
-      </article>
+            </>
+          )}
 
-      <article className="panel">
-        <h2>📋 Generate Tax Reports</h2>
+          {activeSection === "Tax Reports" && (
+            <>
+              <h2>📋 Generate Tax Reports</h2>
         <label>
           Fiscal Year
           <input type="number" value={summaryYear} onChange={(e) => setSummaryYear(e.target.value)} />
@@ -59,10 +73,12 @@ export default function ComplianceTab({
             {complianceMessage}
           </p>
         )}
-      </article>
+            </>
+          )}
 
-      <article className="panel">
-        <h2>🧮 Tax Calculation Info</h2>
+          {activeSection === "Tax Info" && (
+            <>
+              <h2>🧮 Tax Calculation Info</h2>
         <div className="tax-info">
           <div className="tax-rule">
             <strong>Withholding Tax Rate:</strong> 15% of gross interest
@@ -77,11 +93,13 @@ export default function ComplianceTab({
             <strong>Calculation:</strong> Gross Interest × 15% = Withholding Tax
           </div>
         </div>
-      </article>
+            </>
+          )}
 
-      {summaries.length > 0 && (
-        <article className="panel">
-          <h2>💰 Year {summaryYear} Summary</h2>
+          {activeSection === "Year Summary" && (
+            <>
+              <h2>💰 Year {summaryYear} Summary</h2>
+              {summaries.length > 0 ? (
           <div className="summary-container">
             <div className="summary-stat">
               <span className="stat-label">Total Gross Interest:</span>
@@ -100,11 +118,15 @@ export default function ComplianceTab({
               <span className="stat-value">{summaries.length}</span>
             </div>
           </div>
-        </article>
-      )}
+              ) : (
+                <p className="no-data">Generate tax reports first to see the year summary.</p>
+              )}
+            </>
+          )}
 
-      <article className="panel wide">
-        <h2>📊 Interest Summaries & Tax Reports</h2>
+          {activeSection === "Tax Table" && (
+            <>
+              <h2>📊 Interest Summaries & Tax Reports</h2>
         {summaries.length === 0 ? (
           <div className="no-data">
             No summaries generated yet. Click "Generate + Submit to FRCS" to create year-end interest reports.
@@ -145,10 +167,12 @@ export default function ComplianceTab({
             </table>
           </div>
         )}
-      </article>
+            </>
+          )}
 
-      <article className="panel wide">
-        <h2>📖 Tax Compliance Guidelines</h2>
+          {activeSection === "Guidelines" && (
+            <>
+              <h2>📖 Tax Compliance Guidelines</h2>
         <div className="compliance-guide">
           <section className="guide-section">
             <h3>Non-Resident Withholding Tax</h3>
@@ -212,6 +236,10 @@ export default function ComplianceTab({
               </li>
             </ul>
           </section>
+        </div>
+            </>
+          )}
+
         </div>
       </article>
     </section>

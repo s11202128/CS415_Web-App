@@ -1,3 +1,10 @@
+function getGreeting() {
+  const hour = new Date().getHours();
+  if (hour < 12) return "Good morning";
+  if (hour < 17) return "Good afternoon";
+  return "Good evening";
+}
+
 function formatLastUpdated(value) {
   const date = value ? new Date(value) : new Date();
   return date.toLocaleString("en-FJ", {
@@ -16,6 +23,8 @@ function formatCif(currentUser) {
 
 export default function HomePage({ totalBalance, currentUser, lastUpdatedAt, onRefreshOverview, isRefreshing }) {
   const displayName = (currentUser?.fullName || "Customer").toUpperCase();
+  const firstName = (currentUser?.fullName || "Customer").split(" ")[0];
+  const greeting = getGreeting();
   const currentDate = new Date().toLocaleDateString("en-FJ", {
     weekday: "long",
     year: "numeric",
@@ -29,7 +38,7 @@ export default function HomePage({ totalBalance, currentUser, lastUpdatedAt, onR
         <div className="overview-header">
           <div>
             <p className="overview-date">{currentDate}</p>
-            <h2 className="overview-name">{displayName}</h2>
+            <p className="overview-welcome">{greeting}, {firstName}!</p>
           </div>
 
           <div className="overview-meta">

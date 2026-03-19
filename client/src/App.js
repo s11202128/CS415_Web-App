@@ -289,7 +289,7 @@ export default function App() {
     };
   }, [showAdmin, currentUser?.isAdmin, adminAccessGranted, selectedAccountForTx, accounts]);
 
-  const totalBalance = accounts.reduce((sum, a) => sum + a.balance, 0);
+  const totalBalance = accounts.filter(a => a.status === "active").reduce((sum, a) => sum + a.balance, 0);
   const currentYear = new Date().getFullYear();
 
   // ── Auth gate ────────────────────────────────────────────────────────────
@@ -392,7 +392,7 @@ export default function App() {
   async function onSubmitStatementRequest(payload) {
     try {
       await api.createStatementRequest(payload);
-      setStatementMessage("Statement request submitted. Status: pending admin approval.");
+      setStatementMessage("Statement request submitted. You can view it immediately.");
       await loadInitialData();
       setStatementRows([]);
       setStatementRequested(false);
@@ -406,7 +406,7 @@ export default function App() {
       const rows = await api.getStatementByRequest(requestId);
       setStatementRows(rows);
       setStatementRequested(true);
-      setStatementMessage("Statement approved and loaded.");
+      setStatementMessage("Statement loaded.");
     } catch (err) {
       setStatementMessage(err.message);
     }
