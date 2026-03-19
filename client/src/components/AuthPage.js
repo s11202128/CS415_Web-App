@@ -2,6 +2,21 @@ import { useState } from "react";
 import { api, setToken } from "../api";
 import BankBrand from "./BankBrand";
 
+function EyeIcon({ open }) {
+  return open ? (
+    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+      <circle cx="12" cy="12" r="3"/>
+    </svg>
+  ) : (
+    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/>
+      <path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/>
+      <line x1="1" y1="1" x2="23" y2="23"/>
+    </svg>
+  );
+}
+
 export default function AuthPage({ onLoginSuccess, currentYear }) {
   const [authView, setAuthView] = useState("login");
   const [authForm, setAuthForm] = useState({
@@ -14,6 +29,11 @@ export default function AuthPage({ onLoginSuccess, currentYear }) {
   const [resetForm, setResetForm] = useState({ email: "", resetId: "", code: "", newPassword: "", confirmPassword: "" });
   const [authMessage, setAuthMessage] = useState("");
   const [authHint, setAuthHint] = useState("");
+  const [showPw, setShowPw] = useState({});
+
+  function togglePw(key) {
+    setShowPw((prev) => ({ ...prev, [key]: !prev[key] }));
+  }
 
   function onAuthViewChange(view) {
     setAuthView(view);
@@ -132,30 +152,31 @@ export default function AuthPage({ onLoginSuccess, currentYear }) {
                 </label>
                 <label>
                   Password
-                  <input
-                    type="password"
-                    value={authForm.password}
-                    onChange={(e) => setAuthForm({ ...authForm, password: e.target.value })}
-                    required
-                    autoComplete="current-password"
-                  />
+                  <div className="pw-wrap">
+                    <input
+                      type={showPw.loginPw ? "text" : "password"}
+                      value={authForm.password}
+                      onChange={(e) => setAuthForm({ ...authForm, password: e.target.value })}
+                      required
+                      autoComplete="current-password"
+                    />
+                    <button type="button" className="pw-toggle" onClick={() => togglePw("loginPw")} aria-label={showPw.loginPw ? "Hide password" : "Show password"}>
+                      <EyeIcon open={showPw.loginPw} />
+                    </button>
+                  </div>
                 </label>
                 <button type="submit" className="btn-primary">Sign In</button>
               </form>
               {authMessage && <p className={authMessage.startsWith("Registration") ? "status ok" : "status error"}>{authMessage}</p>}
               <div className="auth-switch-row">
-                <p className="auth-switch">
-                  Don&apos;t have an account?{" "}
-                  <button type="button" className="link-btn" onClick={() => onAuthViewChange("register")}>
-                    Register here
-                  </button>
-                </p>
-                <p className="auth-switch">
-                  Forgot your password?{" "}
-                  <button type="button" className="link-btn" onClick={() => onAuthViewChange("forgot")}>
-                    Reset it here
-                  </button>
-                </p>
+                <button type="button" className="auth-action-row" onClick={() => onAuthViewChange("register")}>
+                  <span className="auth-action-row__label">New customer?</span>
+                  <span className="auth-action-row__cta">Create an account <span className="auth-action-row__arrow">&#8594;</span></span>
+                </button>
+                <button type="button" className="auth-action-row" onClick={() => onAuthViewChange("forgot")}>
+                  <span className="auth-action-row__label">Forgot your password?</span>
+                  <span className="auth-action-row__cta">Recover access <span className="auth-action-row__arrow">&#8594;</span></span>
+                </button>
               </div>
             </>
           ) : authView === "register" ? (
@@ -193,24 +214,34 @@ export default function AuthPage({ onLoginSuccess, currentYear }) {
                 </label>
                 <label>
                   Password <span className="hint-inline">(min 8 characters)</span>
-                  <input
-                    type="password"
-                    value={authForm.password}
-                    onChange={(e) => setAuthForm({ ...authForm, password: e.target.value })}
-                    required
-                    minLength={8}
-                    autoComplete="new-password"
-                  />
+                  <div className="pw-wrap">
+                    <input
+                      type={showPw.regPw ? "text" : "password"}
+                      value={authForm.password}
+                      onChange={(e) => setAuthForm({ ...authForm, password: e.target.value })}
+                      required
+                      minLength={8}
+                      autoComplete="new-password"
+                    />
+                    <button type="button" className="pw-toggle" onClick={() => togglePw("regPw")} aria-label={showPw.regPw ? "Hide password" : "Show password"}>
+                      <EyeIcon open={showPw.regPw} />
+                    </button>
+                  </div>
                 </label>
                 <label>
                   Confirm Password
-                  <input
-                    type="password"
-                    value={authForm.confirmPassword}
-                    onChange={(e) => setAuthForm({ ...authForm, confirmPassword: e.target.value })}
-                    required
-                    autoComplete="new-password"
-                  />
+                  <div className="pw-wrap">
+                    <input
+                      type={showPw.regConfirm ? "text" : "password"}
+                      value={authForm.confirmPassword}
+                      onChange={(e) => setAuthForm({ ...authForm, confirmPassword: e.target.value })}
+                      required
+                      autoComplete="new-password"
+                    />
+                    <button type="button" className="pw-toggle" onClick={() => togglePw("regConfirm")} aria-label={showPw.regConfirm ? "Hide password" : "Show password"}>
+                      <EyeIcon open={showPw.regConfirm} />
+                    </button>
+                  </div>
                 </label>
                 <button type="submit" className="btn-primary">Create Account</button>
               </form>
@@ -278,21 +309,31 @@ export default function AuthPage({ onLoginSuccess, currentYear }) {
                 </label>
                 <label>
                   New Password
-                  <input
-                    type="password"
-                    value={resetForm.newPassword}
-                    onChange={(e) => setResetForm({ ...resetForm, newPassword: e.target.value })}
-                    required
-                  />
+                  <div className="pw-wrap">
+                    <input
+                      type={showPw.resetNewPw ? "text" : "password"}
+                      value={resetForm.newPassword}
+                      onChange={(e) => setResetForm({ ...resetForm, newPassword: e.target.value })}
+                      required
+                    />
+                    <button type="button" className="pw-toggle" onClick={() => togglePw("resetNewPw")} aria-label={showPw.resetNewPw ? "Hide password" : "Show password"}>
+                      <EyeIcon open={showPw.resetNewPw} />
+                    </button>
+                  </div>
                 </label>
                 <label>
                   Confirm New Password
-                  <input
-                    type="password"
-                    value={resetForm.confirmPassword}
-                    onChange={(e) => setResetForm({ ...resetForm, confirmPassword: e.target.value })}
-                    required
-                  />
+                  <div className="pw-wrap">
+                    <input
+                      type={showPw.resetConfirm ? "text" : "password"}
+                      value={resetForm.confirmPassword}
+                      onChange={(e) => setResetForm({ ...resetForm, confirmPassword: e.target.value })}
+                      required
+                    />
+                    <button type="button" className="pw-toggle" onClick={() => togglePw("resetConfirm")} aria-label={showPw.resetConfirm ? "Hide password" : "Show password"}>
+                      <EyeIcon open={showPw.resetConfirm} />
+                    </button>
+                  </div>
                 </label>
                 <button type="submit" className="btn-primary">Reset Password</button>
               </form>

@@ -1,18 +1,20 @@
 import { useState } from "react";
 import { api } from "../../api";
 
+const ACCOUNT_SECTIONS = ["Summary", "My Accounts", "Open Account", "Account Types", "Tips"];
+
 export default function AccountsTab({
   accounts,
   currentUser,
   accountMessage,
   setAccountMessage,
 }) {
+  const [activeSection, setActiveSection] = useState("Summary");
   const [newAccountForm, setNewAccountForm] = useState({
     type: "Savings",
     openingBalance: "0",
     accountNumber: "",
   });
-  const [activeView, setActiveView] = useState("create");
 
   const activeCustomerId = currentUser?.customerId || currentUser?.userId || currentUser?.id || "";
 
@@ -68,7 +70,7 @@ export default function AccountsTab({
 
   const accountStats = userAccounts.reduce(
     (acc, a) => ({
-      total: acc.total + a.balance,
+      total: acc.total + (a.status === "active" ? a.balance : 0),
       count: acc.count + 1,
     }),
     { total: 0, count: 0 }
@@ -77,118 +79,44 @@ export default function AccountsTab({
   return (
     <section className="panel-grid">
       <article className="panel wide">
-        <div style={{ display: "flex", gap: "10px", marginBottom: "20px", alignItems: "center", flexWrap: "wrap" }}>
-          <button
-            type="button"
-            onClick={() => setActiveView("create")}
-            style={{
-              padding: "10px 20px",
-              backgroundColor: activeView === "create" ? "#0f6bcf" : "#e0e0e0",
-              color: activeView === "create" ? "white" : "black",
-              border: "none",
-              borderRadius: "4px",
-              cursor: "pointer",
-              fontWeight: "bold",
-            }}
-          >
-            Open New Account
-          </button>
-          <button
-            type="button"
-            onClick={() => setActiveView("myAccounts")}
-            style={{
-              padding: "10px 20px",
-              backgroundColor: activeView === "myAccounts" ? "#0f6bcf" : "#e0e0e0",
-              color: activeView === "myAccounts" ? "white" : "black",
-              border: "none",
-              borderRadius: "4px",
-              cursor: "pointer",
-              fontWeight: "bold",
-            }}
-          >
-            My Accounts
-          </button>
-          <button
-            type="button"
-            onClick={() => setActiveView("accountTypes")}
-            style={{
-              padding: "10px 20px",
-              backgroundColor: activeView === "accountTypes" ? "#0f6bcf" : "#e0e0e0",
-              color: activeView === "accountTypes" ? "white" : "black",
-              border: "none",
-              borderRadius: "4px",
-              cursor: "pointer",
-              fontWeight: "bold",
-            }}
-          >
-            Account Types
-          </button>
-          <button
-            type="button"
-            onClick={() => setActiveView("tips")}
-            style={{
-              padding: "10px 20px",
-              backgroundColor: activeView === "tips" ? "#0f6bcf" : "#e0e0e0",
-              color: activeView === "tips" ? "white" : "black",
-              border: "none",
-              borderRadius: "4px",
-              cursor: "pointer",
-              fontWeight: "bold",
-            }}
-          >
-            Management Tips
-          </button>
-        </div>
+        {/* Horizontal section switcher */}
+        <nav className="acct-tab-bar">
+          {ACCOUNT_SECTIONS.map((s) => (
+            <button
+              key={s}
+              type="button"
+              className={`acct-tab-btn${activeSection === s ? " active" : ""}`}
+              onClick={() => setActiveSection(s)}
+            >
+              {s}
+            </button>
+          ))}
+        </nav>
 
-        {activeView === "create" ? (
-          <>
-            <h2>Open New Account Request</h2>
-            <form className="admin-form" onSubmit={handleCreateAccount}>
-              <label>
-                Customer ID
-                <input value={activeCustomerId} readOnly />
-              </label>
-              <label>
-                Account Type
-                <select
-                  value={newAccountForm.type}
-                  onChange={(e) => setNewAccountForm({ ...newAccountForm, type: e.target.value })}
-                  required
-                >
-                  <option value="Simple Access">Cheque</option>
-                  <option value="Savings">Savings</option>
-                </select>
-              </label>
-              <label>
-                Opening Balance
-                <input
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  value={newAccountForm.openingBalance}
-                  onChange={(e) => setNewAccountForm({ ...newAccountForm, openingBalance: e.target.value })}
-                />
-              </label>
-              <label>
-                Account Number (optional — 12 digits)
-                <input
-                  value={newAccountForm.accountNumber}
-                  onChange={(e) => setNewAccountForm({ ...newAccountForm, accountNumber: e.target.value })}
-                  placeholder="Leave blank to auto-generate"
-                />
-              </label>
-              <button type="submit">Submit Request</button>
-            </form>
-            {accountMessage && (
-              <p className={`status ${accountMessage.includes("✅") ? "success" : "error"}`}>
-                {accountMessage}
-              </p>
-            )}
-          </>
-        ) : activeView === "myAccounts" ? (
-          <>
-            <h2>My Accounts</h2>
-            {userAccounts.length === 0 ? (
+        <div className="acct-tab-body">
+
+          {activeSection === "Summary" && (
+            <>
+              <div className="account-summary">
+                <div className="summary-item">
+                  <span className="label">Total Accounts:</span>
+                  <span className="value">{accountStats.count}</span>
+                </div>
+                <div className="summary-item">
+                  <span className="label">Combined Balance:</span>
+                  <span className="value highlight">FJD {accountStats.total.toFixed(2)}</span>
+                </div>
+                <div className="summary-item">
+                  <span className="label">Account Owner:</span>
+                  <span className="value">{currentUser?.fullName || "N/A"}</span>
+                </div>
+              </div>
+              <p className="hint">New account requests must be approved by admin before becoming active.</p>
+            </>
+          )}
+
+          {activeSection === "My Accounts" && (
+            userAccounts.length === 0 ? (
               <p className="no-data">You have no accounts yet. Open a new account to get started.</p>
             ) : (
               <table>
@@ -206,7 +134,6 @@ export default function AccountsTab({
                 <tbody>
                   {userAccounts.map((a) => {
                     const typeInfo = getAccountTypeDescription(a.type);
-                    const canViewBalance = ["active", "approved"].includes(String(a.status || "").toLowerCase());
                     return (
                       <tr key={a.id} className={`account-row account-${a.status}`}>
                         <td className="account-number">{a.accountNumber}</td>
@@ -218,7 +145,11 @@ export default function AccountsTab({
                           </div>
                         </td>
                         <td className="balance">
-                          <strong>{canViewBalance ? `FJD ${Number(a.balance).toFixed(2)}` : "Hidden until admin approval"}</strong>
+                          {a.status === "active" ? (
+                            <strong>FJD {Number(a.balance).toFixed(2)}</strong>
+                          ) : (
+                            <span className="balance-pending" title="Awaiting admin approval">—</span>
+                          )}
                         </td>
                         <td className="fee-interest">
                           <div>
@@ -239,11 +170,56 @@ export default function AccountsTab({
                   })}
                 </tbody>
               </table>
-            )}
-          </>
-        ) : activeView === "accountTypes" ? (
-          <>
-            <h2>Account Types Explained</h2>
+            )
+          )}
+
+          {activeSection === "Open Account" && (
+            <>
+              <form className="admin-form" onSubmit={handleCreateAccount}>
+                <label>
+                  Customer ID
+                  <input value={activeCustomerId} readOnly />
+                </label>
+                <label>
+                  Account Type
+                  <select
+                    value={newAccountForm.type}
+                    onChange={(e) => setNewAccountForm({ ...newAccountForm, type: e.target.value })}
+                    required
+                  >
+                    <option value="Simple Access">Cheque</option>
+                    <option value="Savings">Savings</option>
+                  </select>
+                </label>
+                <label>
+                  Opening Balance
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={newAccountForm.openingBalance}
+                    onChange={(e) => setNewAccountForm({ ...newAccountForm, openingBalance: e.target.value })}
+                  />
+                </label>
+                <label>
+                  Account Number (optional — 12 digits)
+                  <input
+                    value={newAccountForm.accountNumber}
+                    onChange={(e) => setNewAccountForm({ ...newAccountForm, accountNumber: e.target.value })}
+                    placeholder="Leave blank to auto-generate"
+                  />
+                </label>
+                <button type="submit">Submit Request</button>
+              </form>
+              {accountMessage && (
+                <p className={`status ${accountMessage.includes("✅") ? "success" : "error"}`}>
+                  {accountMessage}
+                </p>
+              )}
+            </>
+          )}
+
+          {activeSection === "Account Types" && (
             <div className="account-types-grid">
               {["Cheque", "Savings"].map((type) => {
                 const info = getAccountTypeDescription(type);
@@ -263,10 +239,9 @@ export default function AccountsTab({
                 );
               })}
             </div>
-          </>
-        ) : activeView === "tips" ? (
-          <>
-            <h2>Account Management Tips</h2>
+          )}
+
+          {activeSection === "Tips" && (
             <ul className="tips-list">
               <li><strong>Cheque Account:</strong> Pay FJD 2.50 per month for instant access to funds.</li>
               <li><strong>Savings Account:</strong> Earn 3.25% annual interest on your balance.</li>
@@ -274,8 +249,9 @@ export default function AccountsTab({
               <li><strong>Transfers:</strong> Move money between your own accounts instantly.</li>
               <li><strong>Account Number:</strong> Always required for receiving transfers from others.</li>
             </ul>
-          </>
-        ) : null}
+          )}
+
+        </div>
       </article>
     </section>
   );

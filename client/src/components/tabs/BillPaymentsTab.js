@@ -41,28 +41,14 @@ export default function BillPaymentsTab({
   return (
     <section className="panel-grid">
       <article className="panel wide">
-        <h2>Bill Payments</h2>
-        <div className="tabs" role="tablist" aria-label="Bill payment tabs">
-          <button
-            type="button"
-            className={activeBillTab === "pay" ? "tab active" : "tab"}
-            onClick={() => setActiveBillTab("pay")}
-          >
-            Pay a Bill
-          </button>
-          <button
-            type="button"
-            className={activeBillTab === "history" ? "tab active" : "tab"}
-            onClick={() => setActiveBillTab("history")}
-          >
-            Bill History
-          </button>
-        </div>
-      </article>
+        <nav className="acct-tab-bar">
+          <button type="button" className={`acct-tab-btn${activeBillTab === "pay" ? " active" : ""}`} onClick={() => setActiveBillTab("pay")}>Pay a Bill</button>
+          <button type="button" className={`acct-tab-btn${activeBillTab === "history" ? " active" : ""}`} onClick={() => setActiveBillTab("history")}>Bill History</button>
+        </nav>
 
-      {activeBillTab === "pay" ? (
-        <article className="panel wide">
-          <h2>Pay a Bill</h2>
+        <div className="acct-tab-body">
+        {activeBillTab === "pay" ? (
+          <>
           <form onSubmit={handleBillSubmit}>
             <label>
               Schedule Option
@@ -120,10 +106,9 @@ export default function BillPaymentsTab({
             </button>
           </form>
           <p className="status">{billMessage}</p>
-        </article>
-      ) : (
-        <article className="panel wide">
-          <h2>Bill History</h2>
+          </>
+        ) : (
+          <>
           <table>
             <thead>
               <tr>
@@ -161,8 +146,10 @@ export default function BillPaymentsTab({
             </tbody>
           </table>
           <p className="status">{billMessage}</p>
-        </article>
-      )}
+          </>
+        )}
+        </div>
+      </article>
     </section>
   );
 }

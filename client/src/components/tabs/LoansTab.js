@@ -10,61 +10,20 @@ export default function LoansTab({
   onSubmitLoan,
   loanMessage,
 }) {
-  const [activeView, setActiveView] = useState("apply");
+  const [activeSection, setActiveSection] = useState("Apply for Loan");
+
   return (
     <section className="panel-grid">
       <article className="panel wide">
-        <div style={{ display: "flex", gap: "10px", marginBottom: "20px", alignItems: "center" }}>
-          <button
-            type="button"
-            onClick={() => setActiveView("products")}
-            style={{
-              padding: "10px 20px",
-              backgroundColor: activeView === "products" ? "#0f6bcf" : "#e0e0e0",
-              color: activeView === "products" ? "white" : "black",
-              border: "none",
-              borderRadius: "4px",
-              cursor: "pointer",
-              fontWeight: "bold",
-            }}
-          >
-            Loan Products
-          </button>
-          <button
-            type="button"
-            onClick={() => setActiveView("apply")}
-            style={{
-              padding: "10px 20px",
-              backgroundColor: activeView === "apply" ? "#0f6bcf" : "#e0e0e0",
-              color: activeView === "apply" ? "white" : "black",
-              border: "none",
-              borderRadius: "4px",
-              cursor: "pointer",
-              fontWeight: "bold",
-            }}
-          >
-            Apply For Loan
-          </button>
-          <button
-            type="button"
-            onClick={() => setActiveView("applications")}
-            style={{
-              padding: "10px 20px",
-              backgroundColor: activeView === "applications" ? "#0f6bcf" : "#e0e0e0",
-              color: activeView === "applications" ? "white" : "black",
-              border: "none",
-              borderRadius: "4px",
-              cursor: "pointer",
-              fontWeight: "bold",
-            }}
-          >
-            My Loan Applications
-          </button>
-        </div>
+        <nav className="acct-tab-bar">
+          {["Loan Products", "Apply for Loan", "My Applications"].map((s) => (
+            <button key={s} type="button" className={`acct-tab-btn${activeSection === s ? " active" : ""}`} onClick={() => setActiveSection(s)}>{s}</button>
+          ))}
+        </nav>
 
-        {activeView === "products" ? (
-          <>
-            <h2>Loan Products (Website Advertisement)</h2>
+        <div className="acct-tab-body">
+
+          {activeSection === "Loan Products" && (
             <table>
               <thead>
                 <tr>
@@ -85,80 +44,56 @@ export default function LoansTab({
                 ))}
               </tbody>
             </table>
-          </>
-        ) : activeView === "apply" ? (
-          <>
-            <h2 className="loan-apply-title">Apply For Loan</h2>
-            <form className="loan-form-horizontal" onSubmit={onSubmitLoan}>
-              <label>
-                Customer
-                <select value={loanForm.customerId} onChange={(e) => setLoanForm({ ...loanForm, customerId: e.target.value })} required>
-                  <option value="">Select</option>
-                  {customers.map((c) => (
-                    <option key={c.id} value={c.id}>{c.fullName}</option>
-                  ))}
-                </select>
-              </label>
-              <label>
-                Loan Product
-                <select
-                  value={loanForm.loanProductId}
-                  onChange={(e) => setLoanForm({ ...loanForm, loanProductId: e.target.value })}
-                  required
-                >
-                  <option value="">Select</option>
-                  {loanProducts.map((lp) => (
-                    <option key={lp.id} value={lp.id}>{lp.name}</option>
-                  ))}
-                </select>
-              </label>
-              <label>
-                Requested Amount
-                <input
-                  type="number"
-                  min="1"
-                  value={loanForm.requestedAmount}
-                  onChange={(e) => setLoanForm({ ...loanForm, requestedAmount: e.target.value })}
-                  required
-                />
-              </label>
-              <label>
-                Term (months)
-                <input
-                  type="number"
-                  min="1"
-                  value={loanForm.termMonths}
-                  onChange={(e) => setLoanForm({ ...loanForm, termMonths: e.target.value })}
-                  required
-                />
-              </label>
-              <label>
-                Purpose
-                <input value={loanForm.purpose} onChange={(e) => setLoanForm({ ...loanForm, purpose: e.target.value })} required />
-              </label>
-              <label>
-                Monthly Income
-                <input
-                  type="number"
-                  min="0"
-                  value={loanForm.monthlyIncome}
-                  onChange={(e) => setLoanForm({ ...loanForm, monthlyIncome: e.target.value })}
-                />
-              </label>
-              <label>
-                Employment Status
-                <input
-                  value={loanForm.employmentStatus}
-                  onChange={(e) => setLoanForm({ ...loanForm, employmentStatus: e.target.value })}
-                />
-              </label>
-              <button type="submit">Submit Application</button>
-            </form>
-            <p className="status loan-apply-status">{loanMessage}</p>
-          </>
-        ) : (
-          <>
-            <h2>Submitted Loan Applications</h2>
+          )}
+
+          {activeSection === "Apply for Loan" && (
+            <>
+              <form className="loan-form-horizontal" onSubmit={onSubmitLoan}>
+                <label>
+                  Customer
+                  <select value={loanForm.customerId} onChange={(e) => setLoanForm({ ...loanForm, customerId: e.target.value })} required>
+                    <option value="">Select</option>
+                    {customers.map((c) => (
+                      <option key={c.id} value={c.id}>{c.fullName}</option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  Loan Product
+                  <select value={loanForm.loanProductId} onChange={(e) => setLoanForm({ ...loanForm, loanProductId: e.target.value })} required>
+                    <option value="">Select</option>
+                    {loanProducts.map((lp) => (
+                      <option key={lp.id} value={lp.id}>{lp.name}</option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  Requested Amount
+                  <input type="number" min="1" value={loanForm.requestedAmount} onChange={(e) => setLoanForm({ ...loanForm, requestedAmount: e.target.value })} required />
+                </label>
+                <label>
+                  Term (months)
+                  <input type="number" min="1" value={loanForm.termMonths} onChange={(e) => setLoanForm({ ...loanForm, termMonths: e.target.value })} required />
+                </label>
+                <label>
+                  Purpose
+                  <input value={loanForm.purpose} onChange={(e) => setLoanForm({ ...loanForm, purpose: e.target.value })} required />
+                </label>
+                <label>
+                  Monthly Income
+                  <input type="number" min="0" value={loanForm.monthlyIncome} onChange={(e) => setLoanForm({ ...loanForm, monthlyIncome: e.target.value })} />
+                </label>
+                <label>
+                  Employment Status
+                  <input value={loanForm.employmentStatus} onChange={(e) => setLoanForm({ ...loanForm, employmentStatus: e.target.value })} />
+                </label>
+                <button type="submit">Submit Application</button>
+              </form>
+              <p className="status loan-apply-status">{loanMessage}</p>
+            </>
+          )}
+
+          {activeSection === "My Applications" && (
             <table>
               <thead>
                 <tr>
@@ -183,8 +118,9 @@ export default function LoansTab({
                 ))}
               </tbody>
             </table>
-          </>
-        )}
+          )}
+
+        </div>
       </article>
     </section>
   );
