@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { api, setToken } from "./api";
 import { useAuth } from "./hooks/useAuth";
 import { useAdminPoll } from "./hooks/useAdminPoll";
@@ -94,6 +94,7 @@ export default function App() {
   const [adminAccountMessage, setAdminAccountMessage] = useState("");
   const [adminDepositForm, setAdminDepositForm] = useState({ accountId: "", amount: "", description: "" });
   const [adminDepositMessage, setAdminDepositMessage] = useState("");
+  const refreshPromiseRef = useRef(null);
 
   const customerMap = useMemo(() => {
     const map = {};
@@ -130,8 +131,16 @@ export default function App() {
     }));
   }, [customers, currentUser]);
 
-  async function loadInitialData() {
-    setLoading(true);
+  async function loadInitialData(options = {}) {
+    const { silent = false } = options;
+    if (refreshPromiseRef.current) {
+      return refreshPromiseRef.current;
+    }
+
+    const refreshTask = (async () => {
+    if (!silent) {
+      setLoading(true);
+    }
     setError("");
     try {
       const [customerRows, accountRows, scheduled, billHistoryRows, products, apps, invs, rate, sumRows, statementRequestRows] = await Promise.all([
@@ -239,9 +248,36 @@ export default function App() {
       console.error("loadInitialData error:", err);
       setError(String(err?.message || err || "Failed to load data"));
     } finally {
-      setLoading(false);
+      if (!silent) {
+        setLoading(false);
+      }
+    }
+    })();
+
+    refreshPromiseRef.current = refreshTask;
+    try {
+      return await refreshTask;
+    } finally {
+      if (refreshPromiseRef.current === refreshTask) {
+        refreshPromiseRef.current = null;
+      }
     }
   }
+
+  useEffect(() => {
+    if (!authToken || !currentUser) {
+      return;
+    }
+
+    const refreshInBackground = () => {
+      loadInitialData({ silent: true }).catch(() => {
+        // Errors are handled in loadInitialData state; swallow here to keep interval alive.
+      });
+    };
+
+    const timer = setInterval(refreshInBackground, 2000);
+    return () => clearInterval(timer);
+  }, [authToken, currentUser, showAdmin, adminAccessGranted]);
 
   useEffect(() => {
     if (!notificationCustomer) return;
@@ -263,6 +299,7 @@ export default function App() {
       setAdminLastUpdated(new Date().toISOString());
     },
     onError: (msg) => setAdminMessage(msg),
+    intervalMs: 2000,
   });
 
   const totalBalance = accounts.filter(a => a.status === "active").reduce((sum, a) => sum + a.balance, 0);
