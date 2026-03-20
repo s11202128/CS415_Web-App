@@ -30,6 +30,7 @@ export default function AuthPage({ onLoginSuccess, currentYear }) {
   const [authMessage, setAuthMessage] = useState("");
   const [authHint, setAuthHint] = useState("");
   const [showPw, setShowPw] = useState({});
+  const [loginPasswordError, setLoginPasswordError] = useState("");
 
   function togglePw(key) {
     setShowPw((prev) => ({ ...prev, [key]: !prev[key] }));
@@ -39,11 +40,13 @@ export default function AuthPage({ onLoginSuccess, currentYear }) {
     setAuthView(view);
     setAuthMessage("");
     setAuthHint("");
+    setLoginPasswordError("");
   }
 
   async function onLogin(e) {
     e.preventDefault();
     setAuthMessage("");
+    setLoginPasswordError("");
     try {
       const result = await api.login({ email: authForm.email, password: authForm.password });
       setToken(result.token);
@@ -57,7 +60,9 @@ export default function AuthPage({ onLoginSuccess, currentYear }) {
         isAdmin: Boolean(result.isAdmin),
       });
     } catch (err) {
-      setAuthMessage(err.message);
+      const genericMessage = "Invalid email or password.";
+      setLoginPasswordError(genericMessage);
+      setAuthMessage(genericMessage);
     }
   }
 
@@ -154,9 +159,16 @@ export default function AuthPage({ onLoginSuccess, currentYear }) {
                   Password
                   <div className="pw-wrap">
                     <input
+                      className={loginPasswordError ? "auth-input-error" : ""}
                       type={showPw.loginPw ? "text" : "password"}
                       value={authForm.password}
-                      onChange={(e) => setAuthForm({ ...authForm, password: e.target.value })}
+                      onChange={(e) => {
+                        setAuthForm({ ...authForm, password: e.target.value });
+                        if (loginPasswordError) {
+                          setLoginPasswordError("");
+                          setAuthMessage("");
+                        }
+                      }}
                       required
                       autoComplete="current-password"
                     />
@@ -164,6 +176,7 @@ export default function AuthPage({ onLoginSuccess, currentYear }) {
                       <EyeIcon open={showPw.loginPw} />
                     </button>
                   </div>
+                  {loginPasswordError && <p className="auth-inline-error">{loginPasswordError}</p>}
                 </label>
                 <button type="submit" className="btn-primary">Sign In</button>
               </form>

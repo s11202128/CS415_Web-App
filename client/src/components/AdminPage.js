@@ -2,12 +2,12 @@ import { useState } from "react";
 import AdminOverviewTab from "./admin/AdminOverviewTab";
 import AdminCustomersTab from "./admin/AdminCustomersTab";
 import AdminAccountsTab from "./admin/AdminAccountsTab";
+import AdminDepositsTab from "./admin/AdminDepositsTab";
 import AdminLoansTab from "./admin/AdminLoansTab";
 import AdminMonitoringTab from "./admin/AdminMonitoringTab";
-import AdminReportsTab from "./admin/AdminReportsTab";
-import AdminStatementsTab from "./admin/AdminStatementsTab";
+import ComplianceTab from "./tabs/ComplianceTab";
 
-const ADMIN_SECTIONS = ["Overview", "Customers", "Accounts", "Statement Requests", "Loans", "Monitoring", "Reports"];
+const ADMIN_SECTIONS = ["Overview", "Customers", "Accounts", "Deposits", "Loans", "Monitoring", "Compliance"];
 
 export default function AdminPage({
   customers,
@@ -22,6 +22,11 @@ export default function AdminPage({
   setAdminAccountForm,
   onCreateAdminAccount,
   adminAccountMessage,
+  adminDepositForm,
+  setAdminDepositForm,
+  onAdminDeposit,
+  adminDepositMessage,
+  setAdminDepositMessage,
   adminMessage,
   onAdminUpdateCustomer,
   onAdminUpdateAccount,
@@ -33,10 +38,15 @@ export default function AdminPage({
   onAdminReverseTransaction,
   adminLoginLogs,
   adminNotificationLogs,
-  adminStatementRequests,
-  onAdminUpdateStatementRequest,
   adminReport,
   adminLastUpdated,
+  interestRate,
+  setInterestRate,
+  onUpdateRate,
+  summaryYear,
+  setSummaryYear,
+  onGenerateSummaries,
+  complianceMessage,
 }) {
   const [activeSection, setActiveSection] = useState("Overview");
 
@@ -45,7 +55,6 @@ export default function AdminPage({
       <section className="panel-grid">
         <article className="panel wide">
           <h2>Admin Dashboard</h2>
-          <p className="hint">Professional admin console — live updates every 10 seconds.</p>
         </article>
       </section>
 
@@ -76,7 +85,11 @@ export default function AdminPage({
             />
           )}
           {activeSection === "Customers" && (
-            <AdminCustomersTab customers={customers} onAdminUpdateCustomer={onAdminUpdateCustomer} />
+            <AdminCustomersTab
+              customers={customers}
+              accounts={accounts}
+              onAdminUpdateCustomer={onAdminUpdateCustomer}
+            />
           )}
           {activeSection === "Accounts" && (
             <AdminAccountsTab
@@ -89,10 +102,14 @@ export default function AdminPage({
               onAdminFreezeAccount={onAdminFreezeAccount}
             />
           )}
-          {activeSection === "Statement Requests" && (
-            <AdminStatementsTab
-              statementRequests={adminStatementRequests}
-              onAdminUpdateStatementRequest={onAdminUpdateStatementRequest}
+          {activeSection === "Deposits" && (
+            <AdminDepositsTab
+              accounts={accounts}
+              adminDepositForm={adminDepositForm}
+              setAdminDepositForm={setAdminDepositForm}
+              onAdminDeposit={onAdminDeposit}
+              adminDepositMessage={adminDepositMessage}
+              setAdminDepositMessage={setAdminDepositMessage}
             />
           )}
           {activeSection === "Loans" && (
@@ -112,11 +129,16 @@ export default function AdminPage({
               adminNotificationLogs={adminNotificationLogs}
             />
           )}
-          {activeSection === "Reports" && (
-            <AdminReportsTab
-              adminReport={adminReport}
-              scheduledBills={scheduledBills}
+          {activeSection === "Compliance" && (
+            <ComplianceTab
+              interestRate={interestRate}
+              setInterestRate={setInterestRate}
+              onUpdateRate={onUpdateRate}
+              summaryYear={summaryYear}
+              setSummaryYear={setSummaryYear}
+              onGenerateSummaries={onGenerateSummaries}
               summaries={summaries}
+              complianceMessage={complianceMessage}
             />
           )}
         </section>

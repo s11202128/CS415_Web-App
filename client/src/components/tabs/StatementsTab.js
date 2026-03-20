@@ -2,19 +2,24 @@ import { useState } from "react";
 import { jsPDF } from "jspdf";
 
 export default function StatementsTab({
-  statementRows,
-  statementRequested,
-  statementRequests,
+  accounts = [],
+  transactions = [],
+  statementRequests = [],
 }) {
   const [activeSection, setActiveSection] = useState("Statement Preview");
   const [filterType, setFilterType] = useState("all");
   const [sortOrder, setSortOrder] = useState("desc");
+  const [monthsFilter, setMonthsFilter] = useState("all");
+  const safeAccounts = Array.isArray(accounts) ? accounts : [];
+  const safeTransactions = Array.isArray(transactions) ? transactions : [];
+  const safeStatementRequests = Array.isArray(statementRequests) ? statementRequests : [];
+  const hasAccounts = safeAccounts.length > 0;
 
   const formatDateTime = (value) => new Date(value).toLocaleString();
   const formatAmount = (value) => `FJD ${Number(value || 0).toFixed(2)}`;
 
   // Filter transactions based on type
-  const filteredRows = statementRows.filter((r) => {
+  const filteredRows = safeTransactions.filter((r) => {
     if (filterType === "all") return true;
     return r.kind === filterType;
   });
@@ -27,17 +32,17 @@ export default function StatementsTab({
   });
 
   // Calculate summary statistics
-  const totalCredit = filteredRows
+  const totalCredit = safeTransactions
     .filter((r) => r.kind === "credit")
     .reduce((sum, r) => sum + r.amount, 0);
-  const totalDebit = filteredRows
+  const totalDebit = safeTransactions
     .filter((r) => r.kind === "debit")
     .reduce((sum, r) => sum + r.amount, 0);
 
-  const totalRequests = statementRequests.length;
+  const totalRequests = safeStatementRequests.length;
 
   const monthlyDocuments = Object.entries(
-    sortedRows.reduce((acc, row) => {
+    safeTransactions.reduce((acc, row) => {
       const date = new Date(row.createdAt);
       const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
       if (!acc[monthKey]) acc[monthKey] = [];
@@ -218,6 +223,9 @@ export default function StatementsTab({
           ))}
         </nav>
         <div className="acct-tab-body">
+          {!hasAccounts && (
+            <p className="status error">No account found. Open an account before accessing statement services.</p>
+          )}
 
           {activeSection === "Statement Preview" && (
             <>
@@ -240,7 +248,7 @@ export default function StatementsTab({
                 </label>
                 <p className="hint">Total requests: {totalRequests}</p>
               </div>
-              {statementRequested && statementRows.length > 0 && (
+              {safeTransactions.length > 0 && (
                 <div className="statement-summary">
                   <div className="summary-card"><strong>Total Credits:</strong> FJD {totalCredit.toFixed(2)}</div>
                   <div className="summary-card"><strong>Total Debits:</strong> FJD {totalDebit.toFixed(2)}</div>
@@ -248,10 +256,10 @@ export default function StatementsTab({
                   <div className="summary-card"><strong>Transaction Count:</strong> {sortedRows.length}</div>
                 </div>
               )}
-              {!statementRequested ? (
-                <p className="no-data">Submit and load a statement request to preview statement data.</p>
+              {safeTransactions.length === 0 ? (
+                <p className="no-data">{hasAccounts ? "No transactions yet. Complete a transfer or bill payment to see your history here." : "Statement preview is unavailable until you open an account."}</p>
               ) : sortedRows.length === 0 ? (
-                <p className="no-data">No transactions found for the selected account.</p>
+                <p className="no-data">No transactions match the selected filter.</p>
               ) : (
                 <div className="table-wrapper">
                   <table>
@@ -282,49 +290,63 @@ export default function StatementsTab({
           {activeSection === "E Documents" && (
             <>
               <h2>E Documents</h2>
-              <p className="hint">Download monthly PDF statements from your statement data.</p>
-              {!statementRequested ? (
-                <p className="no-data">Load statement data first to generate e-documents.</p>
+              <p className="hint">Download monthly PDF statements from your transaction history.</p>
+              {!hasAccounts ? (
+                <p className="no-data">E-documents are unavailable until you open an account.</p>
               ) : monthlyDocuments.length === 0 ? (
                 <p className="no-data">No monthly documents available yet.</p>
               ) : (
-                <div className="table-wrapper">
-                  <table>
-                    <thead>
-                      <tr>
-                        <th>Month</th>
-                        <th>Transactions</th>
-                        <th>Total Credits</th>
-                        <th>Total Debits</th>
-                        <th>Action</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {monthlyDocuments.map((monthDoc) => {
-                        const monthCredits = monthDoc.rows
-                          .filter((row) => row.kind === "credit")
-                          .reduce((sum, row) => sum + Number(row.amount || 0), 0);
-                        const monthDebits = monthDoc.rows
-                          .filter((row) => row.kind === "debit")
-                          .reduce((sum, row) => sum + Number(row.amount || 0), 0);
+                <>
+                  <div className="inline-controls">
+                    <label>
+                      Show Months
+                      <select value={monthsFilter} onChange={(e) => setMonthsFilter(e.target.value)}>
+                        <option value="1">Last 1 Month</option>
+                        <option value="3">Last 3 Months</option>
+                        <option value="6">Last 6 Months</option>
+                        <option value="12">Last 12 Months</option>
+                        <option value="all">All Time</option>
+                      </select>
+                    </label>
+                  </div>
+                  <div className="table-wrapper">
+                    <table>
+                      <thead>
+                        <tr>
+                          <th>Month</th>
+                          <th>Transactions</th>
+                          <th>Total Credits</th>
+                          <th>Total Debits</th>
+                          <th>Action</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {(monthsFilter === "all" ? monthlyDocuments : monthlyDocuments.slice(0, Number(monthsFilter))).map((monthDoc) => {
+                          const monthCredits = monthDoc.rows
+                            .filter((row) => row.kind === "credit")
+                            .reduce((sum, row) => sum + Number(row.amount || 0), 0);
+                          const monthDebits = monthDoc.rows
+                            .filter((row) => row.kind === "debit")
+                            .reduce((sum, row) => sum + Number(row.amount || 0), 0);
 
-                        return (
-                          <tr key={monthDoc.key}>
-                            <td>{monthDoc.monthLabel}</td>
-                            <td>{monthDoc.rows.length}</td>
-                            <td>{formatAmount(monthCredits)}</td>
-                            <td>{formatAmount(monthDebits)}</td>
-                            <td>
-                              <button type="button" onClick={() => downloadMonthlyStatementPdf(monthDoc)}>
-                                Download PDF
-                              </button>
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
+                          return (
+                            <tr key={monthDoc.key}>
+                              <td>{monthDoc.monthLabel}</td>
+                              <td>{monthDoc.rows.length}</td>
+                              <td>{formatAmount(monthCredits)}</td>
+                              <td>{formatAmount(monthDebits)}</td>
+                              <td>
+                                <button type="button" onClick={() => downloadMonthlyStatementPdf(monthDoc)}>
+                                  Download PDF
+                                </button>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </>
               )}
             </>
           )}

@@ -1,3 +1,5 @@
+import { useState } from "react";
+
 export default function AdminMonitoringTab({
   accounts,
   transactions,
@@ -10,16 +12,57 @@ export default function AdminMonitoringTab({
   adminLoginLogs,
   adminNotificationLogs,
 }) {
+  const [activeView, setActiveView] = useState("transactions");
+
+  const formatLogDate = (value) => {
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) {
+      return "Unknown date";
+    }
+    return new Intl.DateTimeFormat("en-FJ", {
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      hour12: true,
+    }).format(date);
+  };
+
+  const VIEWS = [
+    { id: "transactions", label: "TRANSACTIONS" },
+    { id: "controls", label: "TRANSFER CONTROLS" },
+    { id: "notifications", label: "NOTIFICATION LOG" },
+    { id: "logins", label: "LOGIN ACTIVITY" },
+  ];
+
   return (
     <section className="panel-grid">
       <article className="panel wide">
+        <nav className="acct-tab-bar" style={{ marginBottom: "16px" }}>
+          {VIEWS.map((view) => (
+            <button
+              key={view.id}
+              type="button"
+              className={`acct-tab-btn${view.id === activeView ? " active" : ""}`}
+              onClick={() => setActiveView(view.id)}
+            >
+              {view.label}
+            </button>
+          ))}
+        </nav>
+
+        {activeView === "transactions" && (
+          <>
         <h3>Transaction Monitoring</h3>
         <div className="inline-controls">
           <label>
             Filter by Account
             <select value={selectedAccountForTx} onChange={(e) => setSelectedAccountForTx(e.target.value)}>
+              <option value="">All Accounts</option>
               {accounts.map((a) => (
-                <option key={a.id} value={a.id}>{a.id}</option>
+                <option key={a.id} value={a.id}>{a.id} - {a.accountNumber || "N/A"}</option>
               ))}
             </select>
           </label>
@@ -52,9 +95,11 @@ export default function AdminMonitoringTab({
             ))}
           </tbody>
         </table>
-      </article>
+          </>
+        )}
 
-      <article className="panel">
+        {activeView === "controls" && (
+          <>
         <h3>Transfer Controls</h3>
         <form onSubmit={onAdminUpdateTransferLimit}>
           <label>
@@ -69,20 +114,24 @@ export default function AdminMonitoringTab({
           <button type="submit">Update Limit</button>
         </form>
         <p className="hint">Transfers at or above this amount require OTP verification.</p>
-      </article>
+          </>
+        )}
 
-      <article className="panel">
+        {activeView === "notifications" && (
+          <>
         <h3>Notification Log</h3>
         <ul className="feed">
           {adminNotificationLogs.slice(0, 14).map((log) => (
             <li key={log.id}>
-              <strong>{new Date(log.createdAt).toLocaleString()}:</strong> {log.message}
+              <strong>{formatLogDate(log.timestamp || log.createdAt || log.updatedAt)}:</strong> {log.message}
             </li>
           ))}
         </ul>
-      </article>
+          </>
+        )}
 
-      <article className="panel wide">
+        {activeView === "logins" && (
+          <>
         <h3>Login Activity</h3>
         <table>
           <thead>
@@ -106,6 +155,8 @@ export default function AdminMonitoringTab({
             ))}
           </tbody>
         </table>
+          </>
+        )}
       </article>
     </section>
   );

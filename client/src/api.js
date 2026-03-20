@@ -149,8 +149,6 @@ export const api = {
     }
     return request(`/notifications/history?${params.toString()}`);
   },
-  getInvestments: () => request("/investments"),
-  addInvestment: (body) => request("/investments", { method: "POST", body: JSON.stringify(body) }),
   getInterestRate: () => request("/config/interest-rate"),
   updateInterestRate: (rate) =>
     request("/config/interest-rate", {
@@ -164,6 +162,8 @@ export const api = {
   getLoanApplications: () => request("/loan-applications"),
   updateLoanApplicationAdmin: (id, body) => request(`/admin/loan-applications/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
   getNotificationLogsAdmin: (limit = 200) => request(`/admin/notifications/logs?limit=${encodeURIComponent(limit)}`),
+  sendTestSmsAdmin: (body) => request("/admin/test-sms", { method: "POST", body: JSON.stringify(body) }),
   getOtpAttemptsAdmin: (limit = 200) => request(`/admin/otp-attempts?limit=${encodeURIComponent(limit)}`),
   statementDownloadUrl: (accountId) => `${API_BASE}/statements/${accountId}/download`,
+    createAdminDeposit: (body) => request("/admin/deposits", { method: "POST", body: JSON.stringify(body) }),
 };

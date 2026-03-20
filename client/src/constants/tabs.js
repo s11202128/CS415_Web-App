@@ -4,8 +4,6 @@ export const tabs = [
   "Transfers",
   "Bill Payments",
   "Statements",
-  "Investments",
   "Loans",
   "Profile",
-  "Compliance",
 ];

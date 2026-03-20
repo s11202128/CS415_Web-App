@@ -1,6 +1,8 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import { io } from "socket.io-client";
-import { api, clearToken } from "./api";
+import { useEffect, useMemo, useState } from "react";
+import { api, setToken } from "./api";
+import { useAuth } from "./hooks/useAuth";
+import { useAdminPoll } from "./hooks/useAdminPoll";
+import { filterDataByScope } from "./utils/dataFilters";
 import { tabs } from "./constants/tabs";
 import AuthPage from "./components/AuthPage";
 import BankBrand from "./components/BankBrand";
@@ -11,13 +13,9 @@ import AccountsTab from "./components/tabs/AccountsTab";
 import TransfersTab from "./components/tabs/TransfersTab";
 import BillPaymentsTab from "./components/tabs/BillPaymentsTab";
 import StatementsTab from "./components/tabs/StatementsTab";
-import InvestmentsTab from "./components/tabs/InvestmentsTab";
 import LoansTab from "./components/tabs/LoansTab";
 import ProfileTab from "./components/tabs/ProfileTab";
-import ComplianceTab from "./components/tabs/ComplianceTab";
 import AdminLockScreen from "./components/tabs/AdminLockScreen";
-
-const SOCKET_BASE = import.meta.env.VITE_SOCKET_BASE || "http://localhost:4000";
 
 export default function App() {
   const [activeTab, setActiveTab] = useState("Overview");
@@ -26,14 +24,14 @@ export default function App() {
   const [error, setError] = useState("");
   const [lastUpdatedAt, setLastUpdatedAt] = useState(() => new Date().toISOString());
 
-  const [authToken, setAuthToken] = useState(null);
-  const [currentUser, setCurrentUser] = useState(null);
+  // SRP: auth state and token management extracted to useAuth hook (DIP)
+  const { authToken, currentUser, setCurrentUser, setAuth, clearAuth } = useAuth();
   const [customers, setCustomers] = useState([]);
   const [accounts, setAccounts] = useState([]);
+  const [customerTransactions, setCustomerTransactions] = useState([]);
   const [scheduledBills, setScheduledBills] = useState([]);
   const [loanProducts, setLoanProducts] = useState([]);
   const [loanApplications, setLoanApplications] = useState([]);
-  const [investments, setInvestments] = useState([]);
   const [summaries, setSummaries] = useState([]);
   const [interestRate, setInterestRate] = useState(0);
   const [selectedAccountForTx, setSelectedAccountForTx] = useState("");
@@ -63,9 +61,6 @@ export default function App() {
   const [scheduleBillForm, setScheduleBillForm] = useState({ accountId: "", payee: "", amount: "", scheduledDate: "" });
   const [billMessage, setBillMessage] = useState("");
 
-  const [investmentForm, setInvestmentForm] = useState({ customerId: "", name: "", amount: "", annualRate: "" });
-  const [investmentMessage, setInvestmentMessage] = useState("");
-
   const [loanForm, setLoanForm] = useState({
     customerId: "",
     loanProductId: "",
@@ -73,7 +68,7 @@ export default function App() {
     termMonths: "",
     purpose: "",
     monthlyIncome: "",
-    employmentStatus: "",
+    occupation: "",
   });
   const [loanMessage, setLoanMessage] = useState("");
 
@@ -96,7 +91,8 @@ export default function App() {
     accountNumber: "",
   });
   const [adminAccountMessage, setAdminAccountMessage] = useState("");
-  const realtimeRefreshTimerRef = useRef(null);
+  const [adminDepositForm, setAdminDepositForm] = useState({ accountId: "", amount: "", description: "" });
+  const [adminDepositMessage, setAdminDepositMessage] = useState("");
 
   const customerMap = useMemo(() => {
     const map = {};
@@ -110,8 +106,10 @@ export default function App() {
   const effectiveShowAdmin = showAdmin || isAdminUser;
 
   useEffect(() => {
-    if (authToken) loadInitialData();
-  }, [authToken, currentUser?.customerId, currentUser?.isAdmin]);
+    if (authToken && currentUser) {
+      loadInitialData();
+    }
+  }, [authToken, currentUser, showAdmin, adminAccessGranted]);
 
   useEffect(() => {
     if (!currentUser?.customerId || customers.length === 0) {
@@ -141,65 +139,59 @@ export default function App() {
         api.getScheduledBills(),
         api.getLoanProducts(),
         api.getLoanApplications(),
-        api.getInvestments(),
         api.getInterestRate(),
         api.getSummaries(),
         api.getStatementRequests(),
       ]);
-      const isAdminUser = Boolean(currentUser?.isAdmin);
-      const activeCustomerId = currentUser?.customerId;
 
-      const visibleCustomers = isAdminUser
-        ? customerRows
-        : customerRows.filter((c) => String(c.id) === String(activeCustomerId));
+      const hasAdminScope = Boolean(currentUser?.isAdmin || (showAdmin && adminAccessGranted));
 
-      const visibleCustomerIds = new Set(visibleCustomers.map((c) => String(c.id)));
-
-      const visibleAccounts = isAdminUser
-        ? accountRows
-        : accountRows.filter((a) => visibleCustomerIds.has(String(a.customerId)));
-
-      const visibleAccountIds = new Set(visibleAccounts.map((a) => String(a.id)));
-
-      const visibleScheduledBills = isAdminUser
-        ? scheduled
-        : scheduled.filter((b) => {
-          const byAccount = b.accountId && visibleAccountIds.has(String(b.accountId));
-          const byCustomer = b.customerId && visibleCustomerIds.has(String(b.customerId));
-          return byAccount || byCustomer;
-        });
-
-      const visibleLoanApplications = isAdminUser
-        ? apps
-        : apps.filter((l) => visibleCustomerIds.has(String(l.customerId)));
-
-      const visibleInvestments = isAdminUser
-        ? invs
-        : invs.filter((x) => visibleCustomerIds.has(String(x.customerId)));
-
-      const visibleSummaries = isAdminUser
-        ? sumRows
-        : sumRows.filter((s) => visibleCustomerIds.has(String(s.customerId)));
+      // OCP/SRP: data scoping extracted to filterDataByScope utility
+      const {
+        customers: visibleCustomers,
+        accounts: visibleAccounts,
+        scheduledBills: visibleScheduledBills,
+        loanApplications: visibleLoanApplications,
+        summaries: visibleSummaries,
+      } = filterDataByScope(
+        { customers: customerRows, accounts: accountRows, bills: scheduled, loans: apps, summaries: sumRows },
+        { hasAdminScope, activeCustomerId: currentUser?.customerId }
+      );
 
       setCustomers(visibleCustomers);
       setAccounts(visibleAccounts);
       setScheduledBills(visibleScheduledBills);
       setLoanProducts(products);
       setLoanApplications(visibleLoanApplications);
-      setInvestments(visibleInvestments);
       setInterestRate(rate.reserveBankMinSavingsInterestRate);
       setSummaries(visibleSummaries);
       setStatementRequests(statementRequestRows);
       setLastUpdatedAt(new Date().toISOString());
-      if (isAdminUser) {
+      if (hasAdminScope) {
         setAdminStatementRequests(statementRequestRows);
+      }
+
+      // Load transaction history for each visible account so Accounts tab can show transfer/bill history.
+      if (visibleAccounts.length > 0) {
+        const txResults = await Promise.allSettled(
+          visibleAccounts.map((account) => api.getTransactions(account.id))
+        );
+        const mergedRows = txResults
+          .filter((r) => r.status === "fulfilled")
+          .flatMap((r) => r.value || []);
+        setCustomerTransactions(mergedRows);
+      } else {
+        setCustomerTransactions([]);
       }
 
       if (visibleAccounts.length > 0) {
         const defaultAccountId = String(visibleAccounts[0].id);
-        setSelectedAccountForTx((prev) =>
-          visibleAccounts.some((a) => String(a.id) === String(prev)) ? prev : visibleAccounts[0].id
-        );
+        setSelectedAccountForTx((prev) => {
+          if (hasAdminScope) {
+            return visibleAccounts.some((a) => String(a.id) === String(prev)) ? String(prev) : "";
+          }
+          return visibleAccounts.some((a) => String(a.id) === String(prev)) ? prev : visibleAccounts[0].id;
+        });
         setStatementAccount((prev) =>
           visibleAccounts.some((a) => String(a.id) === String(prev)) ? prev : visibleAccounts[0].id
         );
@@ -223,12 +215,6 @@ export default function App() {
         setNotificationCustomer((prev) =>
           visibleCustomers.some((c) => String(c.id) === String(prev)) ? prev : visibleCustomers[0].id
         );
-        setInvestmentForm((prev) => ({
-          ...prev,
-          customerId: visibleCustomers.some((c) => String(c.id) === String(prev.customerId))
-            ? prev.customerId
-            : String(visibleCustomers[0].id),
-        }));
         setLoanForm((prev) => ({
           ...prev,
           customerId: visibleCustomers.some((c) => String(c.id) === String(prev.customerId))
@@ -239,96 +225,34 @@ export default function App() {
         setNotificationCustomer("");
       }
     } catch (err) {
-      setError(err.message);
+      console.error("loadInitialData error:", err);
+      setError(String(err?.message || err || "Failed to load data"));
     } finally {
       setLoading(false);
     }
   }
 
   useEffect(() => {
-    if (!authToken) {
-      return;
-    }
-
-    const socket = io(SOCKET_BASE, {
-      auth: { token: authToken },
-      transports: ["websocket", "polling"],
-      reconnection: true,
-    });
-
-    const scheduleRealtimeRefresh = () => {
-      if (realtimeRefreshTimerRef.current) {
-        return;
-      }
-      realtimeRefreshTimerRef.current = setTimeout(async () => {
-        realtimeRefreshTimerRef.current = null;
-        try {
-          await loadInitialData();
-        } catch (err) {
-          // Ignore transient socket-triggered refresh errors.
-        }
-      }, 150);
-    };
-
-    socket.on("activity:changed", scheduleRealtimeRefresh);
-
-    return () => {
-      socket.off("activity:changed", scheduleRealtimeRefresh);
-      socket.disconnect();
-      if (realtimeRefreshTimerRef.current) {
-        clearTimeout(realtimeRefreshTimerRef.current);
-        realtimeRefreshTimerRef.current = null;
-      }
-    };
-  }, [authToken, currentUser?.customerId, currentUser?.isAdmin]);
-
-  useEffect(() => {
     if (!notificationCustomer) return;
     api.getNotifications(notificationCustomer).then(setNotifications).catch((err) => setError(err.message));
   }, [notificationCustomer]);
 
-  useEffect(() => {
-    const hasAdminAccess = currentUser?.isAdmin || adminAccessGranted;
-    if (!hasAdminAccess || !showAdmin) {
-      return;
-    }
-    let cancelled = false;
-    const refreshAdminData = async () => {
-      const selected = accounts.find((a) => a.id === selectedAccountForTx);
-      const accountNumber = selected?.accountNumber || "";
-      try {
-        const [txRows, loginLogRows, notificationLogRows, limit, report, statementReqRows] = await Promise.all([
-          api.getAdminTransactions(accountNumber),
-          api.getAdminLoginLogs(100),
-          api.getNotificationLogsAdmin(100),
-          api.getTransferLimitAdmin(),
-          api.getAdminDashboardReport(),
-          api.getAdminStatementRequests(),
-        ]);
-        if (cancelled) {
-          return;
-        }
-        setAdminTransactions(txRows);
-        setAdminLoginLogs(loginLogRows);
-        setAdminNotificationLogs(notificationLogRows);
-        setAdminTransferLimit(Number(limit.highValueTransferLimit || 1000));
-        setAdminReport(report);
-        setAdminStatementRequests(statementReqRows);
-        setAdminLastUpdated(new Date().toISOString());
-      } catch (err) {
-        if (!cancelled) {
-          setAdminMessage(err.message);
-        }
-      }
-    };
-
-    refreshAdminData();
-    const timer = setInterval(refreshAdminData, 10000);
-    return () => {
-      cancelled = true;
-      clearInterval(timer);
-    };
-  }, [showAdmin, currentUser?.isAdmin, adminAccessGranted, selectedAccountForTx, accounts]);
+  // SRP: admin polling concern extracted to useAdminPoll hook
+  useAdminPoll({
+    enabled: Boolean((currentUser?.isAdmin || adminAccessGranted) && showAdmin),
+    accounts,
+    selectedAccountForTx,
+    onData: ({ txRows, loginLogRows, notificationLogRows, limit, report, statementReqRows }) => {
+      setAdminTransactions(txRows);
+      setAdminLoginLogs(loginLogRows);
+      setAdminNotificationLogs(notificationLogRows);
+      setAdminTransferLimit(Number(limit.highValueTransferLimit || 1000));
+      setAdminReport(report);
+      setAdminStatementRequests(statementReqRows);
+      setAdminLastUpdated(new Date().toISOString());
+    },
+    onError: (msg) => setAdminMessage(msg),
+  });
 
   const totalBalance = accounts.filter(a => a.status === "active").reduce((sum, a) => sum + a.balance, 0);
   const currentYear = new Date().getFullYear();
@@ -341,15 +265,13 @@ export default function App() {
 
   // ── Auth handlers ────────────────────────────────────────────────────────
   function handleLoginSuccess(token, user) {
-    setAuthToken(token);
-    setCurrentUser(user);
+    setAuth(token, user);
     setShowAdmin(Boolean(user?.isAdmin));
   }
 
   function onLogout() {
-    clearToken();
-    setAuthToken(null);
-    setCurrentUser(null);
+    clearAuth();
+    setCustomerTransactions([]);
     setStatementRows([]);
     setStatementRequested(false);
     setStatementRequests([]);
@@ -359,10 +281,45 @@ export default function App() {
     setAdminAuthForm({ email: "", password: "" });
     setAdminAuthMessage("");
   }
+
+  // Inactivity timeout: Auto-logout after 30 seconds of inactivity  
+  // TEMPORARILY DISABLED FOR DEBUGGING
+  /*
+  useEffect(() => {
+    if (!authToken || !currentUser) return;
+
+    const TIMEOUT_MS = 30000;
+    let timer;
+
+    const startTimer = () => {
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(() => {
+        clearToken();
+        setAuthToken(null);
+        setCurrentUser(null);
+      }, TIMEOUT_MS);
+    };
+
+    const handleActivity = () => startTimer();
+
+    window.addEventListener('click', handleActivity, { passive: true });
+    window.addEventListener('keydown', handleActivity, { passive: true });
+    window.addEventListener('mousemove', handleActivity, { passive: true });
+
+    startTimer();
+
+    return () => {
+      if (timer) clearTimeout(timer);
+      window.removeEventListener('click', handleActivity);
+      window.removeEventListener('keydown', handleActivity);
+      window.removeEventListener('mousemove', handleActivity);
+    };
+  }, [authToken, currentUser]);
+  */
   // ────────────────────────────────────────────────────────────────────────
 
   async function onInitiateTransfer(e) {
-    if (e && typeof e.preventDefault === "function") {
+    if (e?.preventDefault) {
       e.preventDefault();
     }
     setTransferMessage("");
@@ -374,7 +331,7 @@ export default function App() {
       const result = await api.initiateTransfer(payload);
       if (result.requiresOtp) {
         setPendingTransfer({ transferId: result.transferId, otp: result.otp });
-        setTransferMessage(`High-value transfer pending OTP. Demo OTP: ${result.otp}`);
+        setTransferMessage("High-value transfer pending OTP. A verification code has been sent to your mobile by SMS.");
       } else {
         setPendingTransfer({ transferId: "", otp: "" });
         setTransferMessage("Transfer completed successfully.");
@@ -484,22 +441,6 @@ export default function App() {
     }
   }
 
-  async function onAddInvestment(e) {
-    e.preventDefault();
-    setInvestmentMessage("");
-    try {
-      await api.addInvestment({
-        ...investmentForm,
-        amount: Number(investmentForm.amount),
-        annualRate: Number(investmentForm.annualRate),
-      });
-      setInvestmentMessage("Investment created.");
-      await loadInitialData();
-    } catch (err) {
-      setInvestmentMessage(err.message);
-    }
-  }
-
   async function onSubmitLoan(e) {
     e.preventDefault();
     setLoanMessage("");
@@ -523,7 +464,10 @@ export default function App() {
     try {
       const updatedProfile = await api.updateProfile({
         customerId: currentUser.customerId,
-        ...profileForm,
+        email: profileForm.email,
+        mobile: profileForm.mobile,
+        currentPassword: profileForm.currentPassword,
+        newPassword: profileForm.newPassword,
       });
       setCurrentUser((prev) => ({
         ...prev,
@@ -647,11 +591,38 @@ export default function App() {
     }
   }
 
+  async function onAdminDeposit(e) {
+    e.preventDefault();
+    setAdminDepositMessage("");
+    try {
+      await api.createAdminDeposit({
+        accountId: Number(adminDepositForm.accountId),
+        amount: Number(adminDepositForm.amount),
+        description: adminDepositForm.description,
+      });
+      setAdminDepositMessage("Deposit completed successfully.");
+      setAdminDepositForm({ accountId: "", amount: "", description: "" });
+      await loadInitialData();
+    } catch (err) {
+      setAdminDepositMessage(err.message);
+    }
+  }
+
   async function onVerifyAdminAccess(e) {
     e.preventDefault();
     setAdminAuthMessage("");
     try {
-      await api.verifyAdminCredentials(adminAuthForm);
+      const result = await api.login(adminAuthForm);
+      setToken(result.token); // persist token in api layer before login handler
+      handleLoginSuccess(result.token, {
+        fullName: result.fullName,
+        userId: result.userId,
+        customerId: result.customerId,
+        email: result.email,
+        mobile: result.mobile,
+        nationalId: result.nationalId,
+        isAdmin: Boolean(result.isAdmin),
+      });
       setAdminAccessGranted(true);
       setAdminAuthMessage("Admin access granted.");
     } catch (err) {
@@ -704,6 +675,11 @@ export default function App() {
             setAdminAccountForm={setAdminAccountForm}
             onCreateAdminAccount={onCreateAdminAccount}
             adminAccountMessage={adminAccountMessage}
+            adminDepositForm={adminDepositForm}
+            setAdminDepositForm={setAdminDepositForm}
+            onAdminDeposit={onAdminDeposit}
+            adminDepositMessage={adminDepositMessage}
+            setAdminDepositMessage={setAdminDepositMessage}
             adminMessage={adminMessage}
             onAdminUpdateCustomer={onAdminUpdateCustomer}
             onAdminUpdateAccount={onAdminUpdateAccount}
@@ -719,6 +695,13 @@ export default function App() {
             onAdminUpdateStatementRequest={onAdminUpdateStatementRequest}
             adminReport={adminReport}
             adminLastUpdated={adminLastUpdated}
+            interestRate={interestRate}
+            setInterestRate={setInterestRate}
+            onUpdateRate={onUpdateRate}
+            summaryYear={summaryYear}
+            setSummaryYear={setSummaryYear}
+            onGenerateSummaries={onGenerateSummaries}
+            complianceMessage={complianceMessage}
           />
         )}
 
@@ -751,24 +734,38 @@ export default function App() {
 
       <div className="workspace-layout">
         <aside className="left-tabs">
-          <nav className="tabs">
-            {tabs.map((tab) => (
-              <button
-                key={tab}
-                className={tab === activeTab ? "tab active" : "tab"}
-                onClick={() => setActiveTab(tab)}
-              >
-                {tab}
-              </button>
-            ))}
-          </nav>
+          {currentUser ? (
+            <nav className="tabs">
+              {tabs.map((tab) => (
+                <button
+                  key={tab}
+                  className={tab === activeTab ? "tab active" : "tab"}
+                  onClick={() => setActiveTab(tab)}
+                >
+                  {tab}
+                </button>
+              ))}
+            </nav>
+          ) : (
+            <p className="status">Loading...</p>
+          )}
         </aside>
 
         <section className="tab-content">
-          {loading && <p className="status">Loading data...</p>}
-          {error && <p className="status error">{error}</p>}
+          {error && <p className="status error"><strong>Error:</strong> {error}</p>}
+          {loading && !error && <p className="status">Loading data...</p>}
+          {!currentUser && !loading && !error && (
+            <p className="status">Please wait while we load your account information...</p>
+          )}
+          
+          {/* Debug info - remove after testing */}
+          {!currentUser && !error && (
+            <div style={{padding: '20px', color: '#999', fontSize: '12px', borderTop: '1px solid #eee', marginTop: '20px'}}>
+              <p>Debug - authToken: {authToken ? '✓' : '✗'} | currentUser: {currentUser ? '✓' : '✗'} | loading: {loading ? '✓' : '✗'}</p>
+            </div>
+          )}
 
-          {!loading && activeTab === "Overview" && (
+          {currentUser && !loading && activeTab === "Overview" && (
             <HomePage
               totalBalance={totalBalance}
               currentUser={currentUser}
@@ -778,7 +775,7 @@ export default function App() {
             />
           )}
 
-          {!loading && activeTab === "Accounts" && (
+          {!loading && currentUser && activeTab === "Accounts" && (
             <AccountsTab
               accounts={accounts}
               currentUser={currentUser}
@@ -787,7 +784,7 @@ export default function App() {
             />
           )}
 
-          {!loading && activeTab === "Transfers" && (
+          {!loading && currentUser && activeTab === "Transfers" && (
             <TransfersTab
               accounts={accounts}
               transferForm={transferForm}
@@ -797,11 +794,13 @@ export default function App() {
               setPendingTransfer={setPendingTransfer}
               onVerifyTransfer={onVerifyTransfer}
               transferMessage={transferMessage}
+              setTransferMessage={setTransferMessage}
             />
           )}
 
-          {!loading && activeTab === "Bill Payments" && (
+          {!loading && currentUser && activeTab === "Bill Payments" && (
             <BillPaymentsTab
+              accounts={accounts}
               manualBillForm={manualBillForm}
               setManualBillForm={setManualBillForm}
               onManualBill={onManualBill}
@@ -814,9 +813,10 @@ export default function App() {
             />
           )}
 
-          {!loading && activeTab === "Statements" && (
+          {!loading && currentUser && activeTab === "Statements" && (
             <StatementsTab
               accounts={accounts}
+              transactions={customerTransactions}
               customers={customers}
               statementAccount={statementAccount}
               setStatementAccount={setStatementAccount}
@@ -835,19 +835,7 @@ export default function App() {
             />
           )}
 
-          {!loading && activeTab === "Investments" && (
-            <InvestmentsTab
-              customers={customers}
-              customerMap={customerMap}
-              investments={investments}
-              investmentForm={investmentForm}
-              setInvestmentForm={setInvestmentForm}
-              onAddInvestment={onAddInvestment}
-              investmentMessage={investmentMessage}
-            />
-          )}
-
-          {!loading && activeTab === "Loans" && (
+          {!loading && currentUser && activeTab === "Loans" && (
             <LoansTab
               customers={customers}
               customerMap={customerMap}
@@ -857,10 +845,11 @@ export default function App() {
               setLoanForm={setLoanForm}
               onSubmitLoan={onSubmitLoan}
               loanMessage={loanMessage}
+              setLoanMessage={setLoanMessage}
             />
           )}
 
-          {!loading && activeTab === "Profile" && (
+          {!loading && currentUser && activeTab === "Profile" && (
             <ProfileTab
               profileForm={profileForm}
               setProfileForm={setProfileForm}
@@ -869,18 +858,6 @@ export default function App() {
             />
           )}
 
-          {!loading && activeTab === "Compliance" && (
-            <ComplianceTab
-              interestRate={interestRate}
-              setInterestRate={setInterestRate}
-              onUpdateRate={onUpdateRate}
-              summaryYear={summaryYear}
-              setSummaryYear={setSummaryYear}
-              onGenerateSummaries={onGenerateSummaries}
-              summaries={summaries}
-              complianceMessage={complianceMessage}
-            />
-          )}
         </section>
       </div>
 

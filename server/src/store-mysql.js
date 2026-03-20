@@ -8,7 +8,6 @@ const {
   Account,
   Transaction,
   Bill,
-  Investment,
   Loan,
   OtpVerification,
   Registration,
@@ -17,7 +16,7 @@ const {
   NotificationLog,
 } = require("./models");
 
-let HIGH_VALUE_OTP_THRESHOLD = 5000;
+let HIGH_VALUE_OTP_THRESHOLD = 10000;
 const MIN_OTP_TRIGGER_AMOUNT = 5000;
 const OTP_EXPIRY_MINUTES = 5;
 const OTP_MAX_ATTEMPTS = 3;
@@ -555,31 +554,6 @@ async function runScheduledPayment(id) {
   return { scheduled, payment };
 }
 
-// Create an investment
-async function createInvestment({ customerId, name, amount, annualRate }) {
-  const customer = await getCustomer(customerId);
-  if (!customer) {
-    throw new Error("Customer not found");
-  }
-
-  const investment = await Investment.create({
-    customerId,
-    investmentType: name,
-    amount,
-    expectedReturn: annualRate,
-    status: "active",
-  });
-
-  return {
-    id: investment.id,
-    customerId,
-    name,
-    amount,
-    annualRate,
-    createdAt: investment.createdAt,
-  };
-}
-
 // Generate statement for an account
 async function generateStatement(accountRef, from, to) {
   const numericId = Number(accountRef);
@@ -944,7 +918,10 @@ async function updateProfile(customerId, payload) {
 
   const updates = {};
   if (payload.fullName !== undefined) {
-    updates.fullName = String(payload.fullName || "").trim();
+    const requestedName = String(payload.fullName || "").trim();
+    if (requestedName && requestedName !== String(customer.fullName || "").trim()) {
+      throw new Error("For security reasons, name changes must be requested at a Bank of Fiji branch.");
+    }
   }
   if (payload.mobile !== undefined) {
     validateMobile(payload.mobile);
@@ -977,13 +954,6 @@ async function updateProfile(customerId, payload) {
   }
 
   await customer.update(updates);
-  if (updates.fullName !== undefined) {
-    await Account.update(
-      { accountHolder: customer.fullName },
-      { where: { customerId: customer.id } }
-    );
-  }
-
   return {
     id: customer.id,
     fullName: customer.fullName,
@@ -1066,7 +1036,6 @@ module.exports = {
   postBillPayment,
   scheduleBillPayment,
   runScheduledPayment,
-  createInvestment,
   generateStatement,
   generateInterestSummaries,
   applyMonthlyFees,

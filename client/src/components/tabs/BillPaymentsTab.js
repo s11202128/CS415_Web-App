@@ -1,6 +1,7 @@
 import { useState } from "react";
 
 export default function BillPaymentsTab({
+  accounts,
   manualBillForm,
   setManualBillForm,
   onManualBill,
@@ -22,6 +23,7 @@ export default function BillPaymentsTab({
 
   const [activeBillTab, setActiveBillTab] = useState("pay");
   const [scheduleEnabled, setScheduleEnabled] = useState(false);
+  const hasAccounts = (accounts || []).length > 0;
 
   const hasSharedBillDetails = Boolean(manualBillForm.payee && manualBillForm.amount);
 
@@ -47,6 +49,9 @@ export default function BillPaymentsTab({
         </nav>
 
         <div className="acct-tab-body">
+        {!hasAccounts && (
+          <p className="status error">No account found. Open an account before using bill payment services.</p>
+        )}
         {activeBillTab === "pay" ? (
           <>
           <form onSubmit={handleBillSubmit}>
@@ -100,7 +105,7 @@ export default function BillPaymentsTab({
             )}
             <button
               type="submit"
-              disabled={!hasSharedBillDetails || (scheduleEnabled && !scheduleBillForm.scheduledDate)}
+              disabled={!hasAccounts || !hasSharedBillDetails || (scheduleEnabled && !scheduleBillForm.scheduledDate)}
             >
               {scheduleEnabled ? "Schedule" : "Pay Now"}
             </button>

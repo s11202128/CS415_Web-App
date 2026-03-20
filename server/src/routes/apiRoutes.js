@@ -2,6 +2,7 @@ const express = require("express");
 const { Op } = require("sequelize");
 const requirementsData = require("../config/requirementsData");
 const { requireAuth, requireAdmin } = require("../middleware/auth");
+const { sendSms } = require("../services/smsService");
 const {
   getAccountTransactions,
   initiateTransfer,
@@ -9,7 +10,6 @@ const {
   postBillPayment,
   scheduleBillPayment,
   runScheduledPayment,
-  createInvestment,
   generateRandomAccountNumber,
   generateStatement,
   generateInterestSummaries,
@@ -24,7 +24,7 @@ const {
   getOtpAttempts,
   reverseTransaction,
 } = require("../store-mysql");
-const { Customer, Account, Bill, Investment, Loan, Transaction, OtpVerification, StatementRequest } = require("../models");
+const { Customer, Account, Bill, Loan, Transaction, OtpVerification, StatementRequest } = require("../models");
 
 const loanProducts = [
   { id: "LP-001", name: "Personal Loan", annualRate: 0.089, maxAmount: 30000, minTermMonths: 6, maxTermMonths: 60 },
@@ -410,7 +410,7 @@ router.post("/accounts/request", asyncHandler(async (req, res) => {
     accountNumber: providedAccountNumber || await generateRandomAccountNumber(),
     accountHolder: customer.fullName,
     accountType: payload.type,
-    balance: Number(payload.openingBalance || 0),
+    balance: 0,
     currency: "FJD",
     status: "pending_approval",
   });
@@ -505,6 +505,52 @@ router.put("/admin/freeze-account", asyncHandler(async (req, res) => {
   res.json(toAccountResponse(account));
 }));
 
+router.post("/admin/deposits", asyncHandler(async (req, res) => {
+  const payload = req.body || {};
+  const accountId = Number(payload.accountId);
+  const amount = Number(payload.amount);
+  const description = String(payload.description || "Admin deposit").trim() || "Admin deposit";
+
+  if (!Number.isFinite(accountId) || accountId <= 0) {
+    return res.status(400).json({ error: "Valid accountId is required" });
+  }
+  if (!Number.isFinite(amount) || amount <= 0) {
+    return res.status(400).json({ error: "amount must be a positive number" });
+  }
+
+  const account = await Account.findByPk(accountId);
+  if (!account) {
+    return res.status(404).json({ error: "Account not found" });
+  }
+  if (["frozen", "suspended", "closed", "rejected"].includes(String(account.status || "").toLowerCase())) {
+    return res.status(400).json({ error: "Cannot deposit into this account status" });
+  }
+
+  await Account.sequelize.transaction(async (dbTx) => {
+    const currentBalance = Number(account.balance || 0);
+    const updatedBalance = Number((currentBalance + amount).toFixed(2));
+
+    await account.update({ balance: updatedBalance }, { transaction: dbTx });
+    await Transaction.create(
+      {
+        accountId: account.id,
+        type: "credit",
+        amount,
+        description,
+        status: "completed",
+        balanceAfter: updatedBalance,
+      },
+      { transaction: dbTx }
+    );
+  });
+
+  await account.reload();
+  res.status(201).json({
+    message: "Deposit completed.",
+    account: toAccountResponse(account),
+  });
+}));
+
 router.get("/admin/transactions", asyncHandler(async (req, res) => {
   const accountNumber = String(req.query.accountNumber || "").trim();
   let accountNumberFilter = null;
@@ -520,7 +566,6 @@ router.get("/admin/transactions", asyncHandler(async (req, res) => {
   const rows = await Transaction.findAll({
     where: accountNumberFilter ? { accountNumber: accountNumberFilter } : undefined,
     order: [["createdAt", "DESC"]],
-    limit: 500,
   });
 
   res.json(await mapTransactionRows(rows));
@@ -833,31 +878,6 @@ router.post("/bills/scheduled/:id/run", asyncHandler(async (req, res) => {
   res.json(result);
 }));
 
-router.get("/investments", asyncHandler(async (req, res) => {
-  const rows = await Investment.findAll({ order: [["createdAt", "DESC"]] });
-  res.json(
-    rows.map((x) => ({
-      id: x.id,
-      customerId: x.customerId,
-      name: x.investmentType,
-      amount: Number(x.amount),
-      annualRate: Number(x.expectedReturn || 0),
-      createdAt: x.createdAt,
-    }))
-  );
-}));
-
-router.post("/investments", asyncHandler(async (req, res) => {
-  const payload = req.body || {};
-  const row = await createInvestment({
-    customerId: payload.customerId,
-    name: payload.name,
-    amount: Number(payload.amount),
-    annualRate: Number(payload.annualRate),
-  });
-  res.status(201).json(row);
-}));
-
 router.post("/statements/request", requireAuth, asyncHandler(async (req, res) => {
   const payload = req.body || {};
   const accountId = Number(payload.accountId);
@@ -1129,6 +1149,27 @@ router.get("/admin/notifications/logs", asyncHandler(async (req, res) => {
   res.json(await getNotificationLogs(limit));
 }));
 
+router.post("/admin/test-sms", asyncHandler(async (req, res) => {
+  const mobile = String(req.body?.mobile || "").trim();
+  const message = String(req.body?.message || "Test SMS from Bank of Fiji").trim();
+
+  if (!mobile) {
+    return res.status(400).json({ error: "mobile is required" });
+  }
+  if (!message) {
+    return res.status(400).json({ error: "message is required" });
+  }
+
+  const result = await sendSms({ to: mobile, message });
+  res.status(201).json({
+    status: result.status || "queued",
+    provider: result.provider || null,
+    providerMessageId: result.providerMessageId || null,
+    mobile,
+    message,
+  });
+}));
+
 router.get("/admin/otp-attempts", asyncHandler(async (req, res) => {
   const limit = Number(req.query.limit || 200);
   res.json(await getOtpAttempts(limit));
@@ -1220,9 +1261,11 @@ router.post("/loan-applications", asyncHandler(async (req, res) => {
     termMonths: Number(loan.termMonths),
     purpose: payload.purpose,
     monthlyIncome: Number(payload.monthlyIncome || 0),
-    employmentStatus: payload.employmentStatus || "unknown",
+    occupation: payload.occupation || payload.employmentStatus || "unknown",
     status: loan.status,
     createdAt: loan.createdAt,
+    submittedAt: loan.createdAt,
+    reviewedAt: null,
   };
   res.status(201).json(row);
 }));
@@ -1238,9 +1281,11 @@ router.get("/loan-applications", asyncHandler(async (req, res) => {
       termMonths: Number(l.termMonths),
       purpose: l.loanType,
       monthlyIncome: 0,
-      employmentStatus: "unknown",
+      occupation: "unknown",
       status: l.status,
       createdAt: l.createdAt,
+      submittedAt: l.createdAt,
+      reviewedAt: ["approved", "rejected"].includes(String(l.status || "").toLowerCase()) ? l.updatedAt : null,
     }))
   );
 }));
@@ -1253,6 +1298,10 @@ router.patch("/admin/loan-applications/:id", asyncHandler(async (req, res) => {
 
   const payload = req.body || {};
   const updates = {};
+  const previousStatus = String(loan.status || "").toLowerCase();
+  const requestedStatus = payload.status !== undefined ? String(payload.status).toLowerCase() : previousStatus;
+  const shouldDisburse = previousStatus !== "approved" && requestedStatus === "approved";
+
   if (payload.status !== undefined) {
     updates.status = payload.status;
   }
@@ -1263,7 +1312,49 @@ router.patch("/admin/loan-applications/:id", asyncHandler(async (req, res) => {
     }
     updates.interestRate = rate;
   }
-  await loan.update(updates);
+
+  if (shouldDisburse) {
+    const destinationAccount = await Account.findOne({
+      where: {
+        customerId: loan.customerId,
+        status: { [Op.notIn]: ["frozen", "suspended", "closed"] },
+      },
+      order: [["createdAt", "ASC"]],
+    });
+
+    if (!destinationAccount) {
+      return res.status(400).json({ error: "Cannot approve loan: customer has no eligible account for disbursement" });
+    }
+
+    await Loan.sequelize.transaction(async (dbTx) => {
+      const principalAmount = Number(loan.principal || 0);
+      const currentBalance = Number(destinationAccount.balance || 0);
+      const updatedBalance = Number((currentBalance + principalAmount).toFixed(2));
+
+      await destinationAccount.update({ balance: updatedBalance }, { transaction: dbTx });
+      await Transaction.create(
+        {
+          accountId: destinationAccount.id,
+          type: "credit",
+          amount: principalAmount,
+          description: `Loan disbursement for application #${loan.id}`,
+          status: "completed",
+          balanceAfter: updatedBalance,
+        },
+        { transaction: dbTx }
+      );
+
+      await loan.update(
+        {
+          ...updates,
+          disbursedAmount: principalAmount,
+        },
+        { transaction: dbTx }
+      );
+    });
+  } else {
+    await loan.update(updates);
+  }
 
   res.json({
     id: loan.id,
@@ -1274,6 +1365,8 @@ router.patch("/admin/loan-applications/:id", asyncHandler(async (req, res) => {
     status: loan.status,
     interestRate: Number(loan.interestRate || 0),
     createdAt: loan.createdAt,
+    submittedAt: loan.createdAt,
+    reviewedAt: ["approved", "rejected"].includes(String(loan.status || "").toLowerCase()) ? loan.updatedAt : null,
   });
 }));
 

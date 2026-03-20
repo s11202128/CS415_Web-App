@@ -8,9 +8,11 @@ export default function ProfileTab({ profileForm, setProfileForm, onUpdateProfil
             Full Name
             <input
               value={profileForm.fullName}
-              onChange={(e) => setProfileForm({ ...profileForm, fullName: e.target.value })}
+              readOnly
+              disabled
               required
             />
+            <p className="hint">Name changes require in-person verification at a Bank of Fiji branch.</p>
           </label>
           <label>
             Email Address
