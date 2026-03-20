@@ -91,7 +91,7 @@ const toAccountResponse = (a) => ({
 const toStatementRequestResponse = (row) => ({
   id: row.id,
   customerId: row.customerId,
-  accountId: row.accountId,
+  accountId: null,
   fullName: row.fullName,
   accountHolder: row.accountHolder,
   accountNumber: row.accountNumber,
@@ -170,6 +170,47 @@ function parseScheduledAccountId(description) {
   const text = String(description || "");
   const match = text.match(/scheduled_account:(\d+)/i);
   return match ? Number(match[1]) : null;
+}
+
+async function mapTransactionRows(rows) {
+  const accountNumbers = Array.from(new Set(rows.map((row) => String(row.accountNumber || "")).filter(Boolean)));
+  const accounts = accountNumbers.length
+    ? await Account.findAll({ where: { accountNumber: { [Op.in]: accountNumbers } }, attributes: ["id", "accountNumber"] })
+    : [];
+  const accountIdByNumber = new Map(accounts.map((a) => [String(a.accountNumber), Number(a.id)]));
+
+  return rows.map((t) => ({
+    id: t.id,
+    accountId: accountIdByNumber.get(String(t.accountNumber)) || null,
+    accountNumber: t.accountNumber,
+    kind: t.type,
+    amount: Number(t.amount),
+    description: t.description,
+    status: t.status,
+    suspicious: Number(t.amount) >= getHighValueTransferThreshold() || String(t.status || "").toLowerCase() === "reversed",
+    createdAt: t.createdAt,
+  }));
+}
+
+async function resolveBillAccountFromPayload(payload) {
+  const accountNumber = String(payload?.accountNumber || "").trim();
+  if (accountNumber) {
+    const byNumber = await Account.findOne({ where: { accountNumber } });
+    if (!byNumber) {
+      throw new Error("Account not found");
+    }
+    return byNumber;
+  }
+
+  const accountId = Number(payload?.accountId);
+  if (!Number.isFinite(accountId) || accountId <= 0) {
+    throw new Error("Valid accountNumber or accountId is required");
+  }
+  const byId = await Account.findByPk(accountId);
+  if (!byId) {
+    throw new Error("Account not found");
+  }
+  return byId;
 }
 
 router.get("/health", (req, res) => {
@@ -466,32 +507,23 @@ router.put("/admin/freeze-account", asyncHandler(async (req, res) => {
 
 router.get("/admin/transactions", asyncHandler(async (req, res) => {
   const accountNumber = String(req.query.accountNumber || "").trim();
-  let accountIdFilter = null;
+  let accountNumberFilter = null;
 
   if (accountNumber) {
     const account = await Account.findOne({ where: { accountNumber } });
     if (!account) {
       return res.json([]);
     }
-    accountIdFilter = account.id;
+    accountNumberFilter = account.accountNumber;
   }
 
   const rows = await Transaction.findAll({
-    where: accountIdFilter ? { accountId: accountIdFilter } : undefined,
+    where: accountNumberFilter ? { accountNumber: accountNumberFilter } : undefined,
     order: [["createdAt", "DESC"]],
     limit: 500,
   });
 
-  res.json(rows.map((t) => ({
-    id: t.id,
-    accountId: t.accountId,
-    kind: t.type,
-    amount: Number(t.amount),
-    description: t.description,
-    status: t.status,
-    suspicious: Number(t.amount) >= getHighValueTransferThreshold() || String(t.status || "").toLowerCase() === "reversed",
-    createdAt: t.createdAt,
-  })));
+  res.json(await mapTransactionRows(rows));
 }));
 
 router.get("/admin/login-logs", asyncHandler(async (req, res) => {
@@ -506,19 +538,16 @@ router.post("/admin/transactions/:id/reverse", asyncHandler(async (req, res) => 
 }));
 
 router.get("/transactions", asyncHandler(async (req, res) => {
-  const { accountId } = req.query;
-  if (!accountId) {
-    return res.status(400).json({ error: "accountId query is required" });
+  const accountId = String(req.query.accountId || "").trim();
+  const accountNumber = String(req.query.accountNumber || "").trim();
+  if (!accountId && !accountNumber) {
+    return res.status(400).json({ error: "accountId or accountNumber query is required" });
   }
-  const rows = await getAccountTransactions(accountId);
-  res.json(rows.map((t) => ({
-    id: t.id,
-    accountId: t.accountId,
-    kind: t.type,
-    amount: Number(t.amount),
-    description: t.description,
+  const rows = await getAccountTransactions(accountNumber || accountId);
+  const mappedRows = await mapTransactionRows(rows);
+  res.json(mappedRows.map((row) => ({
+    ...row,
     counterpartyAccountId: null,
-    createdAt: t.createdAt,
   })));
 }));
 
@@ -561,61 +590,6 @@ router.post("/transfer", requireAuth, asyncHandler(async (req, res) => {
   res.json({ highValueThreshold: getHighValueTransferThreshold(), ...result });
 }));
 
-router.post("/transfers/validate-destination", requireAuth, asyncHandler(async (req, res) => {
-  const payload = req.body || {};
-  const destinationInput = String(payload.toAccountNumber || "").trim();
-  const fromAccountId = Number(payload.fromAccountId || 0);
-
-  if (!fromAccountId) {
-    return res.status(400).json({ error: "fromAccountId is required" });
-  }
-  if (!destinationInput) {
-    return res.status(400).json({ error: "Destination account number or customer ID is required" });
-  }
-  if (!/^\d{12}$/.test(destinationInput) && !/^\d+$/.test(destinationInput)) {
-    return res.status(400).json({ error: "Enter a 12-digit account number or numeric customer ID" });
-  }
-
-  const fromAccount = await Account.findByPk(fromAccountId);
-  if (!fromAccount) {
-    return res.status(404).json({ error: "Source account not found" });
-  }
-  if (!isAdmin(req) && fromAccount.customerId !== getAuthenticatedCustomerId(req)) {
-    return res.status(403).json({ error: "Forbidden" });
-  }
-
-  let destination = null;
-  if (/^\d{12}$/.test(destinationInput)) {
-    destination = await Account.findOne({
-      where: { accountNumber: destinationInput },
-      include: [{ model: Customer, attributes: ["id", "fullName"] }],
-    });
-  } else {
-    destination = await Account.findOne({
-      where: {
-        customerId: Number(destinationInput),
-        status: { [Op.notIn]: ["frozen", "suspended", "closed"] },
-      },
-      include: [{ model: Customer, attributes: ["id", "fullName"] }],
-      order: [["createdAt", "ASC"]],
-    });
-  }
-
-  if (!destination) {
-    return res.status(404).json({ error: "Destination account/customer not found" });
-  }
-  if (destination.id === fromAccount.id) {
-    return res.status(400).json({ error: "Destination account must be different from source account" });
-  }
-
-  res.json({
-    accountId: destination.id,
-    accountNumber: destination.accountNumber,
-    customerId: destination.customerId,
-    customerName: destination.Customer?.fullName || destination.accountHolder || "Unknown customer",
-  });
-}));
-
 router.post("/otp/send", requireAuth, asyncHandler(async (req, res) => {
   const payload = req.body || {};
   const transferPayload = payload.transaction || payload;
@@ -654,13 +628,15 @@ router.get("/admin/transfers", asyncHandler(async (req, res) => {
     limit: 500,
   });
 
-  res.json(rows.map((t) => ({
-    id: t.id,
-    accountId: t.accountId,
-    kind: t.type,
-    amount: Number(t.amount),
-    description: t.description,
-    createdAt: t.createdAt,
+  const mapped = await mapTransactionRows(rows);
+  res.json(mapped.map((row) => ({
+    id: row.id,
+    accountId: row.accountId,
+    accountNumber: row.accountNumber,
+    kind: row.kind,
+    amount: row.amount,
+    description: row.description,
+    createdAt: row.createdAt,
   })));
 }));
 
@@ -744,13 +720,14 @@ router.get("/admin/dashboard-report", asyncHandler(async (req, res) => {
     limit: 8,
   });
 
-  const recentTransactionRows = latestTransactions.map((t) => ({
-    id: t.id,
-    accountId: t.accountId,
-    kind: t.type,
-    amount: Number(t.amount),
-    description: t.description,
-    createdAt: t.createdAt,
+  const recentTransactionRows = (await mapTransactionRows(latestTransactions)).map((row) => ({
+    id: row.id,
+    accountId: row.accountId,
+    accountNumber: row.accountNumber,
+    kind: row.kind,
+    amount: row.amount,
+    description: row.description,
+    createdAt: row.createdAt,
   }));
 
   const todayStart = new Date();
@@ -791,57 +768,48 @@ router.post("/transfers/verify", requireAuth, asyncHandler(async (req, res) => {
 
 router.post("/bills/manual", requireAuth, asyncHandler(async (req, res) => {
   const payload = req.body || {};
-  const account = await Account.findByPk(payload.accountId);
-  if (!account) {
-    return res.status(404).json({ error: "Account not found" });
-  }
+  const account = await resolveBillAccountFromPayload(payload);
   if (!isAdmin(req) && account.customerId !== getAuthenticatedCustomerId(req)) {
     return res.status(403).json({ error: "Forbidden" });
   }
   const payment = await postBillPayment({
-    accountId: payload.accountId,
+    accountId: account.id,
     payee: payload.payee,
     amount: Number(payload.amount),
     mode: "manual",
   });
-  res.status(201).json(payment);
+  res.status(201).json({ ...payment, accountNumber: account.accountNumber });
 }));
 
 router.post("/pay-bill", requireAuth, asyncHandler(async (req, res) => {
   const payload = req.body || {};
-  const account = await Account.findByPk(payload.accountId);
-  if (!account) {
-    return res.status(404).json({ error: "Account not found" });
-  }
+  const account = await resolveBillAccountFromPayload(payload);
   if (!isAdmin(req) && account.customerId !== getAuthenticatedCustomerId(req)) {
     return res.status(403).json({ error: "Forbidden" });
   }
   const payment = await postBillPayment({
-    accountId: payload.accountId,
+    accountId: account.id,
     payee: payload.payee,
     amount: Number(payload.amount),
     mode: payload.mode || "manual",
     scheduledDate: payload.scheduledDate || null,
   });
-  res.status(201).json(payment);
+  res.status(201).json({ ...payment, accountNumber: account.accountNumber });
 }));
 
 router.post("/bills/scheduled", requireAuth, asyncHandler(async (req, res) => {
   const payload = req.body || {};
-  const account = await Account.findByPk(payload.accountId);
-  if (!account) {
-    return res.status(404).json({ error: "Account not found" });
-  }
+  const account = await resolveBillAccountFromPayload(payload);
   if (!isAdmin(req) && account.customerId !== getAuthenticatedCustomerId(req)) {
     return res.status(403).json({ error: "Forbidden" });
   }
   const row = await scheduleBillPayment({
-    accountId: payload.accountId,
+    accountId: account.id,
     payee: payload.payee,
     amount: Number(payload.amount),
     scheduledDate: payload.scheduledDate,
   });
-  res.status(201).json(row);
+  res.status(201).json({ ...row, accountNumber: account.accountNumber });
 }));
 
 router.get("/bills/scheduled", asyncHandler(async (req, res) => {
@@ -893,11 +861,12 @@ router.post("/investments", asyncHandler(async (req, res) => {
 router.post("/statements/request", requireAuth, asyncHandler(async (req, res) => {
   const payload = req.body || {};
   const accountId = Number(payload.accountId);
+  const requestedAccountNumber = String(payload.accountNumber || "").trim();
   const fromDate = String(payload.fromDate || "").trim();
   const toDate = String(payload.toDate || "").trim();
 
-  if (!Number.isFinite(accountId) || accountId <= 0) {
-    return res.status(400).json({ error: "Valid accountId is required" });
+  if ((!Number.isFinite(accountId) || accountId <= 0) && !requestedAccountNumber) {
+    return res.status(400).json({ error: "Valid accountId or accountNumber is required" });
   }
   if (!fromDate || !toDate) {
     return res.status(400).json({ error: "fromDate and toDate are required" });
@@ -906,7 +875,9 @@ router.post("/statements/request", requireAuth, asyncHandler(async (req, res) =>
     return res.status(400).json({ error: "fromDate must be earlier than or equal to toDate" });
   }
 
-  const account = await Account.findByPk(accountId);
+  const account = (Number.isFinite(accountId) && accountId > 0)
+    ? await Account.findByPk(accountId)
+    : await Account.findOne({ where: { accountNumber: requestedAccountNumber } });
   if (!account) {
     return res.status(404).json({ error: "Account not found" });
   }
@@ -922,15 +893,12 @@ router.post("/statements/request", requireAuth, asyncHandler(async (req, res) =>
 
   const requestRow = await StatementRequest.create({
     customerId: customer.id,
-    accountId: account.id,
     fullName: payload.fullName || customer.fullName,
     accountHolder: payload.accountHolder || account.accountHolder || customer.fullName,
     accountNumber: payload.accountNumber || account.accountNumber,
     fromDate,
     toDate,
-    status: "approved",
-    reviewedBy: "system",
-    reviewedAt: new Date(),
+    status: "pending",
   });
 
   res.status(201).json(toStatementRequestResponse(requestRow));
@@ -985,7 +953,7 @@ router.patch("/admin/statement-requests/:id", requireAuth, requireAdmin, asyncHa
   res.json(toStatementRequestResponse(requestRow));
 }));
 
-async function resolveStatementRequest(req, res) {
+async function resolveApprovedStatementRequest(req, res) {
   const requestId = Number(req.params.requestId);
   if (!Number.isFinite(requestId) || requestId <= 0) {
     res.status(400).json({ error: "Valid requestId is required" });
@@ -1003,25 +971,30 @@ async function resolveStatementRequest(req, res) {
     return null;
   }
 
+  if (requestRow.status !== "approved") {
+    res.status(403).json({ error: "Statement request is not approved yet" });
+    return null;
+  }
+
   return requestRow;
 }
 
 router.get("/statements/request/:requestId", requireAuth, asyncHandler(async (req, res) => {
-  const requestRow = await resolveStatementRequest(req, res);
+  const requestRow = await resolveApprovedStatementRequest(req, res);
   if (!requestRow) {
     return;
   }
-  const rows = await generateStatement(requestRow.accountId, requestRow.fromDate, requestRow.toDate);
+  const rows = await generateStatement(requestRow.accountNumber, requestRow.fromDate, requestRow.toDate);
   res.json(rows);
 }));
 
 router.get("/statements/request/:requestId/download", requireAuth, asyncHandler(async (req, res) => {
-  const requestRow = await resolveStatementRequest(req, res);
+  const requestRow = await resolveApprovedStatementRequest(req, res);
   if (!requestRow) {
     return;
   }
 
-  const rows = await generateStatement(requestRow.accountId, requestRow.fromDate, requestRow.toDate);
+  const rows = await generateStatement(requestRow.accountNumber, requestRow.fromDate, requestRow.toDate);
   const lines = ["transactionId,createdAt,kind,amount,description,counterparty"];
   rows.forEach((r) => {
     lines.push(
@@ -1050,6 +1023,19 @@ router.get("/statements/:accountId", requireAuth, asyncHandler(async (req, res) 
     return res.status(403).json({ error: "Forbidden" });
   }
 
+  const approvedRequest = await StatementRequest.findOne({
+    where: {
+      accountNumber: account.accountNumber,
+      status: "approved",
+      ...(isAdmin(req) ? {} : { customerId: getAuthenticatedCustomerId(req) }),
+    },
+    order: [["reviewedAt", "DESC"]],
+  });
+
+  if (!approvedRequest) {
+    return res.status(403).json({ error: "Statement request has not been approved for this account" });
+  }
+
   const rows = await generateStatement(accountId, req.query.from, req.query.to);
   res.json(rows);
 }));
@@ -1067,6 +1053,19 @@ router.get("/statements/:accountId/download", requireAuth, asyncHandler(async (r
 
   if (!isAdmin(req) && account.customerId !== getAuthenticatedCustomerId(req)) {
     return res.status(403).json({ error: "Forbidden" });
+  }
+
+  const approvedRequest = await StatementRequest.findOne({
+    where: {
+      accountNumber: account.accountNumber,
+      status: "approved",
+      ...(isAdmin(req) ? {} : { customerId: getAuthenticatedCustomerId(req) }),
+    },
+    order: [["reviewedAt", "DESC"]],
+  });
+
+  if (!approvedRequest) {
+    return res.status(403).json({ error: "Statement request has not been approved for this account" });
   }
 
   const rows = await generateStatement(accountId, req.query.from, req.query.to);

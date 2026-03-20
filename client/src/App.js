@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { io } from "socket.io-client";
 import { api, clearToken } from "./api";
 import { tabs } from "./constants/tabs";
 import AuthPage from "./components/AuthPage";
@@ -15,6 +16,8 @@ import LoansTab from "./components/tabs/LoansTab";
 import ProfileTab from "./components/tabs/ProfileTab";
 import ComplianceTab from "./components/tabs/ComplianceTab";
 import AdminLockScreen from "./components/tabs/AdminLockScreen";
+
+const SOCKET_BASE = import.meta.env.VITE_SOCKET_BASE || "http://localhost:4000";
 
 export default function App() {
   const [activeTab, setActiveTab] = useState("Overview");
@@ -93,6 +96,7 @@ export default function App() {
     accountNumber: "",
   });
   const [adminAccountMessage, setAdminAccountMessage] = useState("");
+  const realtimeRefreshTimerRef = useRef(null);
 
   const customerMap = useMemo(() => {
     const map = {};
@@ -242,6 +246,43 @@ export default function App() {
   }
 
   useEffect(() => {
+    if (!authToken) {
+      return;
+    }
+
+    const socket = io(SOCKET_BASE, {
+      auth: { token: authToken },
+      transports: ["websocket", "polling"],
+      reconnection: true,
+    });
+
+    const scheduleRealtimeRefresh = () => {
+      if (realtimeRefreshTimerRef.current) {
+        return;
+      }
+      realtimeRefreshTimerRef.current = setTimeout(async () => {
+        realtimeRefreshTimerRef.current = null;
+        try {
+          await loadInitialData();
+        } catch (err) {
+          // Ignore transient socket-triggered refresh errors.
+        }
+      }, 150);
+    };
+
+    socket.on("activity:changed", scheduleRealtimeRefresh);
+
+    return () => {
+      socket.off("activity:changed", scheduleRealtimeRefresh);
+      socket.disconnect();
+      if (realtimeRefreshTimerRef.current) {
+        clearTimeout(realtimeRefreshTimerRef.current);
+        realtimeRefreshTimerRef.current = null;
+      }
+    };
+  }, [authToken, currentUser?.customerId, currentUser?.isAdmin]);
+
+  useEffect(() => {
     if (!notificationCustomer) return;
     api.getNotifications(notificationCustomer).then(setNotifications).catch((err) => setError(err.message));
   }, [notificationCustomer]);
@@ -321,7 +362,9 @@ export default function App() {
   // ────────────────────────────────────────────────────────────────────────
 
   async function onInitiateTransfer(e) {
-    e.preventDefault();
+    if (e && typeof e.preventDefault === "function") {
+      e.preventDefault();
+    }
     setTransferMessage("");
     try {
       const payload = {

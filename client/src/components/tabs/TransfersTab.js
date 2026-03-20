@@ -240,8 +240,22 @@ export default function TransfersTab({
         message: "Destination account verified",
       });
 
-      window.alert(`Receiver verified: ${validatedName}`);
-      await onInitiateTransfer();
+      try {
+        await onInitiateTransfer();
+      } catch (transferErr) {
+        const rawMessage = String(transferErr?.message || "").trim();
+        const friendlyMessage =
+          !rawMessage || /Cannot read properties of undefined/i.test(rawMessage)
+            ? "Destination verified, but transfer could not be completed. Please try again."
+            : rawMessage;
+
+        setDestinationValidation({
+          status: "error",
+          customerName: "",
+          accountNumber: normalizedToAccountNumber,
+          message: friendlyMessage,
+        });
+      }
     } catch (err) {
       setDestinationValidation({
         status: "error",
@@ -317,6 +331,11 @@ export default function TransfersTab({
             <button type="submit" disabled={!sourceAccount}>
               Send Transfer
             </button>
+            {transferMessage ? (
+              <p className={/success|verified|completed|pending/i.test(String(transferMessage)) ? "hint" : "status error"}>
+                {transferMessage}
+              </p>
+            ) : null}
           </form>
         ) : showLocalBankForm ? (
           <form onSubmit={handleLocalBankSubmit}>

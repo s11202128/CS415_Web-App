@@ -97,6 +97,15 @@ const initializeDatabase = async () => {
     const hasAdminsTable = normalizedTables.includes("admins");
     const hasLoginLogsTable = normalizedTables.includes("login_logs");
     const hasNotificationLogsTable = normalizedTables.includes("notification_logs");
+    const hasDocumentsTable = normalizedTables.includes("documents");
+
+    if (hasDocumentsTable) {
+      try {
+        await queryInterface.dropTable("documents");
+      } catch (error) {
+        console.warn("Skipping documents table drop:", error.message);
+      }
+    }
 
     let requiresCustomerIdMigration = false;
     let requiresAccountIdMigration = false;

@@ -118,6 +118,14 @@ async function getAccount(accountId) {
   return await Account.findByPk(accountId);
 }
 
+async function getAccountByNumber(accountNumber) {
+  const normalized = String(accountNumber || "").trim();
+  if (!normalized) {
+    return null;
+  }
+  return await Account.findOne({ where: { accountNumber: normalized } });
+}
+
 async function addNotification(customerId, message, notificationType = "SMS_ALERT") {
   const customer = await getCustomer(customerId);
   if (!customer) {
@@ -202,8 +210,8 @@ async function getNotificationLogs(limit = 200, userId = null) {
 }
 
 // Create a transaction in the database
-async function createTransaction({ accountId, kind, amount, description, counterpartyAccountId, metadata = {} }) {
-  const account = await getAccount(accountId);
+async function createTransaction({ accountId, accountNumber, kind, amount, description, counterpartyAccountId, metadata = {} }) {
+  const account = accountId ? await getAccount(accountId) : await getAccountByNumber(accountNumber);
   if (!account) {
     throw new Error("Account not found");
   }
@@ -216,7 +224,7 @@ async function createTransaction({ accountId, kind, amount, description, counter
 
   // Create transaction record
   const tx = await Transaction.create({
-    accountId,
+    accountNumber: account.accountNumber,
     type: kind,
     amount: Math.abs(amount),
     description,
@@ -226,7 +234,8 @@ async function createTransaction({ accountId, kind, amount, description, counter
 
   return {
     id: tx.id,
-    accountId,
+    accountId: account.id,
+    accountNumber: account.accountNumber,
     kind,
     amount: Math.abs(amount),
     signedAmount,
@@ -238,9 +247,18 @@ async function createTransaction({ accountId, kind, amount, description, counter
 }
 
 // Get all transactions for an account
-async function getAccountTransactions(accountId) {
+async function getAccountTransactions(accountIdOrNumber) {
+  const numericId = Number(accountIdOrNumber);
+  const account = Number.isFinite(numericId) && numericId > 0
+    ? await getAccount(numericId)
+    : await getAccountByNumber(accountIdOrNumber);
+
+  if (!account) {
+    throw new Error("Account not found");
+  }
+
   const transactions = await Transaction.findAll({
-    where: { accountId },
+    where: { accountNumber: account.accountNumber },
     order: [["createdAt", "DESC"]],
   });
   return transactions;
@@ -252,39 +270,9 @@ async function resolveDestinationAccountId(payload) {
     return rawToAccountId;
   }
 
-  const rawToCustomerId = Number(payload?.toCustomerId);
-  if (Number.isFinite(rawToCustomerId) && rawToCustomerId > 0) {
-    const destinationForCustomer = await Account.findOne({
-      where: {
-        customerId: rawToCustomerId,
-        status: { [Op.notIn]: ["frozen", "suspended", "closed"] },
-      },
-      order: [["createdAt", "ASC"]],
-    });
-    if (!destinationForCustomer) {
-      throw new Error("No active account found for destination customer");
-    }
-    return destinationForCustomer.id;
-  }
-
   const accountNumber = String(payload?.toAccountNumber || "").trim();
   if (!accountNumber) {
-    throw new Error("toAccountId, toCustomerId, or toAccountNumber is required");
-  }
-
-  // Allow customer ID input for same-bank transfers to registered users.
-  if (/^\d+$/.test(accountNumber) && !/^\d{12}$/.test(accountNumber)) {
-    const destinationForCustomer = await Account.findOne({
-      where: {
-        customerId: Number(accountNumber),
-        status: { [Op.notIn]: ["frozen", "suspended", "closed"] },
-      },
-      order: [["createdAt", "ASC"]],
-    });
-    if (!destinationForCustomer) {
-      throw new Error("No active account found for destination customer");
-    }
-    return destinationForCustomer.id;
+    throw new Error("toAccountId or toAccountNumber is required");
   }
 
   const destination = await Account.findOne({ where: { accountNumber } });
@@ -593,7 +581,15 @@ async function createInvestment({ customerId, name, amount, annualRate }) {
 }
 
 // Generate statement for an account
-async function generateStatement(accountId, from, to) {
+async function generateStatement(accountRef, from, to) {
+  const numericId = Number(accountRef);
+  const account = Number.isFinite(numericId) && numericId > 0
+    ? await getAccount(numericId)
+    : await getAccountByNumber(accountRef);
+  if (!account) {
+    throw new Error("Account not found");
+  }
+
   const fromDate = from ? new Date(from) : null;
   const toDate = to ? new Date(to) : null;
 
@@ -601,7 +597,7 @@ async function generateStatement(accountId, from, to) {
     toDate.setHours(23, 59, 59, 999);
   }
 
-  const where = { accountId };
+  const where = { accountNumber: account.accountNumber };
   if (fromDate || toDate) {
     if (fromDate && toDate) {
       where.createdAt = { [Op.between]: [fromDate, toDate] };
@@ -905,9 +901,10 @@ async function getDashboard(customerId) {
   }
 
   const accounts = await Account.findAll({ where: { customerId }, order: [["createdAt", "ASC"]] });
-  const accountIds = accounts.map((account) => account.id);
-  const transactions = accountIds.length > 0
-    ? await Transaction.findAll({ where: { accountId: { [Op.in]: accountIds } }, order: [["createdAt", "DESC"]], limit: 10 })
+  const accountNumbers = accounts.map((account) => account.accountNumber).filter(Boolean);
+  const accountByNumber = new Map(accounts.map((account) => [String(account.accountNumber), account]));
+  const transactions = accountNumbers.length > 0
+    ? await Transaction.findAll({ where: { accountNumber: { [Op.in]: accountNumbers } }, order: [["createdAt", "DESC"]], limit: 10 })
     : [];
 
   return {
@@ -928,7 +925,8 @@ async function getDashboard(customerId) {
     })),
     recentTransactions: transactions.map((tx) => ({
       id: tx.id,
-      accountId: tx.accountId,
+      accountId: accountByNumber.get(String(tx.accountNumber))?.id || null,
+      accountNumber: tx.accountNumber,
       type: tx.type,
       amount: Number(tx.amount),
       description: tx.description,
@@ -1044,7 +1042,7 @@ async function reverseTransaction(transactionId) {
 
   const reversalKind = tx.type === "debit" ? "credit" : "debit";
   const reversal = await createTransaction({
-    accountId: tx.accountId,
+    accountNumber: tx.accountNumber,
     kind: reversalKind,
     amount: Number(tx.amount),
     description: `Reversal for transaction ${tx.id}`,

@@ -16,8 +16,8 @@ const StatementRequest = require('./StatementRequest');
 Customer.hasMany(Account, { foreignKey: 'customerId' });
 Account.belongsTo(Customer, { foreignKey: 'customerId' });
 
-Account.hasMany(Transaction, { foreignKey: 'accountId' });
-Transaction.belongsTo(Account, { foreignKey: 'accountId' });
+Account.hasMany(Transaction, { foreignKey: 'accountNumber', sourceKey: 'accountNumber', constraints: false });
+Transaction.belongsTo(Account, { foreignKey: 'accountNumber', targetKey: 'accountNumber', constraints: false });
 
 Customer.hasMany(Bill, { foreignKey: 'customerId' });
 Bill.belongsTo(Customer, { foreignKey: 'customerId' });
@@ -37,8 +37,8 @@ NotificationLog.belongsTo(Customer, { foreignKey: 'userId' });
 Customer.hasMany(StatementRequest, { foreignKey: 'customerId' });
 StatementRequest.belongsTo(Customer, { foreignKey: 'customerId' });
 
-Account.hasMany(StatementRequest, { foreignKey: 'accountId' });
-StatementRequest.belongsTo(Account, { foreignKey: 'accountId' });
+Account.hasMany(StatementRequest, { foreignKey: 'accountNumber', sourceKey: 'accountNumber', constraints: false });
+StatementRequest.belongsTo(Account, { foreignKey: 'accountNumber', targetKey: 'accountNumber', constraints: false });
 
 Customer.hasMany(LoginLog, { foreignKey: 'userId', constraints: false, scope: { userType: 'customer' } });
 Admin.hasMany(LoginLog, { foreignKey: 'userId', constraints: false, scope: { userType: 'admin' } });
