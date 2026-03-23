@@ -22,6 +22,8 @@ export default function ComplianceTab({
 
   const residenceStatus = (status) => status === "resident" ? "🏠 Resident" : "🌍 Non-Resident";
   const [activeSection, setActiveSection] = useState("Interest Rate");
+  const parsedInterestRate = Number(interestRate);
+  const safeInterestRate = Number.isFinite(parsedInterestRate) ? parsedInterestRate : 0;
 
   return (
     <section className="panel-grid">
@@ -48,7 +50,7 @@ export default function ComplianceTab({
             />
           </label>
           <p className="hint">
-            ℹ️ Currently: <strong>{(Number(interestRate) * 100).toFixed(3)}%</strong> p.a. for Savings accounts
+            ℹ️ Currently: <strong>{(safeInterestRate * 100).toFixed(3)}%</strong> p.a. for Savings accounts
           </p>
           <button type="submit">✓ Update Rate</button>
         </form>
@@ -202,7 +204,7 @@ export default function ComplianceTab({
                 <strong>Account Type:</strong> Applies to "Savings" type accounts only
               </li>
               <li>
-                <strong>Rate:</strong> {(Number(interestRate) * 100).toFixed(3)}% per annum (Reserve Bank minimum)
+                <strong>Rate:</strong> {(safeInterestRate * 100).toFixed(3)}% per annum (Reserve Bank minimum)
               </li>
               <li>
                 <strong>Calculation:</strong> Balance × Annual Interest Rate

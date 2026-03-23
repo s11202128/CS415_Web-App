@@ -295,7 +295,7 @@ body::after {
 }
 
 .app-shell > .workspace-layout {
-  background: #5856bf;
+  background: #ffffff;
   border-radius: var(--radius-md);
   padding: 14px;
 }
@@ -381,7 +381,7 @@ body::after {
 .admin-grid {
   display: grid;
   gap: 14px;
-  background: #5856bf;
+  background: #ffffff;
   color: #ffffff;
   border-radius: var(--radius-md);
   padding: 14px;
@@ -483,20 +483,20 @@ body::after {
 }
 
 .admin-grid .admin-tab {
-  background: #1f1026;
+  background: #26257a;
   border-color: #3b2450;
   color: #ffffff;
 }
 
 .admin-grid .admin-tab:hover {
-  background: #2c1736;
+  background: #26257a;
   border-color: #ad03fc;
   color: #ffffff;
   box-shadow: none;
 }
 
 .admin-grid .admin-tab.active {
-  background: #1f1026;
+  background: #26257a;
   border-color: #ad03fc;
   color: #ffffff;
 }
@@ -508,20 +508,20 @@ body::after {
 }
 
 .app-shell > .workspace-layout > .left-tabs .tab {
-  background: #1f1026;
+  background: #26257a;
   border-color: #3b2450;
   color: #ffffff;
 }
 
 .app-shell > .workspace-layout > .left-tabs .tab:hover {
-  background: #2c1736;
+  background: #26257a;
   border-color: #ad03fc;
   color: #ffffff;
   box-shadow: none;
 }
 
 .app-shell > .workspace-layout > .left-tabs .tab.active {
-  background: #1f1026;
+  background: #26257a;
   border-color: #ad03fc;
   color: #ffffff;
 }
