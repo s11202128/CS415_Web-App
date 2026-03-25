@@ -592,18 +592,113 @@ router.post("/admin/transactions/:id/reverse", asyncHandler(async (req, res) => 
   res.json(result);
 }));
 
-router.get("/transactions", asyncHandler(async (req, res) => {
+router.get("/transactions", requireAuth, asyncHandler(async (req, res) => {
   const accountId = String(req.query.accountId || "").trim();
   const accountNumber = String(req.query.accountNumber || "").trim();
   if (!accountId && !accountNumber) {
     return res.status(400).json({ error: "accountId or accountNumber query is required" });
   }
-  const rows = await getAccountTransactions(accountNumber || accountId);
+
+  const account = accountNumber
+    ? await Account.findOne({ where: { accountNumber } })
+    : await Account.findByPk(Number(accountId));
+
+  if (!account) {
+    return res.status(404).json({ error: "Account not found" });
+  }
+  if (!canAccessCustomer(req, account.customerId)) {
+    return res.status(403).json({ error: "Forbidden" });
+  }
+
+  const rows = await getAccountTransactions(account.accountNumber || account.id);
   const mappedRows = await mapTransactionRows(rows);
-  res.json(mappedRows.map((row) => ({
+  const normalizedRows = mappedRows.map((row) => ({
     ...row,
     counterpartyAccountId: null,
-  })));
+  }));
+
+  const typeFilter = String(req.query.type || "").trim().toLowerCase();
+  const fromDate = req.query.fromDate ? new Date(String(req.query.fromDate)) : null;
+  const toDate = req.query.toDate ? new Date(String(req.query.toDate)) : null;
+  const minAmount = req.query.minAmount !== undefined ? Number(req.query.minAmount) : null;
+  const maxAmount = req.query.maxAmount !== undefined ? Number(req.query.maxAmount) : null;
+
+  const filteredRows = normalizedRows.filter((row) => {
+    if (typeFilter && row.kind !== typeFilter) {
+      return false;
+    }
+
+    const createdAtTs = new Date(row.createdAt).getTime();
+    if (fromDate && Number.isFinite(fromDate.getTime()) && createdAtTs < fromDate.getTime()) {
+      return false;
+    }
+    if (toDate && Number.isFinite(toDate.getTime()) && createdAtTs > toDate.getTime()) {
+      return false;
+    }
+
+    if (Number.isFinite(minAmount) && Number(row.amount) < minAmount) {
+      return false;
+    }
+    if (Number.isFinite(maxAmount) && Number(row.amount) > maxAmount) {
+      return false;
+    }
+
+    return true;
+  });
+
+  const wantsPaginated =
+    req.query.paginated === "true" || req.query.page !== undefined || req.query.pageSize !== undefined;
+
+  if (!wantsPaginated) {
+    return res.json(filteredRows);
+  }
+
+  const page = Math.max(Number.parseInt(req.query.page, 10) || 1, 1);
+  const pageSize = Math.min(Math.max(Number.parseInt(req.query.pageSize, 10) || 20, 1), 100);
+  const offset = (page - 1) * pageSize;
+  const items = filteredRows.slice(offset, offset + pageSize);
+
+  return res.json({
+    items,
+    page,
+    pageSize,
+    total: filteredRows.length,
+    totalPages: Math.max(Math.ceil(filteredRows.length / pageSize), 1),
+  });
+}));
+
+router.get("/accounts/:id/details", requireAuth, asyncHandler(async (req, res) => {
+  const accountId = Number(req.params.id);
+  if (!Number.isFinite(accountId) || accountId <= 0) {
+    return res.status(400).json({ error: "Valid account id is required" });
+  }
+
+  const account = await Account.findByPk(accountId, {
+    include: [{ model: Customer, attributes: ["id", "fullName"] }],
+  });
+  if (!account) {
+    return res.status(404).json({ error: "Account not found" });
+  }
+  if (!canAccessCustomer(req, account.customerId)) {
+    return res.status(403).json({ error: "Forbidden" });
+  }
+
+  const limit = Math.min(Math.max(Number.parseInt(req.query.limit, 10) || 20, 1), 100);
+  const txRows = await Transaction.findAll({
+    where: { accountNumber: account.accountNumber },
+    order: [["createdAt", "DESC"]],
+    limit,
+  });
+
+  const transactions = await mapTransactionRows(txRows);
+  return res.json({
+    account: toAccountResponse(account),
+    customer: {
+      id: account.Customer?.id || account.customerId,
+      fullName: account.Customer?.fullName || account.accountHolder || "",
+    },
+    transactions,
+  });
 }));
 
 router.post("/transfers/validate-destination", requireAuth, asyncHandler(async (req, res) => {

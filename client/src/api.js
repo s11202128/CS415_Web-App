@@ -107,6 +107,40 @@ export const api = {
   updateAccountAdmin: (id, body) => request(`/admin/accounts/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
   freezeAccountAdmin: (id) => request(`/admin/accounts/${id}/freeze`, { method: "POST" }),
   getTransactions: (accountId) => request(`/transactions?accountId=${encodeURIComponent(accountId)}`),
+  getTransactionsPaginated: ({
+    accountId,
+    accountNumber,
+    page = 1,
+    pageSize = 20,
+    type,
+    fromDate,
+    toDate,
+    minAmount,
+    maxAmount,
+  }) => {
+    const params = new URLSearchParams();
+    if (accountId !== undefined && accountId !== null && String(accountId) !== "") {
+      params.set("accountId", String(accountId));
+    }
+    if (accountNumber !== undefined && accountNumber !== null && String(accountNumber) !== "") {
+      params.set("accountNumber", String(accountNumber));
+    }
+    params.set("paginated", "true");
+    params.set("page", String(page));
+    params.set("pageSize", String(pageSize));
+    if (type) params.set("type", String(type));
+    if (fromDate) params.set("fromDate", String(fromDate));
+    if (toDate) params.set("toDate", String(toDate));
+    if (minAmount !== undefined && minAmount !== null && String(minAmount) !== "") {
+      params.set("minAmount", String(minAmount));
+    }
+    if (maxAmount !== undefined && maxAmount !== null && String(maxAmount) !== "") {
+      params.set("maxAmount", String(maxAmount));
+    }
+    return request(`/transactions?${params.toString()}`);
+  },
+  getAccountDetails: (accountId, limit = 20) =>
+    request(`/accounts/${encodeURIComponent(accountId)}/details?limit=${encodeURIComponent(limit)}`),
   getAdminTransactions: (accountNumber) => {
     const suffix = accountNumber ? `?accountNumber=${encodeURIComponent(accountNumber)}` : "";
     return request(`/admin/transactions${suffix}`);
