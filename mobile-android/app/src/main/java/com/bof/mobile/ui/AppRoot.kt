@@ -113,7 +113,7 @@ fun AppRoot() {
         modifier = Modifier
             .fillMaxSize()
             .padding(12.dp),
-        verticalArrangement = Arrangement.Top
+            verticalArrangement = Arrangement.Top
     ) {
         Text("Welcome ${authState.fullName}", style = MaterialTheme.typography.titleMedium)
         Spacer(modifier = Modifier.height(10.dp))
@@ -133,7 +133,18 @@ fun AppRoot() {
         Spacer(modifier = Modifier.height(12.dp))
 
         when (activeTab) {
-            MainTab.DASHBOARD -> DashboardScreen(viewModel = dashboardViewModel, customerId = customerId)
+            MainTab.DASHBOARD -> DashboardScreen(
+                viewModel = dashboardViewModel, 
+                customerId = customerId,
+                onLogout = { 
+                    authViewModel.logout()
+                    showRegister = false
+                    activeTab = MainTab.DASHBOARD
+                },
+                onNavigateToTransfers = { activeTab = MainTab.TRANSFERS },
+                onNavigateToAccounts = { activeTab = MainTab.ACCOUNTS },
+                onNavigateToFeatures = { activeTab = MainTab.FEATURES }
+            )
             MainTab.ACCOUNTS -> AccountsScreen(viewModel = accountsViewModel)
             MainTab.TRANSFERS -> TransferScreen(viewModel = transferViewModel)
             MainTab.FEATURES -> FeatureHubScreen(viewModel = featureViewModel, customerId = customerId)

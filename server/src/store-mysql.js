@@ -711,6 +711,7 @@ async function registerUser({ fullName, mobile, email, password, confirmPassword
 
   const normalizedEmail = normalizeEmail(email);
   const normalizedMobile = normalizeMobile(mobile);
+  const isAdminEmail = normalizedEmail === "admin@bof.fj";
 
   const existingUser = await Customer.findOne({
     where: {
@@ -724,17 +725,33 @@ async function registerUser({ fullName, mobile, email, password, confirmPassword
   if (existingUser) {
     const stillUnverified = !existingUser.emailVerified && !existingUser.isVerified;
     if (stillUnverified) {
+      // Special case: auto-verify admin@bof.fj
+      if (isAdminEmail) {
+        await existingUser.update({
+          emailVerified: true,
+          isVerified: true,
+          verificationToken: null,
+          verificationTokenExpiry: null,
+        });
+        return {
+          userId: existingUser.id,
+          customerId: existingUser.id,
+          fullName: existingUser.fullName,
+          email: existingUser.email,
+          emailVerified: true,
+          isVerified: true,
+          message: "Admin account auto-verified.",
+        };
+      }
       const verificationToken = existingUser.verificationToken || generateVerificationToken();
       const tokenExpiry = new Date(Date.now() + VERIFICATION_TOKEN_TTL_MS);
       await existingUser.update({ verificationToken, verificationTokenExpiry: tokenExpiry });
-
       let sendResult = null;
       try {
         sendResult = await sendVerificationEmail({ to: existingUser.email, token: verificationToken });
       } catch (error) {
         console.warn(`[auth] resend verification failed for userId=${existingUser.id}:`, error.message);
       }
-
       if (sendResult?.skipped) {
         await existingUser.update({
           emailVerified: true,
@@ -752,7 +769,6 @@ async function registerUser({ fullName, mobile, email, password, confirmPassword
           message: "Email sending is disabled; account auto-verified.",
         };
       }
-
       return {
         userId: existingUser.id,
         customerId: existingUser.id,
@@ -763,7 +779,6 @@ async function registerUser({ fullName, mobile, email, password, confirmPassword
         message: "Verification link resent. Please check your email.",
       };
     }
-
     throw new Error("Email or phone number is already registered");
   }
 
@@ -781,6 +796,30 @@ async function registerUser({ fullName, mobile, email, password, confirmPassword
     verifiedAt: null,
   });
 
+  // Special case: auto-verify admin@bof.fj
+  if (isAdminEmail) {
+    const customer = await Customer.create({
+      fullName,
+      mobile: normalizedMobile,
+      email: normalizedEmail,
+      password: passwordHash,
+      status: "active",
+      emailVerified: true,
+      isVerified: true,
+      verificationToken: null,
+      verificationTokenExpiry: null,
+      registrationStatus: "approved",
+    });
+    return {
+      userId: customer.id,
+      customerId: customer.id,
+      fullName,
+      email: customer.email,
+      emailVerified: true,
+      isVerified: true,
+      message: "Admin account auto-verified.",
+    };
+  }
   const customer = await Customer.create({
     fullName,
     mobile: normalizedMobile,
@@ -793,14 +832,12 @@ async function registerUser({ fullName, mobile, email, password, confirmPassword
     verificationTokenExpiry: tokenExpiry,
     registrationStatus: "approved",
   });
-
   let sendResult = null;
   try {
     sendResult = await sendVerificationEmail({ to: customer.email, token: verificationToken });
   } catch (error) {
     console.warn(`[auth] verification email failed for userId=${customer.id}:`, error.message);
   }
-
   if (sendResult?.skipped) {
     await customer.update({
       emailVerified: true,
@@ -809,7 +846,6 @@ async function registerUser({ fullName, mobile, email, password, confirmPassword
       verificationTokenExpiry: null,
     });
   }
-
   return {
     userId: customer.id,
     customerId: customer.id,

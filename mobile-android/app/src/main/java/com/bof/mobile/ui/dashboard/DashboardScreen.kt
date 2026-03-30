@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -13,6 +14,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -32,7 +34,14 @@ import androidx.compose.ui.unit.dp
 import com.bof.mobile.viewmodel.DashboardViewModel
 
 @Composable
-fun DashboardScreen(viewModel: DashboardViewModel, customerId: Int) {
+fun DashboardScreen(
+    viewModel: DashboardViewModel, 
+    customerId: Int,
+    onLogout: () -> Unit,
+    onNavigateToTransfers: () -> Unit = {},
+    onNavigateToAccounts: () -> Unit = {},
+    onNavigateToFeatures: () -> Unit = {}
+) {
     val uiState by viewModel.uiState.collectAsState()
 
     LaunchedEffect(customerId) {
@@ -54,6 +63,13 @@ fun DashboardScreen(viewModel: DashboardViewModel, customerId: Int) {
                 .padding(16.dp),
             verticalArrangement = Arrangement.Top
         ) {
+            // Top Row: Logout Button
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.End
+            ) {
+                LogoutButton(onLogout = onLogout)
+            }
             // Hero header
             Surface(
                 modifier = Modifier
@@ -66,6 +82,9 @@ fun DashboardScreen(viewModel: DashboardViewModel, customerId: Int) {
                     Text("Your account summary", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
+
+            // Features Tab Section
+            FeaturesTabSection()
 
             if (uiState.isLoading) {
                 Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -135,7 +154,7 @@ fun DashboardScreen(viewModel: DashboardViewModel, customerId: Int) {
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Column {
-                                    Text("${tx.type.uppercase()}", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+                                    Text(tx.type.uppercase(), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
                                     Text(tx.description, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 }
                                 Text("FJD ${"%.2f".format(tx.amount)}", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
@@ -145,6 +164,51 @@ fun DashboardScreen(viewModel: DashboardViewModel, customerId: Int) {
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun FeaturesTabSection() {
+    Column(modifier = Modifier
+        .fillMaxWidth()
+        .padding(vertical = 8.dp)) {
+        Text("Features", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+        Spacer(modifier = Modifier.height(8.dp))
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceEvenly
+        ) {
+            FeatureButton("Transfer", onClick = { /* TODO: Navigate to Transfer */ })
+            FeatureButton("Pay Bills", onClick = { /* TODO: Navigate to Pay Bills */ })
+            FeatureButton("Statements", onClick = { /* TODO: Navigate to Statements */ })
+            FeatureButton("Profile", onClick = { /* TODO: Navigate to Profile */ })
+        }
+    }
+}
+
+@Composable
+private fun RowScope.FeatureButton(label: String, onClick: () -> Unit) {
+    Button(
+        onClick = onClick,
+        modifier = Modifier
+            .weight(1f)
+            .padding(horizontal = 4.dp),
+        shape = MaterialTheme.shapes.medium
+    ) {
+        Text(label, style = MaterialTheme.typography.labelLarge)
+    }
+}
+
+@Composable
+private fun LogoutButton(onLogout: () -> Unit) {
+    Button(
+        onClick = onLogout,
+        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFED1C24)),
+        shape = MaterialTheme.shapes.medium,
+        modifier = Modifier
+            .padding(4.dp)
+    ) {
+        Text("Logout", color = Color.White, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
     }
 }
 
