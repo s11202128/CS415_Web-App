@@ -14,6 +14,10 @@ android {
         versionCode = 1
         versionName = "1.0"
 
+        val mobileApiBaseUrl = (project.findProperty("MOBILE_API_BASE_URL") as String?)
+            ?: "http://10.0.2.2:4000/api/"
+        buildConfigField("String", "API_BASE_URL", "\"$mobileApiBaseUrl\"")
+
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
             useSupportLibrary = true
@@ -39,6 +43,7 @@ android {
     }
 
     buildFeatures {
+        buildConfig = true
         compose = true
     }
     composeOptions {
@@ -62,6 +67,8 @@ dependencies {
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.ui:ui-tooling-preview")
     implementation("androidx.compose.material3:material3")
+
+    implementation("com.google.android.material:material:1.12.0")
 
     implementation("com.squareup.retrofit2:retrofit:2.11.0")
     implementation("com.squareup.retrofit2:converter-gson:2.11.0")

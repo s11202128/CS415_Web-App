@@ -10,12 +10,29 @@ import java.io.IOException
 
 class AuthRepository(private val apiService: ApiService) {
 
+    private fun extractErrorMessage(e: HttpException): String {
+        val raw = e.response()?.errorBody()?.string()?.trim()
+        if (!raw.isNullOrBlank()) {
+            val marker = "\"error\":\""
+            val start = raw.indexOf(marker)
+            if (start >= 0) {
+                val messageStart = start + marker.length
+                val end = raw.indexOf('"', messageStart)
+                if (end > messageStart) {
+                    return raw.substring(messageStart, end)
+                }
+            }
+            return raw
+        }
+        return e.message() ?: "Request failed"
+    }
+
     suspend fun login(email: String, password: String): ApiResult<LoginResponse> {
         return try {
             val result = apiService.login(LoginRequest(email = email, password = password))
             ApiResult.Success(result)
         } catch (e: HttpException) {
-            ApiResult.Error(message = "Login failed: ${e.message()}", code = e.code())
+            ApiResult.Error(message = extractErrorMessage(e), code = e.code())
         } catch (e: IOException) {
             ApiResult.Error(message = "Cannot connect to server. Check network and backend status.")
         } catch (e: Exception) {
@@ -42,7 +59,7 @@ class AuthRepository(private val apiService: ApiService) {
             )
             ApiResult.Success(response.message)
         } catch (e: HttpException) {
-            ApiResult.Error(message = "Registration failed: ${e.message()}", code = e.code())
+            ApiResult.Error(message = extractErrorMessage(e), code = e.code())
         } catch (e: IOException) {
             ApiResult.Error(message = "Cannot connect to server. Check network and backend status.")
         } catch (e: Exception) {

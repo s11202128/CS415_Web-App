@@ -1,12 +1,13 @@
 package com.bof.mobile.data.remote
 
+import com.bof.mobile.BuildConfig
 import okhttp3.Interceptor
 import okhttp3.OkHttpClient
 import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
 
 object NetworkModule {
-    private const val BASE_URL = "http://10.0.2.2:4000/api/"
+    private val BASE_URL: String = BuildConfig.API_BASE_URL
 
     fun createApiService(tokenProvider: () -> String?): ApiService {
         val authInterceptor = Interceptor { chain ->

@@ -24,7 +24,7 @@ const {
   getOtpAttempts,
   reverseTransaction,
 } = require("../store-mysql");
-const { Customer, Account, Bill, Loan, Transaction, OtpVerification, StatementRequest } = require("../models");
+const { Customer, Account, Bill, Investment, Loan, Transaction, OtpVerification, StatementRequest } = require("../models");
 
 const loanProducts = [
   { id: "LP-001", name: "Personal Loan", annualRate: 0.089, maxAmount: 30000, minTermMonths: 6, maxTermMonths: 60 },
@@ -106,7 +106,21 @@ const toStatementRequestResponse = (row) => ({
   updatedAt: row.updatedAt,
 });
 
+const toInvestmentResponse = (investment) => ({
+  id: investment.id,
+  customerId: investment.customerId,
+  customerName: investment.Customer?.fullName || "",
+  investmentType: investment.investmentType,
+  amount: Number(investment.amount),
+  expectedReturn: investment.expectedReturn === null || investment.expectedReturn === undefined ? null : Number(investment.expectedReturn),
+  maturityDate: investment.maturityDate,
+  status: investment.status,
+  createdAt: investment.createdAt,
+  updatedAt: investment.updatedAt,
+});
+
 async function getCustomerForAccountPayload(payload, options = {}) {
+  const allowAutoCreate = options.allowAutoCreate !== false;
   const providedCustomerName = String(payload.customerName || "").trim();
   let customerId = payload.customerId;
 
@@ -135,6 +149,10 @@ async function getCustomerForAccountPayload(payload, options = {}) {
       normalizedName
     ),
   });
+
+  if (!customer && !allowAutoCreate) {
+    throw new Error("Customer not found for provided customerName");
+  }
 
   if (!customer) {
     const nonce = Date.now();
@@ -363,6 +381,74 @@ router.get("/accounts", requireAuth, asyncHandler(async (req, res) => {
   res.json(rows.map(toAccountResponse));
 }));
 
+router.get("/investments", requireAuth, asyncHandler(async (req, res) => {
+  let customerId = getAuthenticatedCustomerId(req);
+  if (isAdmin(req) && req.query.customerId !== undefined) {
+    const parsedCustomerId = Number(req.query.customerId);
+    if (!Number.isFinite(parsedCustomerId) || parsedCustomerId <= 0) {
+      return res.status(400).json({ error: "Valid customerId query is required" });
+    }
+    customerId = parsedCustomerId;
+  }
+
+  const rows = await Investment.findAll({
+    where: isAdmin(req) && req.query.customerId === undefined ? undefined : { customerId },
+    include: [{ model: Customer, attributes: ["id", "fullName"] }],
+    order: [["createdAt", "DESC"]],
+  });
+
+  res.json(rows.map(toInvestmentResponse));
+}));
+
+router.post("/investments", requireAuth, asyncHandler(async (req, res) => {
+  const payload = req.body || {};
+  const amount = Number(payload.amount);
+  const customerId = Number(payload.customerId || getAuthenticatedCustomerId(req));
+  const expectedReturn = payload.expectedReturn === undefined || payload.expectedReturn === null || payload.expectedReturn === ""
+    ? null
+    : Number(payload.expectedReturn);
+  const maturityDate = payload.maturityDate ? new Date(String(payload.maturityDate)) : null;
+
+  if (!Number.isFinite(customerId) || customerId <= 0) {
+    return res.status(400).json({ error: "Valid customerId is required" });
+  }
+  if (!canAccessCustomer(req, customerId)) {
+    return res.status(403).json({ error: "Forbidden" });
+  }
+  if (!payload.investmentType || String(payload.investmentType).trim().length < 2) {
+    return res.status(400).json({ error: "investmentType is required" });
+  }
+  if (!Number.isFinite(amount) || amount <= 0) {
+    return res.status(400).json({ error: "amount must be a positive number" });
+  }
+  if (expectedReturn !== null && !Number.isFinite(expectedReturn)) {
+    return res.status(400).json({ error: "expectedReturn must be a number" });
+  }
+  if (maturityDate && Number.isNaN(maturityDate.getTime())) {
+    return res.status(400).json({ error: "maturityDate must be a valid date" });
+  }
+
+  const customer = await Customer.findByPk(customerId);
+  if (!customer) {
+    return res.status(404).json({ error: "Customer not found" });
+  }
+
+  const created = await Investment.create({
+    customerId,
+    investmentType: String(payload.investmentType).trim(),
+    amount,
+    expectedReturn,
+    maturityDate,
+    status: payload.status ? String(payload.status).trim() : "active",
+  });
+
+  const row = await Investment.findByPk(created.id, {
+    include: [{ model: Customer, attributes: ["id", "fullName"] }],
+  });
+
+  res.status(201).json(toInvestmentResponse(row));
+}));
+
 router.post("/accounts", asyncHandler(async (req, res) => {
   const payload = req.body || {};
   const providedAccountNumber = String(payload.accountNumber || "").trim();
@@ -487,6 +573,7 @@ router.post("/admin/create-account", asyncHandler(async (req, res) => {
   }
 
   const customer = await getCustomerForAccountPayload(payload, {
+    allowAutoCreate: false,
     customerDefaults: {
       nationalId: `AUTO-${Date.now()}`,
       emailVerified: true,
@@ -560,6 +647,128 @@ router.post("/admin/deposits", asyncHandler(async (req, res) => {
     message: "Deposit completed.",
     account: toAccountResponse(account),
   });
+}));
+
+router.get("/admin/investments", asyncHandler(async (req, res) => {
+  const statusFilter = String(req.query.status || "").trim();
+  const customerIdFilter = req.query.customerId !== undefined ? Number(req.query.customerId) : null;
+
+  if (req.query.customerId !== undefined && (!Number.isFinite(customerIdFilter) || customerIdFilter <= 0)) {
+    return res.status(400).json({ error: "Valid customerId query is required" });
+  }
+
+  const where = {};
+  if (statusFilter) {
+    where.status = statusFilter;
+  }
+  if (customerIdFilter) {
+    where.customerId = customerIdFilter;
+  }
+
+  const rows = await Investment.findAll({
+    where,
+    include: [{ model: Customer, attributes: ["id", "fullName"] }],
+    order: [["createdAt", "DESC"]],
+  });
+
+  res.json(rows.map(toInvestmentResponse));
+}));
+
+router.post("/admin/investments", asyncHandler(async (req, res) => {
+  const payload = req.body || {};
+  const amount = Number(payload.amount);
+  const expectedReturn = payload.expectedReturn === undefined || payload.expectedReturn === null || payload.expectedReturn === ""
+    ? null
+    : Number(payload.expectedReturn);
+  const maturityDate = payload.maturityDate ? new Date(String(payload.maturityDate)) : null;
+
+  if (!payload.investmentType || String(payload.investmentType).trim().length < 2) {
+    return res.status(400).json({ error: "investmentType is required" });
+  }
+  if (!Number.isFinite(amount) || amount <= 0) {
+    return res.status(400).json({ error: "amount must be a positive number" });
+  }
+  if (expectedReturn !== null && !Number.isFinite(expectedReturn)) {
+    return res.status(400).json({ error: "expectedReturn must be a number" });
+  }
+  if (maturityDate && Number.isNaN(maturityDate.getTime())) {
+    return res.status(400).json({ error: "maturityDate must be a valid date" });
+  }
+
+  const customer = await getCustomerForAccountPayload(payload, { allowAutoCreate: false });
+  const created = await Investment.create({
+    customerId: customer.id,
+    investmentType: String(payload.investmentType).trim(),
+    amount,
+    expectedReturn,
+    maturityDate,
+    status: payload.status ? String(payload.status).trim() : "active",
+  });
+
+  const row = await Investment.findByPk(created.id, {
+    include: [{ model: Customer, attributes: ["id", "fullName"] }],
+  });
+
+  res.status(201).json(toInvestmentResponse(row));
+}));
+
+router.patch("/admin/investments/:id", asyncHandler(async (req, res) => {
+  const investment = await Investment.findByPk(req.params.id, {
+    include: [{ model: Customer, attributes: ["id", "fullName"] }],
+  });
+  if (!investment) {
+    return res.status(404).json({ error: "Investment not found" });
+  }
+
+  const payload = req.body || {};
+  const updates = {};
+  if (payload.investmentType !== undefined) {
+    const value = String(payload.investmentType || "").trim();
+    if (!value) {
+      return res.status(400).json({ error: "investmentType cannot be empty" });
+    }
+    updates.investmentType = value;
+  }
+  if (payload.amount !== undefined) {
+    const value = Number(payload.amount);
+    if (!Number.isFinite(value) || value <= 0) {
+      return res.status(400).json({ error: "amount must be a positive number" });
+    }
+    updates.amount = value;
+  }
+  if (payload.expectedReturn !== undefined) {
+    if (payload.expectedReturn === null || payload.expectedReturn === "") {
+      updates.expectedReturn = null;
+    } else {
+      const value = Number(payload.expectedReturn);
+      if (!Number.isFinite(value)) {
+        return res.status(400).json({ error: "expectedReturn must be a number" });
+      }
+      updates.expectedReturn = value;
+    }
+  }
+  if (payload.maturityDate !== undefined) {
+    if (payload.maturityDate === null || payload.maturityDate === "") {
+      updates.maturityDate = null;
+    } else {
+      const value = new Date(String(payload.maturityDate));
+      if (Number.isNaN(value.getTime())) {
+        return res.status(400).json({ error: "maturityDate must be a valid date" });
+      }
+      updates.maturityDate = value;
+    }
+  }
+  if (payload.status !== undefined) {
+    const value = String(payload.status || "").trim();
+    if (!value) {
+      return res.status(400).json({ error: "status cannot be empty" });
+    }
+    updates.status = value;
+  }
+
+  await investment.update(updates);
+  await investment.reload({ include: [{ model: Customer, attributes: ["id", "fullName"] }] });
+  res.json(toInvestmentResponse(investment));
 }));
 
 router.get("/admin/transactions", asyncHandler(async (req, res) => {

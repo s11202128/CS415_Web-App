@@ -1,0 +1,115 @@
+package com.bof.mobile.data.repository
+
+import com.bof.mobile.data.remote.ApiService
+import com.bof.mobile.model.ApiResult
+import com.bof.mobile.model.BillHistoryItem
+import com.bof.mobile.model.BillPaymentRequest
+import com.bof.mobile.model.ForgotPasswordRequest
+import com.bof.mobile.model.ForgotPasswordResponse
+import com.bof.mobile.model.InterestSummaryItem
+import com.bof.mobile.model.InvestmentItem
+import com.bof.mobile.model.InvestmentRequest
+import com.bof.mobile.model.LoanApplicationItem
+import com.bof.mobile.model.LoanApplicationRequest
+import com.bof.mobile.model.LoanProductItem
+import com.bof.mobile.model.NotificationItem
+import com.bof.mobile.model.ProfileResponse
+import com.bof.mobile.model.ResetPasswordRequest
+import com.bof.mobile.model.ResetPasswordResponse
+import com.bof.mobile.model.ScheduledBillItem
+import com.bof.mobile.model.StatementRequestItem
+import com.bof.mobile.model.StatementRequestPayload
+import com.bof.mobile.model.StatementRowItem
+import com.bof.mobile.model.UpdateProfileRequest
+import retrofit2.HttpException
+import java.io.IOException
+
+class FeatureRepository(private val apiService: ApiService) {
+
+    suspend fun getProfile(customerId: Int): ApiResult<ProfileResponse> = safeCall { apiService.getProfile(customerId) }
+
+    suspend fun updateProfile(request: UpdateProfileRequest): ApiResult<ProfileResponse> = safeCall {
+        apiService.updateProfile(request)
+    }
+
+    suspend fun payBillManual(request: BillPaymentRequest): ApiResult<BillHistoryItem> = safeCall {
+        apiService.payBillManual(request)
+    }
+
+    suspend fun scheduleBill(request: BillPaymentRequest): ApiResult<ScheduledBillItem> = safeCall {
+        apiService.scheduleBill(request)
+    }
+
+    suspend fun getScheduledBills(): ApiResult<List<ScheduledBillItem>> = safeCall {
+        apiService.getScheduledBills()
+    }
+
+    suspend fun getBillHistory(): ApiResult<List<BillHistoryItem>> = safeCall {
+        apiService.getBillHistory()
+    }
+
+    suspend fun runScheduledBill(id: Int): ApiResult<String> = safeCall {
+        val result = apiService.runScheduledBill(id)
+        (result["status"] ?: "scheduled payment executed").toString()
+    }
+
+    suspend fun createStatementRequest(payload: StatementRequestPayload): ApiResult<StatementRequestItem> = safeCall {
+        apiService.createStatementRequest(payload)
+    }
+
+    suspend fun getStatementRequests(): ApiResult<List<StatementRequestItem>> = safeCall {
+        apiService.getStatementRequests()
+    }
+
+    suspend fun getStatementByRequest(requestId: Int): ApiResult<List<StatementRowItem>> = safeCall {
+        apiService.getStatementByRequest(requestId)
+    }
+
+    suspend fun getNotifications(customerId: Int): ApiResult<List<NotificationItem>> = safeCall {
+        apiService.getNotificationsHistory(customerId = customerId)
+    }
+
+    suspend fun forgotPassword(email: String): ApiResult<ForgotPasswordResponse> = safeCall {
+        apiService.forgotPassword(ForgotPasswordRequest(email = email))
+    }
+
+    suspend fun resetPassword(request: ResetPasswordRequest): ApiResult<ResetPasswordResponse> = safeCall {
+        apiService.resetPassword(request)
+    }
+
+    suspend fun getLoanProducts(): ApiResult<List<LoanProductItem>> = safeCall {
+        apiService.getLoanProducts()
+    }
+
+    suspend fun submitLoanApplication(request: LoanApplicationRequest): ApiResult<LoanApplicationItem> = safeCall {
+        apiService.submitLoanApplication(request)
+    }
+
+    suspend fun getLoanApplications(): ApiResult<List<LoanApplicationItem>> = safeCall {
+        apiService.getLoanApplications()
+    }
+
+    suspend fun getInterestSummaries(year: Int): ApiResult<List<InterestSummaryItem>> = safeCall {
+        apiService.getInterestSummaries(year)
+    }
+
+    suspend fun getInvestments(customerId: Int): ApiResult<List<InvestmentItem>> = safeCall {
+        apiService.getInvestments(customerId = customerId)
+    }
+
+    suspend fun createInvestment(request: InvestmentRequest): ApiResult<InvestmentItem> = safeCall {
+        apiService.createInvestment(request)
+    }
+
+    private suspend fun <T> safeCall(block: suspend () -> T): ApiResult<T> {
+        return try {
+            ApiResult.Success(block())
+        } catch (e: HttpException) {
+            ApiResult.Error(message = "Request failed: ${e.message()}", code = e.code())
+        } catch (e: IOException) {
+            ApiResult.Error(message = "Network unavailable. Please try again.")
+        } catch (e: Exception) {
+            ApiResult.Error(message = e.message ?: "Unexpected error")
+        }
+    }
+}

@@ -1,7 +1,7 @@
 const { v4: uuid } = require("uuid");
 const crypto = require("crypto");
 const bcrypt = require("bcryptjs");
-const { Op } = require("sequelize");
+const { Op, where, fn, col } = require("sequelize");
 const { sendSms } = require("./services/smsService");
 const {
   Customer,
@@ -43,6 +43,53 @@ function hashOtp(otp) {
 
 function normalizeEmail(value) {
   return String(value || "").trim().toLowerCase();
+}
+
+function normalizedEmailWhereClause(email) {
+  const normalized = normalizeEmail(email);
+  return {
+    [Op.or]: [
+      { email: normalized },
+      where(fn("LOWER", fn("TRIM", col("email"))), normalized),
+    ],
+  };
+}
+
+function isLikelyBcryptHash(value) {
+  const normalized = String(value || "");
+  return /^\$2[aby]\$\d{2}\$/.test(normalized);
+}
+
+async function verifyPasswordAndMigrateLegacy(userRecord, plainPassword) {
+  const storedPassword = String(userRecord?.password || "");
+  const candidate = String(plainPassword || "");
+  if (!storedPassword || !candidate) {
+    return false;
+  }
+
+  let isValid = false;
+
+  if (isLikelyBcryptHash(storedPassword)) {
+    try {
+      isValid = await bcrypt.compare(candidate, storedPassword);
+    } catch (error) {
+      isValid = false;
+    }
+  }
+
+  // Backward compatibility: legacy databases may contain plaintext passwords.
+  // If matched, immediately upgrade to bcrypt so future logins are secure.
+  if (!isValid && storedPassword === candidate) {
+    const upgradedHash = await bcrypt.hash(candidate, 10);
+    await userRecord.update({ password: upgradedHash });
+    isValid = true;
+  }
+
+  return isValid;
+}
+
+async function findByNormalizedEmail(Model, email) {
+  return Model.findOne({ where: normalizedEmailWhereClause(email) });
 }
 
 function validatePassword(password) {
@@ -658,7 +705,7 @@ async function registerUser({ fullName, mobile, email, password, confirmPassword
   const existingUser = await Customer.findOne({
     where: {
       [Op.or]: [
-        { email: normalizedEmail },
+        normalizedEmailWhereClause(normalizedEmail),
         { mobile: normalizedMobile },
       ],
     },
@@ -706,10 +753,11 @@ async function loginUser({ email, password, ipAddress, userAgent }) {
   }
 
   const normalizedEmail = normalizeEmail(email);
-  const admin = await Admin.findOne({ where: { email: normalizedEmail } });
+  const admin = await findByNormalizedEmail(Admin, normalizedEmail);
   if (admin) {
-    const validAdmin = await bcrypt.compare(password, admin.password);
-    if (!validAdmin || admin.status !== "active") {
+    const validAdmin = await verifyPasswordAndMigrateLegacy(admin, password);
+    const adminStatus = String(admin.status || "active").toLowerCase();
+    if (!validAdmin || adminStatus !== "active") {
       await recordLoginAttempt({ userType: "admin", userId: admin.id, email: normalizedEmail, success: false, failureReason: "Invalid admin credentials", ipAddress, userAgent });
       throw new Error("Invalid email or password");
     }
@@ -724,9 +772,39 @@ async function loginUser({ email, password, ipAddress, userAgent }) {
     };
   }
 
-  const customer = await Customer.findOne({
-    where: { email: normalizedEmail },
-  });
+  let customer = await findByNormalizedEmail(Customer, normalizedEmail);
+
+  // Legacy compatibility: older flows may have registration rows without customer rows.
+  if (!customer) {
+    const legacyRegistration = await findByNormalizedEmail(Registration, normalizedEmail);
+    if (legacyRegistration) {
+      const validLegacyPassword = await verifyPasswordAndMigrateLegacy(legacyRegistration, password);
+      if (validLegacyPassword) {
+        const normalizedMobile = String(legacyRegistration.mobile || "").trim();
+        const customerByMobile = normalizedMobile
+          ? await Customer.findOne({ where: { mobile: normalizedMobile } })
+          : null;
+
+        if (customerByMobile) {
+          if (normalizeEmail(customerByMobile.email) !== normalizedEmail) {
+            await customerByMobile.update({ email: normalizedEmail });
+          }
+          customer = customerByMobile;
+        } else {
+          customer = await Customer.create({
+            fullName: legacyRegistration.fullName,
+            mobile: normalizedMobile,
+            email: normalizedEmail,
+            password: legacyRegistration.password,
+            status: "active",
+            emailVerified: true,
+            registrationStatus: "approved",
+            nationalId: legacyRegistration.nationalId || "",
+          });
+        }
+      }
+    }
+  }
 
   if (!customer) {
     await recordLoginAttempt({ userType: "customer", email: normalizedEmail, success: false, failureReason: "Unknown email", ipAddress, userAgent });
@@ -743,7 +821,7 @@ async function loginUser({ email, password, ipAddress, userAgent }) {
     throw new Error("This account is not currently permitted to log in");
   }
 
-  const valid = await bcrypt.compare(password, customer.password);
+  const valid = await verifyPasswordAndMigrateLegacy(customer, password);
   if (!valid) {
     const nextFailures = Number(customer.failedLoginAttempts || 0) + 1;
     const updates = { failedLoginAttempts: nextFailures };
@@ -780,8 +858,9 @@ async function verifyAdminCredentials({ email, password }) {
     throw new Error("email and password are required");
   }
 
-  const admin = await Admin.findOne({ where: { email: normalizeEmail(email) } });
-  if (!admin || !(await bcrypt.compare(password, admin.password))) {
+  const admin = await findByNormalizedEmail(Admin, normalizeEmail(email));
+  const validAdmin = admin ? await verifyPasswordAndMigrateLegacy(admin, password) : false;
+  if (!admin || !validAdmin) {
     throw new Error("Invalid admin email or password");
   }
 
