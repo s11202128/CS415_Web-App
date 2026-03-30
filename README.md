@@ -1,6 +1,11 @@
 # CS415-A1 - Bank of Fiji Online Banking Prototype
 
-This workspace now contains the backend API and a native Android client.
+This workspace was split into two standalone repositories (history preserved):
+
+- Mobile Android app: see `C:\Users\LENOVO\Desktop\cs415-mobile` (branch `main`)
+- Backend/server: see `C:\Users\LENOVO\Desktop\cs415-web` (branch `main`)
+
+Keep this repo as an archive; do active work in the new repos and push them to GitHub remotes you create (for example `cs415-mobile` and `cs415-web`).
 
 ## Stack
 - Mobile App (Presentation Layer): Kotlin + Jetpack Compose (`mobile-android`)
