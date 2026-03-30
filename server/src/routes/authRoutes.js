@@ -8,6 +8,7 @@ const withStatus = (statusCode, handler) => async (req, res) => {
     await handler(req, res);
   } catch (err) {
     const resolvedStatus = Number(err?.statusCode) || statusCode;
+    console.error(`[auth] ${req.method} ${req.path} failed:`, err.message);
     res.status(resolvedStatus).json({ error: err.message });
   }
 };

@@ -63,6 +63,16 @@ function shouldBroadcastActivity(req, res) {
 app.use(cors());
 app.use(express.json());
 
+// Basic root health response for browser hits
+app.get("/", (req, res) => {
+  res.json({ status: "ok", message: "BoF Banking API" });
+});
+
+// API health check for mobile/clients
+app.get("/api/health", (req, res) => {
+  res.json({ status: "ok", service: "bof-api", uptime: process.uptime() });
+});
+
 app.use((req, res, next) => {
   res.on("finish", () => {
     if (!ioRef || !shouldBroadcastActivity(req, res)) {
@@ -137,8 +147,10 @@ initializeDatabase()
       process.exit(1);
     });
 
-    server.listen(PORT, () => {
-      console.log(`BoF Banking API running on http://localhost:${PORT}`);
+    server.listen(PORT, "0.0.0.0", () => {
+      console.log(
+        `BoF Banking API running on http://0.0.0.0:${PORT} (listening on all interfaces)`
+      );
     });
   })
   .catch((error) => {

@@ -15,7 +15,7 @@ android {
         versionName = "1.0"
 
         val mobileApiBaseUrl = (project.findProperty("MOBILE_API_BASE_URL") as String?)
-            ?: "http://10.0.2.2:4000/api/"
+            ?: "http://10.223.154.114:4000/api/"
         buildConfigField("String", "API_BASE_URL", "\"$mobileApiBaseUrl\"")
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"

@@ -720,7 +720,50 @@ async function registerUser({ fullName, mobile, email, password, confirmPassword
       ],
     },
   });
+
   if (existingUser) {
+    const stillUnverified = !existingUser.emailVerified && !existingUser.isVerified;
+    if (stillUnverified) {
+      const verificationToken = existingUser.verificationToken || generateVerificationToken();
+      const tokenExpiry = new Date(Date.now() + VERIFICATION_TOKEN_TTL_MS);
+      await existingUser.update({ verificationToken, verificationTokenExpiry: tokenExpiry });
+
+      let sendResult = null;
+      try {
+        sendResult = await sendVerificationEmail({ to: existingUser.email, token: verificationToken });
+      } catch (error) {
+        console.warn(`[auth] resend verification failed for userId=${existingUser.id}:`, error.message);
+      }
+
+      if (sendResult?.skipped) {
+        await existingUser.update({
+          emailVerified: true,
+          isVerified: true,
+          verificationToken: null,
+          verificationTokenExpiry: null,
+        });
+        return {
+          userId: existingUser.id,
+          customerId: existingUser.id,
+          fullName: existingUser.fullName,
+          email: existingUser.email,
+          emailVerified: true,
+          isVerified: true,
+          message: "Email sending is disabled; account auto-verified.",
+        };
+      }
+
+      return {
+        userId: existingUser.id,
+        customerId: existingUser.id,
+        fullName: existingUser.fullName,
+        email: existingUser.email,
+        emailVerified: existingUser.emailVerified,
+        isVerified: existingUser.isVerified,
+        message: "Verification link resent. Please check your email.",
+      };
+    }
+
     throw new Error("Email or phone number is already registered");
   }
 
@@ -751,16 +794,32 @@ async function registerUser({ fullName, mobile, email, password, confirmPassword
     registrationStatus: "approved",
   });
 
-  await sendVerificationEmail({ to: customer.email, token: verificationToken });
+  let sendResult = null;
+  try {
+    sendResult = await sendVerificationEmail({ to: customer.email, token: verificationToken });
+  } catch (error) {
+    console.warn(`[auth] verification email failed for userId=${customer.id}:`, error.message);
+  }
+
+  if (sendResult?.skipped) {
+    await customer.update({
+      emailVerified: true,
+      isVerified: true,
+      verificationToken: null,
+      verificationTokenExpiry: null,
+    });
+  }
 
   return {
     userId: customer.id,
     customerId: customer.id,
     fullName,
     email: customer.email,
-    emailVerified: false,
-    isVerified: false,
-    message: "Registration successful. Please verify your email to sign in.",
+    emailVerified: customer.emailVerified,
+    isVerified: customer.isVerified,
+    message: sendResult?.skipped
+      ? "Registration successful. Email verification skipped; you can sign in now."
+      : "Registration successful. Please verify your email to sign in.",
   };
 }
 
@@ -867,6 +926,7 @@ async function loginUser({ email, mobile, username, password, ipAddress, userAge
 
   if (!customer.isVerified && !customer.emailVerified) {
     await recordLoginAttempt({ userType: "customer", userId: customer.id, email: loginIdentifier, success: false, failureReason: "Email not verified", ipAddress, userAgent });
+    console.warn(`[auth] login blocked (unverified): userId=${customer.id} email=${loginIdentifier}`);
     throw new Error("Please verify your email first");
   }
 

@@ -47,7 +47,7 @@ const Customer = sequelize.define('Customer', {
   verificationTokenExpiry: {
     type: DataTypes.DATE,
     allowNull: true,
-    field: 'token_expiry',
+    field: 'verification_token_expires',
   },
   status: {
     type: DataTypes.STRING,

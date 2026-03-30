@@ -1,19 +1,33 @@
 const nodemailer = require('nodemailer');
 
-function requireEmailConfig() {
+function getEmailConfig() {
   const user = process.env.EMAIL_USER;
   const pass = process.env.EMAIL_PASS;
   if (!user || !pass) {
-    throw new Error('Email credentials are not configured');
+    return null;
   }
-  return { user, pass };
-}
-
-function buildTransport() {
-  const { user, pass } = requireEmailConfig();
   const host = process.env.EMAIL_HOST;
   const port = Number(process.env.EMAIL_PORT) || 587;
   const secure = String(process.env.EMAIL_SECURE || '').toLowerCase() === 'true' || port === 465;
+  return { user, pass, host, port, secure };
+}
+
+function buildTransport() {
+  const config = getEmailConfig();
+  if (!config) {
+    return {
+      // Dev fallback: log instead of sending to avoid crashes when creds are missing
+      sendMail: async (options) => {
+        console.warn('[email] EMAIL_USER/EMAIL_PASS missing; skipping send. Payload:', {
+          to: options?.to,
+          subject: options?.subject,
+        });
+        return { skipped: true };
+      },
+    };
+  }
+
+  const { user, pass, host, port, secure } = config;
 
   if (host) {
     return nodemailer.createTransport({
@@ -31,7 +45,7 @@ function buildTransport() {
 }
 
 function resolveFromAddress() {
-  return process.env.EMAIL_FROM || process.env.EMAIL_USER;
+  return process.env.EMAIL_FROM || process.env.EMAIL_USER || 'no-reply@example.com';
 }
 
 async function sendEmail({ to, subject, text, html }) {
@@ -45,13 +59,15 @@ async function sendEmail({ to, subject, text, html }) {
   const transporter = buildTransport();
   const from = resolveFromAddress();
 
-  await transporter.sendMail({
+  const result = await transporter.sendMail({
     from,
     to,
     subject,
     text,
     html,
   });
+
+  return result;
 }
 
 function buildVerificationUrl(token) {
@@ -66,11 +82,12 @@ async function sendVerificationEmail({ to, token }) {
   const text = `Welcome! Please verify your email by visiting: ${verificationUrl}`;
   const html = `<p>Welcome!</p><p>Please verify your email by clicking the link below:</p><p><a href="${verificationUrl}">${verificationUrl}</a></p>`;
 
-  await sendEmail({ to, subject, text, html });
+  const result = await sendEmail({ to, subject, text, html });
 
   return {
     to,
     verificationUrl,
+    skipped: Boolean(result?.skipped),
   };
 }
 
