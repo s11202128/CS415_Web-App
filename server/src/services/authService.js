@@ -1,6 +1,8 @@
 const {
   registerUser,
   loginUser,
+  verifyEmailToken,
+  resendVerificationEmail,
   verifyAdminCredentials,
   requestPasswordReset,
   resetPassword,
@@ -27,6 +29,24 @@ const authService = {
    */
   login(payload) {
     return loginUser(payload || {});
+  },
+
+  /**
+   * Verify email using verification token.
+   * @param {Object} payload Verification payload
+   * @returns {Promise<Object>} Verification result
+   */
+  verifyEmail(payload) {
+    return verifyEmailToken(payload?.token);
+  },
+
+  /**
+   * Resend email verification link.
+   * @param {Object} payload Resend payload
+   * @returns {Promise<Object>} Resend result
+   */
+  resendVerification(payload) {
+    return resendVerificationEmail(payload || {});
   },
 
   /**

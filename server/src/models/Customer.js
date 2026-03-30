@@ -34,6 +34,21 @@ const Customer = sequelize.define('Customer', {
     type: DataTypes.BOOLEAN,
     defaultValue: false,
   },
+  isVerified: {
+    type: DataTypes.BOOLEAN,
+    defaultValue: false,
+    field: 'is_verified',
+  },
+  verificationToken: {
+    type: DataTypes.STRING,
+    allowNull: true,
+    field: 'verification_token',
+  },
+  verificationTokenExpiry: {
+    type: DataTypes.DATE,
+    allowNull: true,
+    field: 'token_expiry',
+  },
   status: {
     type: DataTypes.STRING,
     defaultValue: 'active',

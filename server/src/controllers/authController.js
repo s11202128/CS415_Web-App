@@ -81,6 +81,28 @@ const authController = {
   },
 
   /**
+   * Verify email using token.
+   * @param {import('express').Request} req Express request
+   * @param {import('express').Response} res Express response
+   * @returns {Promise<void>}
+   */
+  async verifyEmail(req, res) {
+    const result = await authService.verifyEmail({ token: req.params.token });
+    res.json(result);
+  },
+
+  /**
+   * Resend verification email.
+   * @param {import('express').Request} req Express request
+   * @param {import('express').Response} res Express response
+   * @returns {Promise<void>}
+   */
+  async resendVerification(req, res) {
+    const result = await authService.resendVerification(req.body || {});
+    res.json(result);
+  },
+
+  /**
    * Admin credential verification endpoint handler.
    * @param {import('express').Request} req Express request
    * @param {import('express').Response} res Express response
