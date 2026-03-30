@@ -8,13 +8,15 @@
   "main": "src/index.js",
   "scripts": {
     "start": "node src/index.js",
-    "dev": "nodemon src/index.js"
+    "dev": "nodemon src/index.js",
+    "reset-admin": "node create-admin.js"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",
     "cors": "^2.8.5",
     "express": "^4.22.1",
     "jsonwebtoken": "^9.0.3",
+    "nodemailer": "^6.9.15",
     "mysql2": "^3.19.1",
     "sequelize": "^6.37.8",
     "socket.io": "^4.8.3",

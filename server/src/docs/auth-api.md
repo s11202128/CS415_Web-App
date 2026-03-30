@@ -18,7 +18,8 @@ Registers a customer account.
 Authenticates customer/admin and returns JWT token.
 
 ### Request Body
-- email (string)
+- email (string) — you can also supply `mobile` instead
+- mobile (string, optional) — digits (with or without +country code)
 - password (string)
 
 ### Response

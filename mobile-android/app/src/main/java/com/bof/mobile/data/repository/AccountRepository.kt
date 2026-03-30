@@ -25,7 +25,7 @@ class AccountRepository(private val apiService: ApiService) {
 
     suspend fun getAccountDetails(accountId: Int): ApiResult<AccountDetailsResponse> {
         return try {
-            ApiResult.Success(apiService.getAccountDetails(accountId))
+            ApiResult.Success(apiService.getAccountDetails(accountId, 20))
         } catch (e: HttpException) {
             ApiResult.Error(message = "Failed to load account details: ${e.message()}", code = e.code())
         } catch (e: IOException) {
@@ -45,6 +45,7 @@ class AccountRepository(private val apiService: ApiService) {
             ApiResult.Success(
                 apiService.getTransactionsPaginated(
                     accountId = accountId,
+                    paginated = true,
                     page = page,
                     pageSize = pageSize,
                     type = typeFilter

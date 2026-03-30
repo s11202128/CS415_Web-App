@@ -72,7 +72,7 @@ interface ApiService {
     suspend fun getAccounts(): List<AccountItem>
 
     @GET("accounts/{id}/details")
-    suspend fun getAccountDetails(@Path("id") accountId: Int, @Query("limit") limit: Int = 20): AccountDetailsResponse
+    suspend fun getAccountDetails(@Path("id") accountId: Int, @Query("limit") limit: Int): AccountDetailsResponse
 
     @GET("transactions")
     suspend fun getTransactions(@Query("accountId") accountId: Int): List<TransactionItem>
@@ -80,10 +80,10 @@ interface ApiService {
     @GET("transactions")
     suspend fun getTransactionsPaginated(
         @Query("accountId") accountId: Int,
-        @Query("paginated") paginated: Boolean = true,
-        @Query("page") page: Int = 1,
-        @Query("pageSize") pageSize: Int = 20,
-        @Query("type") type: String? = null
+        @Query("paginated") paginated: Boolean,
+        @Query("page") page: Int,
+        @Query("pageSize") pageSize: Int,
+        @Query("type") type: String?
     ): PaginatedTransactionsResponse
 
     @POST("transfers/validate-destination")
@@ -127,8 +127,8 @@ interface ApiService {
 
     @GET("notifications/history")
     suspend fun getNotificationsHistory(
-        @Query("limit") limit: Int = 200,
-        @Query("customerId") customerId: Int? = null
+        @Query("limit") limit: Int,
+        @Query("customerId") customerId: Int?
     ): List<NotificationItem>
 
     @GET("profile/{customerId}")
@@ -156,13 +156,13 @@ interface ApiService {
     suspend fun getInterestSummaries(@Query("year") year: Int): List<InterestSummaryItem>
 
     @GET("investments")
-    suspend fun getInvestments(@Query("customerId") customerId: Int? = null): List<InvestmentItem>
+    suspend fun getInvestments(@Query("customerId") customerId: Int?): List<InvestmentItem>
 
     @POST("investments")
     suspend fun createInvestment(@Body request: InvestmentRequest): InvestmentItem
 
     @GET("admin/customers")
-    suspend fun getAdminCustomers(@Query("q") query: String? = null): List<ProfileResponse>
+    suspend fun getAdminCustomers(@Query("q") query: String?): List<ProfileResponse>
 
     @PATCH("admin/customers/{id}")
     suspend fun updateAdminCustomer(@Path("id") id: Int, @Body body: Map<String, @JvmSuppressWildcards Any?>): ProfileResponse
@@ -183,13 +183,13 @@ interface ApiService {
     suspend fun updateAdminLoanApplication(@Path("id") id: Int, @Body body: AdminUpdateLoanRequest): LoanApplicationItem
 
     @GET("admin/transactions")
-    suspend fun getAdminTransactions(@Query("accountNumber") accountNumber: String? = null): List<AdminTransactionItem>
+    suspend fun getAdminTransactions(@Query("accountNumber") accountNumber: String?): List<AdminTransactionItem>
 
     @POST("admin/transactions/{id}/reverse")
     suspend fun reverseAdminTransaction(@Path("id") id: Int): Map<String, Any?>
 
     @GET("admin/login-logs")
-    suspend fun getAdminLoginLogs(@Query("limit") limit: Int = 200): List<AdminLoginLogItem>
+    suspend fun getAdminLoginLogs(@Query("limit") limit: Int): List<AdminLoginLogItem>
 
     @GET("admin/transfers")
     suspend fun getAdminTransfers(): List<AdminTransactionItem>
@@ -210,18 +210,18 @@ interface ApiService {
     suspend fun updateAdminStatementRequest(@Path("id") id: Int, @Body body: AdminStatementUpdateRequest): StatementRequestItem
 
     @GET("admin/notifications/logs")
-    suspend fun getAdminNotificationLogs(@Query("limit") limit: Int = 200): List<AdminNotificationLogItem>
+    suspend fun getAdminNotificationLogs(@Query("limit") limit: Int): List<AdminNotificationLogItem>
 
     @POST("admin/test-sms")
     suspend fun sendAdminTestSms(@Body body: AdminTestSmsRequest): AdminTestSmsResponse
 
     @GET("admin/otp-attempts")
-    suspend fun getAdminOtpAttempts(@Query("limit") limit: Int = 200): List<AdminOtpAttemptItem>
+    suspend fun getAdminOtpAttempts(@Query("limit") limit: Int): List<AdminOtpAttemptItem>
 
     @GET("admin/investments")
     suspend fun getAdminInvestments(
-        @Query("customerId") customerId: Int? = null,
-        @Query("status") status: String? = null
+        @Query("customerId") customerId: Int?,
+        @Query("status") status: String?
     ): List<InvestmentItem>
 
     @POST("admin/investments")

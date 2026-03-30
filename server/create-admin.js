@@ -1,6 +1,8 @@
 /**
- * Create a test admin account for development/testing
- * Usage: node create-admin.js
+ * Reset or create an admin account for development/testing.
+ * Usage:
+ *   node create-admin.js
+ *   ADMIN_EMAIL=admin@bof.fj ADMIN_PASSWORD=secret node create-admin.js
  */
 try {
   require('dotenv').config();
@@ -12,55 +14,44 @@ const bcrypt = require('bcryptjs');
 const sequelize = require('./src/config/database');
 const Admin = require('./src/models/Admin');
 
-const TEST_ADMIN = {
-  fullName: 'Test Admin',
-  email: 'admin@bankoffiji.com',
-  password: 'password123', // Will be hashed
-  role: 'super_admin',
-  status: 'active'
-};
+const ADMIN_EMAIL = String(process.env.ADMIN_EMAIL || 'admin@bof.fj').toLowerCase();
+const ADMIN_PASSWORD = String(process.env.ADMIN_PASSWORD || 'admin12345');
 
-async function createAdmin() {
+async function upsertAdmin() {
   try {
     await sequelize.authenticate();
     console.log('✓ Database connection successful');
 
-    // Check if admin already exists
-    const existing = await Admin.findOne({ where: { email: TEST_ADMIN.email } });
+    const hashedPassword = await bcrypt.hash(ADMIN_PASSWORD, 10);
+    const existing = await Admin.findOne({ where: { email: ADMIN_EMAIL } });
+
     if (existing) {
-      console.log(`✓ Admin already exists with email: ${TEST_ADMIN.email}`);
+      await existing.update({
+        password: hashedPassword,
+        status: 'active',
+        role: existing.role || 'super_admin',
+      });
+      console.log(`✓ Admin password reset and reactivated for ${ADMIN_EMAIL}`);
       console.log(`  ID: ${existing.id}`);
-      console.log(`  Status: ${existing.status}`);
-      process.exit(0);
+    } else {
+      const admin = await Admin.create({
+        fullName: 'System Admin',
+        email: ADMIN_EMAIL,
+        password: hashedPassword,
+        role: 'super_admin',
+        status: 'active',
+      });
+      console.log(`✓ Admin created: ${admin.email} (id=${admin.id})`);
     }
 
-    // Hash password
-    const hashedPassword = await bcrypt.hash(TEST_ADMIN.password, 10);
-
-    // Create admin
-    const admin = await Admin.create({
-      fullName: TEST_ADMIN.fullName,
-      email: TEST_ADMIN.email,
-      password: hashedPassword,
-      role: TEST_ADMIN.role,
-      status: TEST_ADMIN.status
-    });
-
-    console.log('✓ Test admin created successfully!');
-    console.log(`  ID: ${admin.id}`);
-    console.log(`  Email: ${admin.email}`);
-    console.log(`  Full Name: ${admin.fullName}`);
-    console.log(`  Role: ${admin.role}`);
-    console.log(`  Status: ${admin.status}`);
-    console.log('\nYou can now login with:');
-    console.log(`  Email: ${TEST_ADMIN.email}`);
-    console.log(`  Password: ${TEST_ADMIN.password}`);
-
+    console.log('\nLogin with:');
+    console.log(`  Email: ${ADMIN_EMAIL}`);
+    console.log(`  Password: ${ADMIN_PASSWORD}`);
     process.exit(0);
   } catch (error) {
-    console.error('✗ Error creating admin:', error.message);
+    console.error('✗ Error creating/resetting admin:', error.message);
     process.exit(1);
   }
 }
 
-createAdmin();
+upsertAdmin();

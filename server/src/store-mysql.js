@@ -3,6 +3,7 @@ const crypto = require("crypto");
 const bcrypt = require("bcryptjs");
 const { Op, where, fn, col } = require("sequelize");
 const { sendSms } = require("./services/smsService");
+const { sendVerificationEmail } = require("./services/emailService");
 const {
   Customer,
   Account,
@@ -24,6 +25,7 @@ const WITHHOLDING_TAX_RATE = 0.15;
 const SAVINGS_INTEREST_RATE = 0.0325;
 const MAX_FAILED_LOGIN_ATTEMPTS = 5;
 const ACCOUNT_LOCK_MINUTES = 15;
+const VERIFICATION_TOKEN_TTL_MS = 60 * 60 * 1000;
 
 function nowIso() {
   return new Date().toISOString();
@@ -37,12 +39,20 @@ function makeSixDigitCode() {
   return String(crypto.randomInt(0, 1000000)).padStart(6, "0");
 }
 
+function generateVerificationToken() {
+  return crypto.randomBytes(32).toString("hex");
+}
+
 function hashOtp(otp) {
   return crypto.createHash("sha256").update(String(otp || "")).digest("hex");
 }
 
 function normalizeEmail(value) {
   return String(value || "").trim().toLowerCase();
+}
+
+function normalizeMobile(value) {
+  return String(value || "").trim().replace(/[\s\-]/g, "");
 }
 
 function normalizedEmailWhereClause(email) {
@@ -700,7 +710,7 @@ async function registerUser({ fullName, mobile, email, password, confirmPassword
   }
 
   const normalizedEmail = normalizeEmail(email);
-  const normalizedMobile = String(mobile).trim();
+  const normalizedMobile = normalizeMobile(mobile);
 
   const existingUser = await Customer.findOne({
     where: {
@@ -715,15 +725,17 @@ async function registerUser({ fullName, mobile, email, password, confirmPassword
   }
 
   const passwordHash = await bcrypt.hash(password, 10);
+  const verificationToken = generateVerificationToken();
+  const tokenExpiry = new Date(Date.now() + VERIFICATION_TOKEN_TTL_MS);
 
   await Registration.create({
     fullName,
     mobile: normalizedMobile,
     email: normalizedEmail,
     password: passwordHash,
-    verificationCode: null,
-    verificationStatus: "verified",
-    verifiedAt: new Date(),
+    verificationCode: verificationToken,
+    verificationStatus: "pending",
+    verifiedAt: null,
   });
 
   const customer = await Customer.create({
@@ -732,28 +744,39 @@ async function registerUser({ fullName, mobile, email, password, confirmPassword
     email: normalizedEmail,
     password: passwordHash,
     status: "active",
-    emailVerified: true,
+    emailVerified: false,
+    isVerified: false,
+    verificationToken,
+    verificationTokenExpiry: tokenExpiry,
     registrationStatus: "approved",
   });
+
+  await sendVerificationEmail({ to: customer.email, token: verificationToken });
 
   return {
     userId: customer.id,
     customerId: customer.id,
     fullName,
     email: customer.email,
-    emailVerified: true,
-    message: "Registration successful. You can now sign in.",
+    emailVerified: false,
+    isVerified: false,
+    message: "Registration successful. Please verify your email to sign in.",
   };
 }
 
 // Login a user
-async function loginUser({ email, password, ipAddress, userAgent }) {
-  if (!email || !password) {
-    throw new Error("email and password are required");
+async function loginUser({ email, mobile, username, password, ipAddress, userAgent }) {
+  const rawIdentifier = String(email || mobile || username || "").trim();
+  if (!rawIdentifier || !password) {
+    throw new Error("email or mobile and password are required");
   }
 
-  const normalizedEmail = normalizeEmail(email);
-  const admin = await findByNormalizedEmail(Admin, normalizedEmail);
+  const looksLikeEmail = rawIdentifier.includes("@");
+  const normalizedEmail = looksLikeEmail ? normalizeEmail(rawIdentifier) : null;
+  const normalizedMobile = normalizeMobile(rawIdentifier);
+  const loginIdentifier = normalizedEmail || normalizedMobile;
+
+  const admin = normalizedEmail ? await findByNormalizedEmail(Admin, normalizedEmail) : null;
   if (admin) {
     const validAdmin = await verifyPasswordAndMigrateLegacy(admin, password);
     const adminStatus = String(admin.status || "active").toLowerCase();
@@ -772,29 +795,37 @@ async function loginUser({ email, password, ipAddress, userAgent }) {
     };
   }
 
-  let customer = await findByNormalizedEmail(Customer, normalizedEmail);
+  let customer = null;
+  if (normalizedEmail) {
+    customer = await findByNormalizedEmail(Customer, normalizedEmail);
+  }
+  if (!customer && normalizedMobile) {
+    customer = await Customer.findOne({ where: { mobile: normalizedMobile } });
+  }
 
   // Legacy compatibility: older flows may have registration rows without customer rows.
   if (!customer) {
-    const legacyRegistration = await findByNormalizedEmail(Registration, normalizedEmail);
+    const legacyRegistration = normalizedEmail
+      ? await findByNormalizedEmail(Registration, normalizedEmail)
+      : await Registration.findOne({ where: { mobile: normalizedMobile } });
     if (legacyRegistration) {
       const validLegacyPassword = await verifyPasswordAndMigrateLegacy(legacyRegistration, password);
       if (validLegacyPassword) {
-        const normalizedMobile = String(legacyRegistration.mobile || "").trim();
-        const customerByMobile = normalizedMobile
-          ? await Customer.findOne({ where: { mobile: normalizedMobile } })
+        const registrationMobile = normalizeMobile(legacyRegistration.mobile);
+        const customerByMobile = registrationMobile
+          ? await Customer.findOne({ where: { mobile: registrationMobile } })
           : null;
 
         if (customerByMobile) {
-          if (normalizeEmail(customerByMobile.email) !== normalizedEmail) {
+          if (normalizedEmail && normalizeEmail(customerByMobile.email) !== normalizedEmail) {
             await customerByMobile.update({ email: normalizedEmail });
           }
           customer = customerByMobile;
         } else {
           customer = await Customer.create({
             fullName: legacyRegistration.fullName,
-            mobile: normalizedMobile,
-            email: normalizedEmail,
+            mobile: registrationMobile,
+            email: normalizedEmail || legacyRegistration.email,
             password: legacyRegistration.password,
             status: "active",
             emailVerified: true,
@@ -807,17 +838,17 @@ async function loginUser({ email, password, ipAddress, userAgent }) {
   }
 
   if (!customer) {
-    await recordLoginAttempt({ userType: "customer", email: normalizedEmail, success: false, failureReason: "Unknown email", ipAddress, userAgent });
+    await recordLoginAttempt({ userType: "customer", email: loginIdentifier, success: false, failureReason: "Unknown user", ipAddress, userAgent });
     throw new Error("Invalid email or password");
   }
 
   if (isAccountLocked(customer)) {
-    await recordLoginAttempt({ userType: "customer", userId: customer.id, email: normalizedEmail, success: false, failureReason: "Account locked", ipAddress, userAgent });
+    await recordLoginAttempt({ userType: "customer", userId: customer.id, email: loginIdentifier, success: false, failureReason: "Account locked", ipAddress, userAgent });
     throw new Error("Account locked due to repeated failed logins. Try again later.");
   }
 
   if (["disabled", "locked", "suspended"].includes(String(customer.status || "").toLowerCase())) {
-    await recordLoginAttempt({ userType: "customer", userId: customer.id, email: normalizedEmail, success: false, failureReason: `Status ${customer.status}`, ipAddress, userAgent });
+    await recordLoginAttempt({ userType: "customer", userId: customer.id, email: loginIdentifier, success: false, failureReason: `Status ${customer.status}`, ipAddress, userAgent });
     throw new Error("This account is not currently permitted to log in");
   }
 
@@ -830,8 +861,13 @@ async function loginUser({ email, password, ipAddress, userAgent }) {
       updates.status = "locked";
     }
     await customer.update(updates);
-    await recordLoginAttempt({ userType: "customer", userId: customer.id, email: normalizedEmail, success: false, failureReason: "Invalid password", ipAddress, userAgent });
+    await recordLoginAttempt({ userType: "customer", userId: customer.id, email: loginIdentifier, success: false, failureReason: "Invalid password", ipAddress, userAgent });
     throw new Error("Invalid email or password");
+  }
+
+  if (!customer.isVerified && !customer.emailVerified) {
+    await recordLoginAttempt({ userType: "customer", userId: customer.id, email: loginIdentifier, success: false, failureReason: "Email not verified", ipAddress, userAgent });
+    throw new Error("Please verify your email first");
   }
 
   await customer.update({
@@ -840,7 +876,7 @@ async function loginUser({ email, password, ipAddress, userAgent }) {
     status: customer.status === "locked" ? "active" : customer.status,
     lastLoginAt: new Date(),
   });
-  await recordLoginAttempt({ userType: "customer", userId: customer.id, email: normalizedEmail, success: true, ipAddress, userAgent });
+  await recordLoginAttempt({ userType: "customer", userId: customer.id, email: loginIdentifier, success: true, ipAddress, userAgent });
 
   return {
     userId: customer.id,
@@ -850,6 +886,82 @@ async function loginUser({ email, password, ipAddress, userAgent }) {
     mobile: customer.mobile,
     nationalId: customer.nationalId,
     isAdmin: false,
+  };
+}
+
+async function verifyEmailToken(token) {
+  const cleanedToken = String(token || "").trim();
+  if (!cleanedToken) {
+    throw new Error("Verification token is required");
+  }
+
+  const customer = await Customer.findOne({ where: { verificationToken: cleanedToken } });
+  if (!customer) {
+    throw new Error("Invalid or expired verification token");
+  }
+
+  if (customer.isVerified || customer.emailVerified) {
+    await customer.update({
+      emailVerified: true,
+      isVerified: true,
+      verificationToken: null,
+      verificationTokenExpiry: null,
+    });
+
+    return {
+      userId: customer.id,
+      email: customer.email,
+      message: "Email already verified. You can sign in.",
+    };
+  }
+
+  if (!customer.verificationTokenExpiry || new Date(customer.verificationTokenExpiry).getTime() < Date.now()) {
+    throw new Error("Verification token has expired. Please request a new email.");
+  }
+
+  await customer.update({
+    emailVerified: true,
+    isVerified: true,
+    verificationToken: null,
+    verificationTokenExpiry: null,
+    registrationStatus: "approved",
+  });
+
+  return {
+    userId: customer.id,
+    email: customer.email,
+    message: "Email verified successfully. You can now sign in.",
+  };
+}
+
+async function resendVerificationEmail({ email }) {
+  const normalizedEmail = normalizeEmail(email);
+  validateEmail(normalizedEmail);
+
+  const customer = await findByNormalizedEmail(Customer, normalizedEmail);
+  if (!customer) {
+    throw new Error("Account not found for that email");
+  }
+
+  if (customer.isVerified || customer.emailVerified) {
+    throw new Error("Email is already verified");
+  }
+
+  const verificationToken = generateVerificationToken();
+  const tokenExpiry = new Date(Date.now() + VERIFICATION_TOKEN_TTL_MS);
+
+  await customer.update({
+    verificationToken,
+    verificationTokenExpiry: tokenExpiry,
+    emailVerified: false,
+    isVerified: false,
+  });
+
+  await sendVerificationEmail({ to: customer.email, token: verificationToken });
+
+  return {
+    message: "Verification email sent",
+    email: customer.email,
   };
 }
 
@@ -1125,6 +1237,8 @@ module.exports = {
   generateRandomAccountNumber,
   registerUser,
   loginUser,
+  verifyEmailToken,
+  resendVerificationEmail,
   verifyAdminCredentials,
   requestPasswordReset,
   resetPassword,

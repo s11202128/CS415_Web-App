@@ -66,7 +66,7 @@ class FeatureRepository(private val apiService: ApiService) {
     }
 
     suspend fun getNotifications(customerId: Int): ApiResult<List<NotificationItem>> = safeCall {
-        apiService.getNotificationsHistory(customerId = customerId)
+        apiService.getNotificationsHistory(limit = 200, customerId = customerId)
     }
 
     suspend fun forgotPassword(email: String): ApiResult<ForgotPasswordResponse> = safeCall {
