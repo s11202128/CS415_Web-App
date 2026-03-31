@@ -1,15 +1,18 @@
 package com.bof.mobile.ui.features
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
@@ -212,9 +215,39 @@ fun FeatureHubScreen(viewModel: FeatureViewModel, customerId: Int) {
                         Text("Request #${request.id} ${request.status}")
                     }
                 }
-                uiState.statementRows.take(5).forEach { row ->
-                    val kind = row.kind ?: row.type ?: "tx"
-                    Text("${kind.uppercase()} FJD ${"%.2f".format(row.amount)} - ${row.description}")
+                // Statement rows table with horizontal scroll and sticky header
+                val scrollState = rememberScrollState()
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(MaterialTheme.colorScheme.surface)
+                        .horizontalScroll(scrollState)
+                        .padding(bottom = 8.dp)
+                ) {
+                    // Sticky header row
+                    Row(
+                        modifier = Modifier
+                            .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.08f))
+                            .padding(vertical = 8.dp),
+                    ) {
+                        Text("Type", modifier = Modifier.width(80.dp), fontWeight = FontWeight.Bold)
+                        Text("Amount", modifier = Modifier.width(120.dp), fontWeight = FontWeight.Bold)
+                        Text("Description", modifier = Modifier.width(220.dp), fontWeight = FontWeight.Bold)
+                    }
+                    // Data rows
+                    uiState.statementRows.take(5).forEach { row ->
+                        val kind = row.kind ?: row.type ?: "tx"
+                        Row(
+                            modifier = Modifier
+                                .background(MaterialTheme.colorScheme.surfaceVariant)
+                                .padding(vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(kind.uppercase(), modifier = Modifier.width(80.dp), style = MaterialTheme.typography.bodyMedium)
+                            Text("FJD ${"%.2f".format(row.amount)}", modifier = Modifier.width(120.dp), style = MaterialTheme.typography.bodyMedium)
+                            Text(row.description, modifier = Modifier.width(220.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
                 }
             }
 

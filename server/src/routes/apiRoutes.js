@@ -1585,9 +1585,27 @@ router.post("/admin/test-sms", asyncHandler(async (req, res) => {
   });
 }));
 
+
+// List OTP attempts for admin
 router.get("/admin/otp-attempts", asyncHandler(async (req, res) => {
   const limit = Number(req.query.limit || 200);
   res.json(await getOtpAttempts(limit));
+}));
+
+// Admin override: verify OTP manually
+router.patch("/admin/otp-verifications/:id/verify", asyncHandler(async (req, res) => {
+  const id = req.params.id;
+  const otpRow = await OtpVerification.findByPk(id);
+  if (!otpRow) {
+    return res.status(404).json({ error: "OTP verification not found" });
+  }
+  if (otpRow.verified) {
+    return res.status(400).json({ error: "OTP already verified" });
+  }
+  otpRow.verified = true;
+  otpRow.lastAttemptAt = new Date();
+  await otpRow.save();
+  res.json({ success: true, message: "OTP marked as verified by admin", otpVerification: otpRow });
 }));
 
 router.get("/config/interest-rate", (req, res) => {

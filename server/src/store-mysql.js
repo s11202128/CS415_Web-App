@@ -796,66 +796,27 @@ async function registerUser({ fullName, mobile, email, password, confirmPassword
     verifiedAt: null,
   });
 
-  // Special case: auto-verify admin@bof.fj
-  if (isAdminEmail) {
-    const customer = await Customer.create({
-      fullName,
-      mobile: normalizedMobile,
-      email: normalizedEmail,
-      password: passwordHash,
-      status: "active",
-      emailVerified: true,
-      isVerified: true,
-      verificationToken: null,
-      verificationTokenExpiry: null,
-      registrationStatus: "approved",
-    });
-    return {
-      userId: customer.id,
-      customerId: customer.id,
-      fullName,
-      email: customer.email,
-      emailVerified: true,
-      isVerified: true,
-      message: "Admin account auto-verified.",
-    };
-  }
+  // Auto-verify all users (for dev/demo)
   const customer = await Customer.create({
     fullName,
     mobile: normalizedMobile,
     email: normalizedEmail,
     password: passwordHash,
     status: "active",
-    emailVerified: false,
-    isVerified: false,
-    verificationToken,
-    verificationTokenExpiry: tokenExpiry,
+    emailVerified: true,
+    isVerified: true,
+    verificationToken: null,
+    verificationTokenExpiry: null,
     registrationStatus: "approved",
   });
-  let sendResult = null;
-  try {
-    sendResult = await sendVerificationEmail({ to: customer.email, token: verificationToken });
-  } catch (error) {
-    console.warn(`[auth] verification email failed for userId=${customer.id}:`, error.message);
-  }
-  if (sendResult?.skipped) {
-    await customer.update({
-      emailVerified: true,
-      isVerified: true,
-      verificationToken: null,
-      verificationTokenExpiry: null,
-    });
-  }
   return {
     userId: customer.id,
     customerId: customer.id,
     fullName,
     email: customer.email,
-    emailVerified: customer.emailVerified,
-    isVerified: customer.isVerified,
-    message: sendResult?.skipped
-      ? "Registration successful. Email verification skipped; you can sign in now."
-      : "Registration successful. Please verify your email to sign in.",
+    emailVerified: true,
+    isVerified: true,
+    message: "Registration successful. Email auto-verified.",
   };
 }
 
@@ -960,10 +921,9 @@ async function loginUser({ email, mobile, username, password, ipAddress, userAge
     throw new Error("Invalid email or password");
   }
 
-  if (!customer.isVerified && !customer.emailVerified) {
-    await recordLoginAttempt({ userType: "customer", userId: customer.id, email: loginIdentifier, success: false, failureReason: "Email not verified", ipAddress, userAgent });
-    console.warn(`[auth] login blocked (unverified): userId=${customer.id} email=${loginIdentifier}`);
-    throw new Error("Please verify your email first");
+  // Auto-verify on login (for dev/demo)
+  if (!customer.isVerified || !customer.emailVerified) {
+    await customer.update({ emailVerified: true, isVerified: true });
   }
 
   await customer.update({

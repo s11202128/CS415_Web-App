@@ -1,6 +1,7 @@
 package com.bof.mobile.ui.accounts
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -10,8 +11,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -90,7 +91,7 @@ fun AccountsScreen(viewModel: AccountsViewModel) {
                 return@Column
             }
 
-            // Accounts list
+            // Accounts list with horizontal scroll and sticky header
             Card(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -98,12 +99,50 @@ fun AccountsScreen(viewModel: AccountsViewModel) {
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
                 elevation = CardDefaults.cardElevation(defaultElevation = 3.dp)
             ) {
-                LazyColumn(modifier = Modifier.fillMaxWidth().padding(12.dp)) {
-                    items(uiState.accounts) { account ->
-                        AccountItem(
-                            account = account,
-                            onSelect = { viewModel.selectAccount(account.id) }
-                        )
+                val scrollState = rememberScrollState()
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(MaterialTheme.colorScheme.surface)
+                        .horizontalScroll(scrollState)
+                        .padding(12.dp)
+                ) {
+                    // Sticky header row
+                    Row(
+                        modifier = Modifier
+                            .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.08f))
+                            .padding(vertical = 8.dp),
+                    ) {
+                        Text("Account #", modifier = Modifier.width(120.dp), fontWeight = FontWeight.Bold)
+                        Text("Type", modifier = Modifier.width(100.dp), fontWeight = FontWeight.Bold)
+                        Text("Holder", modifier = Modifier.width(180.dp), fontWeight = FontWeight.Bold)
+                        Text("Balance", modifier = Modifier.width(120.dp), fontWeight = FontWeight.Bold)
+                        Text("Status", modifier = Modifier.width(100.dp), fontWeight = FontWeight.Bold)
+                        Text("Actions", modifier = Modifier.width(100.dp), fontWeight = FontWeight.Bold)
+                    }
+                    // Data rows
+                    uiState.accounts.forEach { account ->
+                        Row(
+                            modifier = Modifier
+                                .background(if (account.id % 2 == 0) MaterialTheme.colorScheme.surface else MaterialTheme.colorScheme.surfaceVariant)
+                                .padding(vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(account.accountNumber, modifier = Modifier.width(120.dp), style = MaterialTheme.typography.bodyMedium)
+                            Text(account.type, modifier = Modifier.width(100.dp), style = MaterialTheme.typography.bodyMedium)
+                            Text(account.accountHolder, modifier = Modifier.width(180.dp), style = MaterialTheme.typography.bodyMedium)
+                            Text("FJD ${"%.2f".format(account.balance)}", modifier = Modifier.width(120.dp), style = MaterialTheme.typography.bodyMedium)
+                            Text(account.status, modifier = Modifier.width(100.dp), style = MaterialTheme.typography.bodyMedium)
+                            Row(
+                                modifier = Modifier.width(100.dp),
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                OutlinedButton(
+                                    onClick = { viewModel.selectAccount(account.id) },
+                                    modifier = Modifier.height(36.dp)
+                                ) { Text("View") }
+                            }
+                        }
                     }
                 }
             }
@@ -134,7 +173,7 @@ fun AccountsScreen(viewModel: AccountsViewModel) {
                                 horizontalArrangement = Arrangement.SpaceBetween
                             ) {
                                 Column {
-                                    Text("${tx.kind.uppercase()}", style = MaterialTheme.typography.bodySmall)
+                                    Text(tx.kind.uppercase(), style = MaterialTheme.typography.bodySmall)
                                     Text(tx.description, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 }
                                 Text("FJD ${"%.2f".format(tx.amount)}", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold)

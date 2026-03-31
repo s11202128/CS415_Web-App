@@ -1,6 +1,7 @@
 package com.bof.mobile.ui.dashboard
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -11,8 +12,10 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -136,7 +139,7 @@ fun DashboardScreen(
                 )
             }
 
-            // Recent Transactions Section
+            // Recent Transactions Section with horizontal scroll and sticky header
             Text("Recent Transactions", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
             Spacer(modifier = Modifier.height(8.dp))
 
@@ -145,20 +148,35 @@ fun DashboardScreen(
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
                 elevation = CardDefaults.cardElevation(defaultElevation = 3.dp)
             ) {
-                LazyColumn(modifier = Modifier.fillMaxWidth().padding(12.dp)) {
-                    items(data.recentTransactions) { tx ->
-                        Column(modifier = Modifier.padding(vertical = 8.dp)) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Column {
-                                    Text(tx.type.uppercase(), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
-                                    Text(tx.description, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                }
-                                Text("FJD ${"%.2f".format(tx.amount)}", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
-                            }
+                val scrollState = rememberScrollState()
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(MaterialTheme.colorScheme.surface)
+                        .horizontalScroll(scrollState)
+                        .padding(12.dp)
+                ) {
+                    // Sticky header row
+                    Row(
+                        modifier = Modifier
+                            .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.08f))
+                            .padding(vertical = 8.dp),
+                    ) {
+                        Text("Type", modifier = Modifier.width(100.dp), fontWeight = FontWeight.Bold)
+                        Text("Description", modifier = Modifier.width(220.dp), fontWeight = FontWeight.Bold)
+                        Text("Amount", modifier = Modifier.width(120.dp), fontWeight = FontWeight.Bold)
+                    }
+                    // Data rows
+                    data.recentTransactions.forEach { tx ->
+                        Row(
+                            modifier = Modifier
+                                .background(MaterialTheme.colorScheme.surfaceVariant)
+                                .padding(vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(tx.type.uppercase(), modifier = Modifier.width(100.dp), style = MaterialTheme.typography.bodyMedium)
+                            Text(tx.description, modifier = Modifier.width(220.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text("FJD ${"%.2f".format(tx.amount)}", modifier = Modifier.width(120.dp), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
                         }
                     }
                 }

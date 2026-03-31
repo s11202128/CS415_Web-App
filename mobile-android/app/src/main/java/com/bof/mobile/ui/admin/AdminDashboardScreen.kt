@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
@@ -185,11 +186,54 @@ private fun AdminTabContent(uiState: AdminUiState, viewModel: AdminViewModel) {
         AdminTab.LOGIN_LOGS -> LoginLogsTab(uiState = uiState, viewModel = viewModel)
         AdminTab.NOTIFICATION_LOGS -> NotificationLogsTab(uiState = uiState, viewModel = viewModel)
         AdminTab.OTP_ATTEMPTS -> OtpAttemptsTab(uiState = uiState, viewModel = viewModel)
+        AdminTab.VERIFICATION -> VerificationTab(uiState = uiState, viewModel = viewModel)
         AdminTab.TEST_SMS -> TestSmsTab(uiState = uiState, viewModel = viewModel)
         AdminTab.INTEREST_RATE -> InterestRateTab(uiState = uiState, viewModel = viewModel)
         AdminTab.INTEREST_SUMMARIES -> InterestSummariesTab(uiState = uiState, viewModel = viewModel)
         AdminTab.REPORTS -> ReportsTab(uiState = uiState, viewModel = viewModel)
         AdminTab.STATEMENTS -> StatementsTab(uiState = uiState, viewModel = viewModel)
+    }
+}
+
+@Composable
+private fun VerificationTab(uiState: AdminUiState, viewModel: AdminViewModel) {
+    Column(modifier = Modifier.padding(8.dp)) {
+        Text("Account Verification Monitoring", style = MaterialTheme.typography.titleLarge)
+        Spacer(modifier = Modifier.height(16.dp))
+        uiState.customers.forEach { customer ->
+            Card(modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp), elevation = CardDefaults.cardElevation(2.dp)) {
+                Column(modifier = Modifier.padding(12.dp)) {
+                    Text("#${customer.id} ${customer.fullName} (${customer.status})", fontWeight = FontWeight.Bold)
+                    Text("Email: ${customer.email}")
+                    Text("Mobile: ${customer.mobile}")
+                    Text("Email Verified: ${customer.emailVerified}")
+                    Text("ID Verified: ${customer.identityVerified}")
+                    Text("KYC Status: ${customer.registrationStatus}")
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedButton(
+                            onClick = { viewModel.updateCustomer(customer.id, mapOf("emailVerified" to true)) },
+                            enabled = !customer.emailVerified,
+                            modifier = Modifier.weight(1f)
+                        ) { Text("Mark Email Verified") }
+                        OutlinedButton(
+                            onClick = { viewModel.updateCustomer(customer.id, mapOf("emailVerified" to false)) },
+                            enabled = customer.emailVerified,
+                            modifier = Modifier.weight(1f)
+                        ) { Text("Unverify Email") }
+                        OutlinedButton(
+                            onClick = { viewModel.updateCustomer(customer.id, mapOf("identityVerified" to true)) },
+                            enabled = !customer.identityVerified,
+                            modifier = Modifier.weight(1f)
+                        ) { Text("Verify ID") }
+                        OutlinedButton(
+                            onClick = { viewModel.updateCustomer(customer.id, mapOf("identityVerified" to false)) },
+                            enabled = customer.identityVerified,
+                            modifier = Modifier.weight(1f)
+                        ) { Text("Unverify ID") }
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -234,29 +278,67 @@ private fun CustomersTab(uiState: AdminUiState, viewModel: AdminViewModel) {
         ) { Text("Clear") }
     }
 
-    uiState.customers.take(12).forEach { customer ->
-        Spacer(modifier = Modifier.height(8.dp))
-        Text("#${customer.id} ${customer.fullName} (${customer.status})")
-        Text("${customer.email} | ${customer.mobile}")
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            OutlinedButton(
-                onClick = { viewModel.updateCustomer(customer.id, mapOf("status" to "active")) },
-                modifier = Modifier.weight(1f)
-            ) { Text("Activate") }
-            OutlinedButton(
-                onClick = { viewModel.updateCustomer(customer.id, mapOf("status" to "blocked")) },
-                modifier = Modifier.weight(1f)
-            ) { Text("Block") }
+    // Table container with horizontal scroll and sticky header
+    val scrollState = rememberScrollState()
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(MaterialTheme.colorScheme.surface)
+            .horizontalScroll(scrollState)
+            .padding(bottom = 8.dp)
+    ) {
+        // Sticky header row
+        Row(
+            modifier = Modifier
+                .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.08f))
+                .padding(vertical = 8.dp),
+        ) {
+            Text("ID", modifier = Modifier.width(80.dp), fontWeight = FontWeight.Bold)
+            Text("Name", modifier = Modifier.width(180.dp), fontWeight = FontWeight.Bold)
+            Text("Status", modifier = Modifier.width(100.dp), fontWeight = FontWeight.Bold)
+            Text("Email", modifier = Modifier.width(200.dp), fontWeight = FontWeight.Bold)
+            Text("Mobile", modifier = Modifier.width(140.dp), fontWeight = FontWeight.Bold)
+            Text("Actions", modifier = Modifier.width(320.dp), fontWeight = FontWeight.Bold)
         }
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            OutlinedButton(
-                onClick = { viewModel.updateCustomer(customer.id, mapOf("identityVerified" to true)) },
-                modifier = Modifier.weight(1f)
-            ) { Text("Verify ID") }
-            OutlinedButton(
-                onClick = { viewModel.updateCustomer(customer.id, mapOf("registrationStatus" to "approved")) },
-                modifier = Modifier.weight(1f)
-            ) { Text("Approve KYC") }
+        // Data rows
+        uiState.customers.take(12).forEach { customer ->
+            Row(
+                modifier = Modifier
+                    .background(if (customer.id % 2 == 0) MaterialTheme.colorScheme.surface else MaterialTheme.colorScheme.surfaceVariant)
+                    .padding(vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text("#${customer.id}", modifier = Modifier.width(80.dp), style = MaterialTheme.typography.bodyMedium)
+                Text(customer.fullName, modifier = Modifier.width(180.dp), style = MaterialTheme.typography.bodyMedium)
+                Text(customer.status, modifier = Modifier.width(100.dp), style = MaterialTheme.typography.bodyMedium)
+                Text(customer.email, modifier = Modifier.width(200.dp), style = MaterialTheme.typography.bodyMedium)
+                Text(customer.mobile, modifier = Modifier.width(140.dp), style = MaterialTheme.typography.bodyMedium)
+                Row(
+                    modifier = Modifier.width(320.dp),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    OutlinedButton(
+                        onClick = { viewModel.updateCustomer(customer.id, mapOf("status" to "active")) },
+                        modifier = Modifier.height(36.dp),
+                        enabled = customer.status != "active"
+                    ) { Text("Activate") }
+                    OutlinedButton(
+                        onClick = { viewModel.updateCustomer(customer.id, mapOf("status" to "blocked")) },
+                        modifier = Modifier.height(36.dp),
+                        enabled = customer.status != "blocked"
+                    ) { Text("Block") }
+                    OutlinedButton(
+                        onClick = { viewModel.updateCustomer(customer.id, mapOf("identityVerified" to true)) },
+                        modifier = Modifier.height(36.dp),
+                        enabled = !customer.identityVerified
+                    ) { Text("Verify ID") }
+                    OutlinedButton(
+                        onClick = { viewModel.updateCustomer(customer.id, mapOf("registrationStatus" to "approved")) },
+                        modifier = Modifier.height(36.dp),
+                        enabled = customer.registrationStatus != "approved"
+                    ) { Text("Approve KYC") }
+                }
+            }
         }
     }
 }

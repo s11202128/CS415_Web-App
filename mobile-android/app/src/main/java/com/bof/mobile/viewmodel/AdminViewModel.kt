@@ -44,6 +44,7 @@ enum class AdminTab(val group: AdminMenuGroup, val label: String) {
     LOGIN_LOGS(AdminMenuGroup.MONITORING, "Login Logs"),
     NOTIFICATION_LOGS(AdminMenuGroup.MONITORING, "Notification Logs"),
     OTP_ATTEMPTS(AdminMenuGroup.MONITORING, "OTP Attempts"),
+    VERIFICATION(AdminMenuGroup.MONITORING, "Verification"),
 
     TEST_SMS(AdminMenuGroup.CONFIG, "Test SMS"),
     INTEREST_RATE(AdminMenuGroup.CONFIG, "Interest Rate"),
