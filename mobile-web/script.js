@@ -1,3 +1,24 @@
+// Onboarding/Profile Demo Interactions
+document.addEventListener('DOMContentLoaded', () => {
+  const fab = document.querySelector('.onboarding-fab');
+  if (fab) {
+    fab.addEventListener('click', () => {
+      fab.textContent = 'Loading...';
+      fab.disabled = true;
+      setTimeout(() => {
+        fab.textContent = 'Get Started';
+        fab.disabled = false;
+        alert('Welcome to your new mobile experience!');
+      }, 1200);
+    });
+  }
+  const settings = document.querySelector('.onboarding-settings');
+  if (settings) {
+    settings.addEventListener('click', () => {
+      alert('Settings coming soon!');
+    });
+  }
+});
 // --- State ---
 const state = {
   currentScreen: localStorage.getItem('token') ? 'home' : 'login',
@@ -48,8 +69,8 @@ function renderTopNav() {
       </div>
       <div class="center">Welcome, ${state.user?.fullName || 'User'} 👋</div>
       <div class="right">
-        <button onclick="signOut()">Sign Out</button>
         <div class="profile" onclick="switchScreen('profile')">👤</div>
+        <button onclick="signOut()" title="Logout">Logout</button>
       </div>
     </div>
   `;
@@ -166,35 +187,24 @@ function renderHomeScreen() {
       <div class="card-number">${mainAccount ? '•••• ' + String(mainAccount.accountNumber).slice(-4) : ''}</div>
     </div>
     <div class="quick-actions">
-      <button class="quick-action-btn">Add Money</button>
-      <button class="quick-action-btn">Send Money</button>
-      <button class="quick-action-btn">Deposit</button>
-      <button class="quick-action-btn">Withdraw</button>
+      <button class="quick-action-btn" onclick="switchScreen('transfers')">Transfer</button>
+      <button class="quick-action-btn" onclick="switchScreen('bill')">Pay Bills</button>
+      <button class="quick-action-btn" onclick="switchScreen('statements')">Statements</button>
+      <button class="quick-action-btn" onclick="switchScreen('profile')">Profile</button>
     </div>
-    <div class="search-bar">
-      <input type="text" placeholder="Search..." />
-    </div>
-    <div class="recent-contacts">
-      <div>
-        <div class="contact-avatar">AB</div>
-        <div class="contact-name">Alice</div>
+    <div class="stats-row" style="display: flex; gap: 16px; margin-bottom: 18px;">
+      <div class="card" style="flex:1; text-align:center; padding:12px 0;">
+        <div style="font-size:1.1rem; font-weight:600; color:#6366f1;">Total Balance</div>
+        <div style="font-size:1.3rem; font-weight:700;">${mainAccount ? formatCurrency(mainAccount.balance) : '--'}</div>
       </div>
-      <div>
-        <div class="contact-avatar">BK</div>
-        <div class="contact-name">Bob</div>
-      </div>
-      <div>
-        <div class="contact-avatar">CJ</div>
-        <div class="contact-name">Carol</div>
-      </div>
-      <div>
-        <div class="contact-avatar">DM</div>
-        <div class="contact-name">Dan</div>
+      <div class="card" style="flex:1; text-align:center; padding:12px 0;">
+        <div style="font-size:1.1rem; font-weight:600; color:#6366f1;">Active</div>
+        <div style="font-size:1.3rem; font-weight:700;">✔️</div>
       </div>
     </div>
-    <div class="extra-features">
-      <div class="extra-feature-card">💡 Extra Feature 1</div>
-      <div class="extra-feature-card">💡 Extra Feature 2</div>
+    <div class="card" style="margin-bottom:0;">
+      <h2 style="margin:0 0 10px 0; font-size:1.1rem; color:#6366f1;">Recent Transactions</h2>
+      <div style="font-size:0.98rem; color:#374151;">See your latest activity here.</div>
     </div>
   `;
 }
