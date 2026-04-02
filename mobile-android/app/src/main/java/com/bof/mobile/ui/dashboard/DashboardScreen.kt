@@ -65,6 +65,7 @@ fun DashboardScreen(
     featureViewModel: FeatureViewModel,
     customerId: Int,
     onLogout: () -> Unit,
+    onNavigateToCreateAccount: () -> Unit = {},
     onNavigateToTransfers: () -> Unit = {},
     onNavigateToAccounts: () -> Unit = {},
     onNavigateToFeatures: () -> Unit = {},
@@ -196,7 +197,7 @@ fun DashboardScreen(
 
             item {
                 ActionButtonsSection(
-                    onCreateAccount = onNavigateToAccounts,
+                    onCreateAccount = onNavigateToCreateAccount,
                     onSendMoney = onNavigateToTransfers,
                     onDeposit = onNavigateToDeposit,
                     onWithdraw = onNavigateToWithdraw

@@ -29,6 +29,7 @@ import com.bof.mobile.data.repository.DashboardRepository
 import com.bof.mobile.data.repository.FeatureRepository
 import com.bof.mobile.data.repository.TransferRepository
 import com.bof.mobile.ui.accounts.AccountsScreen
+import com.bof.mobile.ui.accounts.CreateAccountScreen
 import com.bof.mobile.ui.admin.AdminDashboardScreen
 import com.bof.mobile.ui.auth.LoginScreen
 import com.bof.mobile.ui.auth.RegisterScreen
@@ -46,6 +47,7 @@ import com.bof.mobile.viewmodel.TransferViewModel
 
 private enum class MainTab {
     DASHBOARD,
+    CREATE_ACCOUNT,
     ACCOUNTS,
     TRANSFERS,
     FEATURES,
@@ -129,10 +131,15 @@ fun AppRoot() {
             customerId = customerId,
             onLogout = { logout() },
             onNavigateToTransfers = { navigateTo(MainTab.TRANSFERS) },
+            onNavigateToCreateAccount = { navigateTo(MainTab.CREATE_ACCOUNT) },
             onNavigateToAccounts = { navigateTo(MainTab.ACCOUNTS) },
             onNavigateToFeatures = { navigateTo(MainTab.FEATURES) },
             onNavigateToDeposit = { navigateTo(MainTab.DEPOSIT) },
             onNavigateToWithdraw = { navigateTo(MainTab.WITHDRAW) }
+        )
+        MainTab.CREATE_ACCOUNT -> CreateAccountScreen(
+            canGoBack = navigationHistory.isNotEmpty(),
+            onBack = { goBack() }
         )
         MainTab.ACCOUNTS -> AccountsScreen(
             viewModel = accountsViewModel,
