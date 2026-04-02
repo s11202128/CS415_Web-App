@@ -4,12 +4,58 @@ import com.bof.mobile.data.remote.ApiService
 import com.bof.mobile.model.AccountDetailsResponse
 import com.bof.mobile.model.AccountItem
 import com.bof.mobile.model.ApiResult
+import com.bof.mobile.model.CreateAccountRequest
 import com.bof.mobile.model.PaginatedTransactionsResponse
 import com.bof.mobile.model.TransactionItem
+import com.bof.mobile.model.UpdateProfileRequest
 import retrofit2.HttpException
 import java.io.IOException
 
 class AccountRepository(private val apiService: ApiService) {
+
+    suspend fun syncProfileData(
+        customerId: Int,
+        fullName: String,
+        mobile: String,
+        email: String,
+        currentPassword: String? = null,
+        newPassword: String? = null
+    ): ApiResult<Unit> {
+        return try {
+            apiService.updateProfile(
+                UpdateProfileRequest(
+                    customerId = customerId,
+                    fullName = fullName,
+                    mobile = mobile,
+                    nationalId = "",
+                    residencyStatus = "resident",
+                    tin = "",
+                    email = email,
+                    currentPassword = currentPassword,
+                    newPassword = newPassword
+                )
+            )
+            ApiResult.Success(Unit)
+        } catch (e: HttpException) {
+            ApiResult.Error(message = "Failed to sync profile: ${e.message()}", code = e.code())
+        } catch (e: IOException) {
+            ApiResult.Error(message = "Network unavailable. Please try again.")
+        } catch (e: Exception) {
+            ApiResult.Error(message = e.message ?: "Unexpected error")
+        }
+    }
+
+    suspend fun createAccount(request: CreateAccountRequest): ApiResult<AccountItem> {
+        return try {
+            ApiResult.Success(apiService.createAccount(request))
+        } catch (e: HttpException) {
+            ApiResult.Error(message = "Failed to create account: ${e.message()}", code = e.code())
+        } catch (e: IOException) {
+            ApiResult.Error(message = "Network unavailable. Please try again.")
+        } catch (e: Exception) {
+            ApiResult.Error(message = e.message ?: "Unexpected error")
+        }
+    }
 
     suspend fun getAccounts(): ApiResult<List<AccountItem>> {
         return try {

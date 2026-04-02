@@ -66,8 +66,9 @@ fun AppRoot() {
     }
 
     // Recreate ViewModels when apiService changes (token changes)
+    val accountRepository = remember(apiService) { AccountRepository(apiService) }
     val dashboardViewModel = remember(apiService) { DashboardViewModel(DashboardRepository(apiService)) }
-    val accountsViewModel = remember(apiService) { AccountsViewModel(AccountRepository(apiService)) }
+    val accountsViewModel = remember(apiService) { AccountsViewModel(accountRepository) }
     val transferViewModel = remember(apiService) { TransferViewModel(TransferRepository(apiService)) }
     val featureViewModel = remember(apiService) { FeatureViewModel(FeatureRepository(apiService)) }
     val adminViewModel = remember(apiService) { AdminViewModel(AdminRepository(apiService)) }
@@ -138,8 +139,11 @@ fun AppRoot() {
             onNavigateToWithdraw = { navigateTo(MainTab.WITHDRAW) }
         )
         MainTab.CREATE_ACCOUNT -> CreateAccountScreen(
+            accountRepository = accountRepository,
+            customerId = customerId,
             canGoBack = navigationHistory.isNotEmpty(),
-            onBack = { goBack() }
+            onBack = { goBack() },
+            onAccountCreated = { dashboardViewModel.loadDashboard(customerId) }
         )
         MainTab.ACCOUNTS -> AccountsScreen(
             viewModel = accountsViewModel,

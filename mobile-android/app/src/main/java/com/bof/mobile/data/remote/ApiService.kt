@@ -2,6 +2,7 @@ package com.bof.mobile.data.remote
 
 import com.bof.mobile.model.AccountDetailsResponse
 import com.bof.mobile.model.AccountItem
+import com.bof.mobile.model.CreateAccountRequest
 import com.bof.mobile.model.AdminCreateAccountRequest
 import com.bof.mobile.model.AdminCreateDepositRequest
 import com.bof.mobile.model.AdminCreateDepositResponse
@@ -78,6 +79,9 @@ interface ApiService {
 
     @GET("accounts")
     suspend fun getAccounts(): List<AccountItem>
+
+    @POST("accounts")
+    suspend fun createAccount(@Body request: CreateAccountRequest): AccountItem
 
     @GET("accounts/{id}/details")
     suspend fun getAccountDetails(@Path("id") accountId: Int, @Query("limit") limit: Int): AccountDetailsResponse

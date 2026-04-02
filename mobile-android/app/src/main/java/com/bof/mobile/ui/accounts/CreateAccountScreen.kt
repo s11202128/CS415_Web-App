@@ -40,6 +40,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -53,8 +54,11 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
+import com.bof.mobile.data.repository.AccountRepository
+import com.bof.mobile.model.ApiResult
+import com.bof.mobile.model.CreateAccountRequest
 import com.bof.mobile.ui.components.ScreenHeader
-import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 private enum class SignupAccountType(val label: String, val subLabel: String) {
     SIMPLE_ACCESS("Simple Access", "$2.50/month"),
@@ -63,25 +67,36 @@ private enum class SignupAccountType(val label: String, val subLabel: String) {
 
 @Composable
 fun CreateAccountScreen(
+    accountRepository: AccountRepository,
+    customerId: Int,
     canGoBack: Boolean,
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    onAccountCreated: () -> Unit = {}
 ) {
+    val scope = rememberCoroutineScope()
     var fullName by remember { mutableStateOf("") }
     var email by remember { mutableStateOf("") }
     var countryCode by remember { mutableStateOf("+679") }
     var countryMenuExpanded by remember { mutableStateOf(false) }
     var phoneNumber by remember { mutableStateOf("") }
     var selectedAccountType by remember { mutableStateOf(SignupAccountType.SIMPLE_ACCESS) }
+    var currentPassword by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
+    var confirmPassword by remember { mutableStateOf("") }
+    var showCurrentPassword by remember { mutableStateOf(false) }
     var showPassword by remember { mutableStateOf(false) }
+    var showConfirmPassword by remember { mutableStateOf(false) }
     var agreedToTerms by remember { mutableStateOf(false) }
     var isSubmitting by remember { mutableStateOf(false) }
     var successMessage by remember { mutableStateOf<String?>(null) }
+    var submitErrorMessage by remember { mutableStateOf<String?>(null) }
 
     var nameTouched by remember { mutableStateOf(false) }
     var emailTouched by remember { mutableStateOf(false) }
     var phoneTouched by remember { mutableStateOf(false) }
+    var currentPasswordTouched by remember { mutableStateOf(false) }
     var passwordTouched by remember { mutableStateOf(false) }
+    var confirmPasswordTouched by remember { mutableStateOf(false) }
     var termsTouched by remember { mutableStateOf(false) }
 
     val trimmedName = fullName.trim()
@@ -95,18 +110,24 @@ fun CreateAccountScreen(
     val passwordHasUpper = password.any { it.isUpperCase() }
     val passwordHasNumber = password.any { it.isDigit() }
     val passwordValid = passwordHasLength && passwordHasUpper && passwordHasNumber
+    val passwordConfirmMatches = confirmPassword == password
+    val wantsPasswordChange = currentPassword.isNotBlank() || password.isNotBlank() || confirmPassword.isNotBlank()
+    val passwordSectionValid = if (!wantsPasswordChange) true else (currentPassword.isNotBlank() && passwordValid && passwordConfirmMatches)
     val termsValid = agreedToTerms
 
-    val formValid = nameValid && emailValid && phoneValid && passwordValid && termsValid
+    val formValid = nameValid && emailValid && phoneValid && passwordSectionValid && termsValid
 
     val nameError = if (nameTouched && !nameValid) "Full name is required" else null
     val emailError = if (emailTouched && !emailValid) "Enter a valid email address" else null
     val phoneError = if (phoneTouched && !phoneValid) "Phone number is required" else null
-    val passwordError = if (passwordTouched && !passwordValid) "Password does not meet all requirements" else null
+    val currentPasswordError = if (currentPasswordTouched && wantsPasswordChange && currentPassword.isBlank()) "Current password is required" else null
+    val passwordError = if (passwordTouched && wantsPasswordChange && !passwordValid) "New password does not meet all requirements" else null
+    val confirmPasswordError = if (confirmPasswordTouched && wantsPasswordChange && !passwordConfirmMatches) "Passwords do not match" else null
     val termsError = if (termsTouched && !termsValid) "You must agree before continuing" else null
 
-    LaunchedEffect(fullName, email, phoneNumber, password, agreedToTerms) {
+    LaunchedEffect(fullName, email, phoneNumber, currentPassword, password, confirmPassword, agreedToTerms) {
         successMessage = null
+        submitErrorMessage = null
     }
 
     Box(
@@ -298,6 +319,36 @@ fun CreateAccountScreen(
 
                     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
 
+                    Text(
+                        text = "Set New Password (optional)",
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    OutlinedTextField(
+                        value = currentPassword,
+                        onValueChange = {
+                            currentPassword = it
+                            currentPasswordTouched = true
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text("Current password") },
+                        placeholder = { Text("Enter current password") },
+                        singleLine = true,
+                        visualTransformation = if (showCurrentPassword) VisualTransformation.None else PasswordVisualTransformation(),
+                        trailingIcon = {
+                            IconButton(onClick = { showCurrentPassword = !showCurrentPassword }) {
+                                Icon(
+                                    imageVector = if (showCurrentPassword) Icons.Filled.VisibilityOff else Icons.Filled.Visibility,
+                                    contentDescription = if (showCurrentPassword) "Hide current password" else "Show current password"
+                                )
+                            }
+                        },
+                        isError = currentPasswordError != null
+                    )
+                    if (currentPasswordError != null) {
+                        InlineError(currentPasswordError)
+                    }
+
                     OutlinedTextField(
                         value = password,
                         onValueChange = {
@@ -305,7 +356,7 @@ fun CreateAccountScreen(
                             passwordTouched = true
                         },
                         modifier = Modifier.fillMaxWidth(),
-                        label = { Text("Password") },
+                        label = { Text("New password") },
                         placeholder = { Text("Enter a password") },
                         singleLine = true,
                         visualTransformation = if (showPassword) VisualTransformation.None else PasswordVisualTransformation(),
@@ -313,7 +364,7 @@ fun CreateAccountScreen(
                             IconButton(onClick = { showPassword = !showPassword }) {
                                 Icon(
                                     imageVector = if (showPassword) Icons.Filled.VisibilityOff else Icons.Filled.Visibility,
-                                    contentDescription = if (showPassword) "Hide password" else "Show password"
+                                    contentDescription = if (showPassword) "Hide new password" else "Show new password"
                                 )
                             }
                         },
@@ -321,6 +372,31 @@ fun CreateAccountScreen(
                     )
                     if (passwordError != null) {
                         InlineError(passwordError)
+                    }
+
+                    OutlinedTextField(
+                        value = confirmPassword,
+                        onValueChange = {
+                            confirmPassword = it
+                            confirmPasswordTouched = true
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text("Confirm new password") },
+                        placeholder = { Text("Re-enter new password") },
+                        singleLine = true,
+                        visualTransformation = if (showConfirmPassword) VisualTransformation.None else PasswordVisualTransformation(),
+                        trailingIcon = {
+                            IconButton(onClick = { showConfirmPassword = !showConfirmPassword }) {
+                                Icon(
+                                    imageVector = if (showConfirmPassword) Icons.Filled.VisibilityOff else Icons.Filled.Visibility,
+                                    contentDescription = if (showConfirmPassword) "Hide confirm password" else "Show confirm password"
+                                )
+                            }
+                        },
+                        isError = confirmPasswordError != null
+                    )
+                    if (confirmPasswordError != null) {
+                        InlineError(confirmPasswordError)
                     }
 
                     PasswordRule(label = "At least 8 characters", valid = passwordHasLength)
@@ -353,17 +429,73 @@ fun CreateAccountScreen(
                         }
                     }
 
+                    if (submitErrorMessage != null) {
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer),
+                            shape = RoundedCornerShape(12.dp)
+                        ) {
+                            Text(
+                                text = submitErrorMessage ?: "",
+                                modifier = Modifier.padding(12.dp),
+                                color = MaterialTheme.colorScheme.onErrorContainer,
+                                style = MaterialTheme.typography.bodyMedium
+                            )
+                        }
+                    }
+
                     Button(
                         onClick = {
                             nameTouched = true
                             emailTouched = true
                             phoneTouched = true
+                            currentPasswordTouched = true
                             passwordTouched = true
+                            confirmPasswordTouched = true
                             termsTouched = true
 
                             if (!formValid || isSubmitting) return@Button
 
+                            submitErrorMessage = null
                             isSubmitting = true
+                            scope.launch {
+                                when (
+                                    val syncResult = accountRepository.syncProfileData(
+                                        customerId = customerId,
+                                        fullName = trimmedName,
+                                        mobile = "$countryCode$trimmedPhone",
+                                        email = trimmedEmail,
+                                        currentPassword = currentPassword.takeIf { it.isNotBlank() },
+                                        newPassword = password.takeIf { it.isNotBlank() }
+                                    )
+                                ) {
+                                    is ApiResult.Success -> Unit
+                                    is ApiResult.Error -> {
+                                        submitErrorMessage = syncResult.message
+                                        isSubmitting = false
+                                        return@launch
+                                    }
+                                }
+
+                                val request = CreateAccountRequest(
+                                    type = selectedAccountType.label,
+                                    openingBalance = 0.0,
+                                    customerId = customerId,
+                                    customerName = trimmedName
+                                )
+
+                                when (val result = accountRepository.createAccount(request)) {
+                                    is ApiResult.Success -> {
+                                        successMessage = "Profile synced and account created successfully (•••• ${result.data.accountNumber.takeLast(4)})."
+                                        onAccountCreated()
+                                    }
+                                    is ApiResult.Error -> {
+                                        successMessage = null
+                                        submitErrorMessage = result.message
+                                    }
+                                }
+                                isSubmitting = false
+                            }
                         },
                         modifier = Modifier
                             .fillMaxWidth()
@@ -392,13 +524,6 @@ fun CreateAccountScreen(
         }
     }
 
-    LaunchedEffect(isSubmitting) {
-        if (isSubmitting) {
-            delay(1200)
-            isSubmitting = false
-            successMessage = "Account application submitted successfully for ${selectedAccountType.label}."
-        }
-    }
 }
 
 @Composable
