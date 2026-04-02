@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -32,10 +33,11 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.bof.mobile.model.AccountItem
+import com.bof.mobile.ui.components.ScreenHeader
 import com.bof.mobile.viewmodel.AccountsViewModel
 
 @Composable
-fun AccountsScreen(viewModel: AccountsViewModel) {
+fun AccountsScreen(viewModel: AccountsViewModel, canGoBack: Boolean, onBack: () -> Unit) {
     val uiState by viewModel.uiState.collectAsState()
 
     LaunchedEffect(Unit) {
@@ -47,7 +49,11 @@ fun AccountsScreen(viewModel: AccountsViewModel) {
             .fillMaxSize()
             .background(
                 brush = Brush.verticalGradient(
-                    listOf(Color(0xFFF1F6FF), Color(0xFFE8FFF9), Color(0xFFFFFFFF))
+                    listOf(
+                        MaterialTheme.colorScheme.background,
+                        MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.35f),
+                        MaterialTheme.colorScheme.surface
+                    )
                 )
             )
     ) {
@@ -57,18 +63,14 @@ fun AccountsScreen(viewModel: AccountsViewModel) {
                 .padding(16.dp),
             verticalArrangement = Arrangement.Top
         ) {
-            // Hero header
-            Surface(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(bottom = 16.dp),
-                color = Color.Transparent
-            ) {
-                Column {
-                    Text("Accounts", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
-                    Text("Manage your accounts", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-            }
+            ScreenHeader(
+                title = "Accounts",
+                subtitle = "Manage your accounts",
+                onBack = onBack,
+                enabled = canGoBack
+            )
+
+            Spacer(modifier = Modifier.height(16.dp))
 
             if (uiState.isLoadingAccounts) {
                 Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -89,6 +91,51 @@ fun AccountsScreen(viewModel: AccountsViewModel) {
             if (uiState.accounts.isEmpty()) {
                 AccountsMessageBanner(text = "No accounts found", isError = true)
                 return@Column
+            }
+
+            Text("My Accounts", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+            Spacer(modifier = Modifier.height(8.dp))
+
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 12.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                uiState.accounts.forEach { account ->
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+                    ) {
+                        Column(modifier = Modifier.padding(12.dp)) {
+                            Text(
+                                text = account.type.ifBlank { "Account" },
+                                style = MaterialTheme.typography.labelLarge,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                            Spacer(modifier = Modifier.height(2.dp))
+                            Text(
+                                text = "FJD ${"%.2f".format(account.balance)}",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                            Text(
+                                text = maskAccountNumber(account.accountNumber),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Spacer(modifier = Modifier.height(8.dp))
+                            OutlinedButton(
+                                onClick = { viewModel.selectAccount(account.id) },
+                                modifier = Modifier.fillMaxWidth(),
+                                colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.primary)
+                            ) {
+                                Text("View details")
+                            }
+                        }
+                    }
+                }
             }
 
             // Accounts list with horizontal scroll and sticky header
@@ -197,6 +244,11 @@ fun AccountsScreen(viewModel: AccountsViewModel) {
             }
         }
     }
+}
+
+private fun maskAccountNumber(accountNumber: String): String {
+    val suffix = accountNumber.takeLast(4)
+    return if (suffix.isBlank()) "...." else ".... $suffix"
 }
 
 @Composable

@@ -40,8 +40,17 @@ StatementRequest.belongsTo(Customer, { foreignKey: 'customerId' });
 Account.hasMany(StatementRequest, { foreignKey: 'accountNumber', sourceKey: 'accountNumber', constraints: false });
 StatementRequest.belongsTo(Account, { foreignKey: 'accountNumber', targetKey: 'accountNumber', constraints: false });
 
-Customer.hasMany(LoginLog, { foreignKey: 'userId', constraints: false, scope: { userType: 'customer' } });
-Admin.hasMany(LoginLog, { foreignKey: 'userId', constraints: false, scope: { userType: 'admin' } });
+Admin.hasMany(StatementRequest, { foreignKey: 'reviewedByAdminId' });
+StatementRequest.belongsTo(Admin, { foreignKey: 'reviewedByAdminId' });
+
+Customer.hasMany(LoginLog, { foreignKey: 'customerId' });
+LoginLog.belongsTo(Customer, { foreignKey: 'customerId' });
+
+Admin.hasMany(LoginLog, { foreignKey: 'adminId' });
+LoginLog.belongsTo(Admin, { foreignKey: 'adminId' });
+
+Customer.hasMany(Registration, { foreignKey: 'customerId' });
+Registration.belongsTo(Customer, { foreignKey: 'customerId' });
 
 module.exports = {
   sequelize,

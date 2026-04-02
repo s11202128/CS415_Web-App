@@ -2,7 +2,6 @@ const express = require("express");
 const { Op } = require("sequelize");
 const requirementsData = require("../config/requirementsData");
 const { requireAuth, requireAdmin } = require("../middleware/auth");
-const { sendSms } = require("../services/smsService");
 const {
   getAccountTransactions,
   initiateTransfer,
@@ -10,6 +9,7 @@ const {
   postBillPayment,
   scheduleBillPayment,
   runScheduledPayment,
+  createInvestment,
   generateRandomAccountNumber,
   generateStatement,
   generateInterestSummaries,
@@ -40,8 +40,7 @@ const asyncHandler = (fn) => async (req, res) => {
   try {
     await fn(req, res);
   } catch (error) {
-    const statusCode = Number(error?.statusCode) || 400;
-    res.status(statusCode).json({ error: error.message });
+    res.status(400).json({ error: error.message });
   }
 };
 
@@ -92,7 +91,7 @@ const toAccountResponse = (a) => ({
 const toStatementRequestResponse = (row) => ({
   id: row.id,
   customerId: row.customerId,
-  accountId: null,
+  accountId: row.accountId || null,
   fullName: row.fullName,
   accountHolder: row.accountHolder,
   accountNumber: row.accountNumber,
@@ -101,26 +100,13 @@ const toStatementRequestResponse = (row) => ({
   status: row.status,
   adminNote: row.adminNote,
   reviewedBy: row.reviewedBy,
+  reviewedByAdminId: row.reviewedByAdminId || null,
   reviewedAt: row.reviewedAt,
   createdAt: row.createdAt,
   updatedAt: row.updatedAt,
 });
 
-const toInvestmentResponse = (investment) => ({
-  id: investment.id,
-  customerId: investment.customerId,
-  customerName: investment.Customer?.fullName || "",
-  investmentType: investment.investmentType,
-  amount: Number(investment.amount),
-  expectedReturn: investment.expectedReturn === null || investment.expectedReturn === undefined ? null : Number(investment.expectedReturn),
-  maturityDate: investment.maturityDate,
-  status: investment.status,
-  createdAt: investment.createdAt,
-  updatedAt: investment.updatedAt,
-});
-
 async function getCustomerForAccountPayload(payload, options = {}) {
-  const allowAutoCreate = options.allowAutoCreate !== false;
   const providedCustomerName = String(payload.customerName || "").trim();
   let customerId = payload.customerId;
 
@@ -149,10 +135,6 @@ async function getCustomerForAccountPayload(payload, options = {}) {
       normalizedName
     ),
   });
-
-  if (!customer && !allowAutoCreate) {
-    throw new Error("Customer not found for provided customerName");
-  }
 
   if (!customer) {
     const nonce = Date.now();
@@ -191,15 +173,6 @@ function parseScheduledAccountId(description) {
   return match ? Number(match[1]) : null;
 }
 
-function parseBillAccountId(description) {
-  const text = String(description || "");
-  const directMatch = text.match(/account:(\d+)/i);
-  if (directMatch) {
-    return Number(directMatch[1]);
-  }
-  return parseScheduledAccountId(text);
-}
-
 async function mapTransactionRows(rows) {
   const accountNumbers = Array.from(new Set(rows.map((row) => String(row.accountNumber || "")).filter(Boolean)));
   const accounts = accountNumbers.length
@@ -209,7 +182,7 @@ async function mapTransactionRows(rows) {
 
   return rows.map((t) => ({
     id: t.id,
-    accountId: accountIdByNumber.get(String(t.accountNumber)) || null,
+    accountId: Number(t.accountId) || accountIdByNumber.get(String(t.accountNumber)) || null,
     accountNumber: t.accountNumber,
     kind: t.type,
     amount: Number(t.amount),
@@ -381,74 +354,6 @@ router.get("/accounts", requireAuth, asyncHandler(async (req, res) => {
   res.json(rows.map(toAccountResponse));
 }));
 
-router.get("/investments", requireAuth, asyncHandler(async (req, res) => {
-  let customerId = getAuthenticatedCustomerId(req);
-  if (isAdmin(req) && req.query.customerId !== undefined) {
-    const parsedCustomerId = Number(req.query.customerId);
-    if (!Number.isFinite(parsedCustomerId) || parsedCustomerId <= 0) {
-      return res.status(400).json({ error: "Valid customerId query is required" });
-    }
-    customerId = parsedCustomerId;
-  }
-
-  const rows = await Investment.findAll({
-    where: isAdmin(req) && req.query.customerId === undefined ? undefined : { customerId },
-    include: [{ model: Customer, attributes: ["id", "fullName"] }],
-    order: [["createdAt", "DESC"]],
-  });
-
-  res.json(rows.map(toInvestmentResponse));
-}));
-
-router.post("/investments", requireAuth, asyncHandler(async (req, res) => {
-  const payload = req.body || {};
-  const amount = Number(payload.amount);
-  const customerId = Number(payload.customerId || getAuthenticatedCustomerId(req));
-  const expectedReturn = payload.expectedReturn === undefined || payload.expectedReturn === null || payload.expectedReturn === ""
-    ? null
-    : Number(payload.expectedReturn);
-  const maturityDate = payload.maturityDate ? new Date(String(payload.maturityDate)) : null;
-
-  if (!Number.isFinite(customerId) || customerId <= 0) {
-    return res.status(400).json({ error: "Valid customerId is required" });
-  }
-  if (!canAccessCustomer(req, customerId)) {
-    return res.status(403).json({ error: "Forbidden" });
-  }
-  if (!payload.investmentType || String(payload.investmentType).trim().length < 2) {
-    return res.status(400).json({ error: "investmentType is required" });
-  }
-  if (!Number.isFinite(amount) || amount <= 0) {
-    return res.status(400).json({ error: "amount must be a positive number" });
-  }
-  if (expectedReturn !== null && !Number.isFinite(expectedReturn)) {
-    return res.status(400).json({ error: "expectedReturn must be a number" });
-  }
-  if (maturityDate && Number.isNaN(maturityDate.getTime())) {
-    return res.status(400).json({ error: "maturityDate must be a valid date" });
-  }
-
-  const customer = await Customer.findByPk(customerId);
-  if (!customer) {
-    return res.status(404).json({ error: "Customer not found" });
-  }
-
-  const created = await Investment.create({
-    customerId,
-    investmentType: String(payload.investmentType).trim(),
-    amount,
-    expectedReturn,
-    maturityDate,
-    status: payload.status ? String(payload.status).trim() : "active",
-  });
-
-  const row = await Investment.findByPk(created.id, {
-    include: [{ model: Customer, attributes: ["id", "fullName"] }],
-  });
-
-  res.status(201).json(toInvestmentResponse(row));
-}));
-
 router.post("/accounts", asyncHandler(async (req, res) => {
   const payload = req.body || {};
   const providedAccountNumber = String(payload.accountNumber || "").trim();
@@ -506,7 +411,7 @@ router.post("/accounts/request", asyncHandler(async (req, res) => {
     accountNumber: providedAccountNumber || await generateRandomAccountNumber(),
     accountHolder: customer.fullName,
     accountType: payload.type,
-    balance: 0,
+    balance: Number(payload.openingBalance || 0),
     currency: "FJD",
     status: "pending_approval",
   });
@@ -573,7 +478,6 @@ router.post("/admin/create-account", asyncHandler(async (req, res) => {
   }
 
   const customer = await getCustomerForAccountPayload(payload, {
-    allowAutoCreate: false,
     customerDefaults: {
       nationalId: `AUTO-${Date.now()}`,
       emailVerified: true,
@@ -602,175 +506,6 @@ router.put("/admin/freeze-account", asyncHandler(async (req, res) => {
   res.json(toAccountResponse(account));
 }));
 
-router.post("/admin/deposits", asyncHandler(async (req, res) => {
-  const payload = req.body || {};
-  const accountId = Number(payload.accountId);
-  const amount = Number(payload.amount);
-  const description = String(payload.description || "Admin deposit").trim() || "Admin deposit";
-
-  if (!Number.isFinite(accountId) || accountId <= 0) {
-    return res.status(400).json({ error: "Valid accountId is required" });
-  }
-  if (!Number.isFinite(amount) || amount <= 0) {
-    return res.status(400).json({ error: "amount must be a positive number" });
-  }
-
-  const account = await Account.findByPk(accountId);
-  if (!account) {
-    return res.status(404).json({ error: "Account not found" });
-  }
-  if (["frozen", "suspended", "closed", "rejected"].includes(String(account.status || "").toLowerCase())) {
-    return res.status(400).json({ error: "Cannot deposit into this account status" });
-  }
-
-  await Account.sequelize.transaction(async (dbTx) => {
-    const currentBalance = Number(account.balance || 0);
-    const updatedBalance = Number((currentBalance + amount).toFixed(2));
-
-    await account.update({ balance: updatedBalance }, { transaction: dbTx });
-    await Transaction.create(
-      {
-        accountId: account.id,
-        accountNumber: account.accountNumber,
-        type: "credit",
-        amount,
-        description,
-        status: "completed",
-        balanceAfter: updatedBalance,
-      },
-      { transaction: dbTx }
-    );
-  });
-
-  await account.reload();
-  res.status(201).json({
-    message: "Deposit completed.",
-    account: toAccountResponse(account),
-  });
-}));
-
-router.get("/admin/investments", asyncHandler(async (req, res) => {
-  const statusFilter = String(req.query.status || "").trim();
-  const customerIdFilter = req.query.customerId !== undefined ? Number(req.query.customerId) : null;
-
-  if (req.query.customerId !== undefined && (!Number.isFinite(customerIdFilter) || customerIdFilter <= 0)) {
-    return res.status(400).json({ error: "Valid customerId query is required" });
-  }
-
-  const where = {};
-  if (statusFilter) {
-    where.status = statusFilter;
-  }
-  if (customerIdFilter) {
-    where.customerId = customerIdFilter;
-  }
-
-  const rows = await Investment.findAll({
-    where,
-    include: [{ model: Customer, attributes: ["id", "fullName"] }],
-    order: [["createdAt", "DESC"]],
-  });
-
-  res.json(rows.map(toInvestmentResponse));
-}));
-
-router.post("/admin/investments", asyncHandler(async (req, res) => {
-  const payload = req.body || {};
-  const amount = Number(payload.amount);
-  const expectedReturn = payload.expectedReturn === undefined || payload.expectedReturn === null || payload.expectedReturn === ""
-    ? null
-    : Number(payload.expectedReturn);
-  const maturityDate = payload.maturityDate ? new Date(String(payload.maturityDate)) : null;
-
-  if (!payload.investmentType || String(payload.investmentType).trim().length < 2) {
-    return res.status(400).json({ error: "investmentType is required" });
-  }
-  if (!Number.isFinite(amount) || amount <= 0) {
-    return res.status(400).json({ error: "amount must be a positive number" });
-  }
-  if (expectedReturn !== null && !Number.isFinite(expectedReturn)) {
-    return res.status(400).json({ error: "expectedReturn must be a number" });
-  }
-  if (maturityDate && Number.isNaN(maturityDate.getTime())) {
-    return res.status(400).json({ error: "maturityDate must be a valid date" });
-  }
-
-  const customer = await getCustomerForAccountPayload(payload, { allowAutoCreate: false });
-  const created = await Investment.create({
-    customerId: customer.id,
-    investmentType: String(payload.investmentType).trim(),
-    amount,
-    expectedReturn,
-    maturityDate,
-    status: payload.status ? String(payload.status).trim() : "active",
-  });
-
-  const row = await Investment.findByPk(created.id, {
-    include: [{ model: Customer, attributes: ["id", "fullName"] }],
-  });
-
-  res.status(201).json(toInvestmentResponse(row));
-}));
-
-router.patch("/admin/investments/:id", asyncHandler(async (req, res) => {
-  const investment = await Investment.findByPk(req.params.id, {
-    include: [{ model: Customer, attributes: ["id", "fullName"] }],
-  });
-  if (!investment) {
-    return res.status(404).json({ error: "Investment not found" });
-  }
-
-  const payload = req.body || {};
-  const updates = {};
-  if (payload.investmentType !== undefined) {
-    const value = String(payload.investmentType || "").trim();
-    if (!value) {
-      return res.status(400).json({ error: "investmentType cannot be empty" });
-    }
-    updates.investmentType = value;
-  }
-  if (payload.amount !== undefined) {
-    const value = Number(payload.amount);
-    if (!Number.isFinite(value) || value <= 0) {
-      return res.status(400).json({ error: "amount must be a positive number" });
-    }
-    updates.amount = value;
-  }
-  if (payload.expectedReturn !== undefined) {
-    if (payload.expectedReturn === null || payload.expectedReturn === "") {
-      updates.expectedReturn = null;
-    } else {
-      const value = Number(payload.expectedReturn);
-      if (!Number.isFinite(value)) {
-        return res.status(400).json({ error: "expectedReturn must be a number" });
-      }
-      updates.expectedReturn = value;
-    }
-  }
-  if (payload.maturityDate !== undefined) {
-    if (payload.maturityDate === null || payload.maturityDate === "") {
-      updates.maturityDate = null;
-    } else {
-      const value = new Date(String(payload.maturityDate));
-      if (Number.isNaN(value.getTime())) {
-        return res.status(400).json({ error: "maturityDate must be a valid date" });
-      }
-      updates.maturityDate = value;
-    }
-  }
-  if (payload.status !== undefined) {
-    const value = String(payload.status || "").trim();
-    if (!value) {
-      return res.status(400).json({ error: "status cannot be empty" });
-    }
-    updates.status = value;
-  }
-
-  await investment.update(updates);
-  await investment.reload({ include: [{ model: Customer, attributes: ["id", "fullName"] }] });
-  res.json(toInvestmentResponse(investment));
-}));
-
 router.get("/admin/transactions", asyncHandler(async (req, res) => {
   const accountNumber = String(req.query.accountNumber || "").trim();
   let accountNumberFilter = null;
@@ -786,6 +521,7 @@ router.get("/admin/transactions", asyncHandler(async (req, res) => {
   const rows = await Transaction.findAll({
     where: accountNumberFilter ? { accountNumber: accountNumberFilter } : undefined,
     order: [["createdAt", "DESC"]],
+    limit: 500,
   });
 
   res.json(await mapTransactionRows(rows));
@@ -802,195 +538,18 @@ router.post("/admin/transactions/:id/reverse", asyncHandler(async (req, res) => 
   res.json(result);
 }));
 
-router.get("/transactions", requireAuth, asyncHandler(async (req, res) => {
+router.get("/transactions", asyncHandler(async (req, res) => {
   const accountId = String(req.query.accountId || "").trim();
   const accountNumber = String(req.query.accountNumber || "").trim();
   if (!accountId && !accountNumber) {
     return res.status(400).json({ error: "accountId or accountNumber query is required" });
   }
-
-  const account = accountNumber
-    ? await Account.findOne({ where: { accountNumber } })
-    : await Account.findByPk(Number(accountId));
-
-  if (!account) {
-    return res.status(404).json({ error: "Account not found" });
-  }
-  if (!canAccessCustomer(req, account.customerId)) {
-    return res.status(403).json({ error: "Forbidden" });
-  }
-
-  const rows = await getAccountTransactions(account.accountNumber || account.id);
+  const rows = await getAccountTransactions(accountNumber || accountId);
   const mappedRows = await mapTransactionRows(rows);
-  const normalizedRows = mappedRows.map((row) => ({
+  res.json(mappedRows.map((row) => ({
     ...row,
     counterpartyAccountId: null,
-  }));
-
-  const typeFilter = String(req.query.type || "").trim().toLowerCase();
-  const fromDate = req.query.fromDate ? new Date(String(req.query.fromDate)) : null;
-  const toDate = req.query.toDate ? new Date(String(req.query.toDate)) : null;
-  const minAmount = req.query.minAmount !== undefined ? Number(req.query.minAmount) : null;
-  const maxAmount = req.query.maxAmount !== undefined ? Number(req.query.maxAmount) : null;
-
-  const filteredRows = normalizedRows.filter((row) => {
-    if (typeFilter && row.kind !== typeFilter) {
-      return false;
-    }
-
-    const createdAtTs = new Date(row.createdAt).getTime();
-    if (fromDate && Number.isFinite(fromDate.getTime()) && createdAtTs < fromDate.getTime()) {
-      return false;
-    }
-    if (toDate && Number.isFinite(toDate.getTime()) && createdAtTs > toDate.getTime()) {
-      return false;
-    }
-
-    if (Number.isFinite(minAmount) && Number(row.amount) < minAmount) {
-      return false;
-    }
-    if (Number.isFinite(maxAmount) && Number(row.amount) > maxAmount) {
-      return false;
-    }
-
-    return true;
-  });
-
-  const wantsPaginated =
-    req.query.paginated === "true" || req.query.page !== undefined || req.query.pageSize !== undefined;
-
-  if (!wantsPaginated) {
-    return res.json(filteredRows);
-  }
-
-  const page = Math.max(Number.parseInt(req.query.page, 10) || 1, 1);
-  const pageSize = Math.min(Math.max(Number.parseInt(req.query.pageSize, 10) || 20, 1), 100);
-  const offset = (page - 1) * pageSize;
-  const items = filteredRows.slice(offset, offset + pageSize);
-
-  return res.json({
-    items,
-    page,
-    pageSize,
-    total: filteredRows.length,
-    totalPages: Math.max(Math.ceil(filteredRows.length / pageSize), 1),
-  });
-}));
-
-router.get("/accounts/:id/details", requireAuth, asyncHandler(async (req, res) => {
-  const accountIdNumeric = Number(req.params.id);
-  if (!Number.isFinite(accountIdNumeric) || accountIdNumeric <= 0) {
-    return res.status(400).json({ error: "Valid account id is required" });
-  }
-
-  const account = await Account.findByPk(accountIdNumeric, {
-    include: [{ model: Customer, attributes: ["id", "fullName"] }],
-  });
-  if (!account) {
-    return res.status(404).json({ error: "Account not found" });
-  }
-  if (!canAccessCustomer(req, account.customerId)) {
-    return res.status(403).json({ error: "Forbidden" });
-  }
-
-  const limit = Math.min(Math.max(Number.parseInt(req.query.limit, 10) || 20, 1), 100);
-  const txRows = await Transaction.findAll({
-    where: { accountNumber: account.accountNumber },
-    order: [["createdAt", "DESC"]],
-    limit,
-  });
-
-  const transactions = await mapTransactionRows(txRows);
-  return res.json({
-    account: toAccountResponse(account),
-    customer: {
-      id: account.Customer?.id || account.customerId,
-      fullName: account.Customer?.fullName || account.accountHolder || "",
-    },
-    transactions,
-  });
-}));
-
-router.get("/recipients/search", requireAuth, asyncHandler(async (req, res) => {
-  const q = String(req.query.q || "").trim();
-  if (q.length < 3) {
-    return res.status(400).json({ error: "Query must be at least 3 characters" });
-  }
-
-  const rows = await Account.findAll({
-    where: {
-      [Op.or]: [
-        { accountNumber: { [Op.like]: `%${q}%` } },
-        { accountHolder: { [Op.like]: `%${q}%` } },
-      ],
-      status: "active",
-    },
-    include: [{ model: Customer, attributes: ["id", "fullName"] }],
-    limit: 25,
-    order: [["createdAt", "DESC"]],
-  });
-
-  const requesterCustomerId = getAuthenticatedCustomerId(req);
-  const filteredRows = isAdmin(req)
-    ? rows
-    : rows.filter((row) => Number(row.customerId) !== Number(requesterCustomerId));
-
-  return res.json(filteredRows.map((row) => ({
-    accountId: row.id,
-    accountNumber: row.accountNumber,
-    accountHolder: row.accountHolder || row.Customer?.fullName || "",
-    customerId: row.customerId,
   })));
-}));
-
-router.get("/billers", requireAuth, asyncHandler(async (req, res) => {
-  res.json([
-    { code: "EFL", name: "Energy Fiji Limited" },
-    { code: "WAF", name: "Water Authority Fiji" },
-    { code: "DIGI", name: "Digicel Fiji" },
-    { code: "VODA", name: "Vodafone Fiji" },
-    { code: "RATES", name: "Municipal Rates" },
-  ]);
-}));
-
-router.post("/transfers/validate-destination", requireAuth, asyncHandler(async (req, res) => {
-  const fromAccountId = Number(req.body?.fromAccountId);
-  const toAccountNumber = String(req.body?.toAccountNumber || "").trim();
-
-  if (!Number.isFinite(fromAccountId) || fromAccountId <= 0) {
-    return res.status(400).json({ error: "Valid fromAccountId is required" });
-  }
-  if (!/^\d{12}$/.test(toAccountNumber)) {
-    return res.status(400).json({ error: "Destination account number must be 12 digits" });
-  }
-
-  const fromAccount = await Account.findByPk(fromAccountId);
-  if (!fromAccount) {
-    return res.status(404).json({ error: "Source account not found" });
-  }
-  if (!isAdmin(req) && fromAccount.customerId !== getAuthenticatedCustomerId(req)) {
-    return res.status(403).json({ error: "Forbidden" });
-  }
-
-  const destination = await Account.findOne({
-    where: { accountNumber: toAccountNumber },
-    include: [{ model: Customer, attributes: ["id", "fullName"] }],
-  });
-  if (!destination) {
-    return res.status(404).json({ error: "Destination account not found" });
-  }
-  if (String(fromAccount.accountNumber) === String(destination.accountNumber)) {
-    return res.status(400).json({ error: "Transfer accounts must be different" });
-  }
-  if (["frozen", "suspended", "closed"].includes(String(destination.status || "").toLowerCase())) {
-    return res.status(400).json({ error: "Destination account is not available for transfers" });
-  }
-
-  res.json({
-    accountNumber: destination.accountNumber,
-    customerId: destination.customerId,
-    customerName: destination.Customer?.fullName || destination.accountHolder || "Unknown customer",
-  });
 }));
 
 router.post("/transfers/initiate", requireAuth, asyncHandler(async (req, res) => {
@@ -1030,6 +589,46 @@ router.post("/transfer", requireAuth, asyncHandler(async (req, res) => {
   }
   const result = await initiateTransfer(payload);
   res.json({ highValueThreshold: getHighValueTransferThreshold(), ...result });
+}));
+
+router.post("/transfers/validate-destination", requireAuth, asyncHandler(async (req, res) => {
+  const payload = req.body || {};
+  const accountNumber = String(payload.toAccountNumber || "").trim();
+  const fromAccountId = Number(payload.fromAccountId || 0);
+
+  if (!fromAccountId) {
+    return res.status(400).json({ error: "fromAccountId is required" });
+  }
+  if (!/^\d{12}$/.test(accountNumber)) {
+    return res.status(400).json({ error: "Destination account number must be 12 digits" });
+  }
+
+  const fromAccount = await Account.findByPk(fromAccountId);
+  if (!fromAccount) {
+    return res.status(404).json({ error: "Source account not found" });
+  }
+  if (!isAdmin(req) && fromAccount.customerId !== getAuthenticatedCustomerId(req)) {
+    return res.status(403).json({ error: "Forbidden" });
+  }
+
+  const destination = await Account.findOne({
+    where: { accountNumber },
+    include: [{ model: Customer, attributes: ["id", "fullName"] }],
+  });
+
+  if (!destination) {
+    return res.status(404).json({ error: "Destination account not found" });
+  }
+  if (destination.id === fromAccount.id) {
+    return res.status(400).json({ error: "Destination account must be different from source account" });
+  }
+
+  res.json({
+    accountId: destination.id,
+    accountNumber: destination.accountNumber,
+    customerId: destination.customerId,
+    customerName: destination.Customer?.fullName || destination.accountHolder || "Unknown customer",
+  });
 }));
 
 router.post("/otp/send", requireAuth, asyncHandler(async (req, res) => {
@@ -1270,27 +869,34 @@ router.get("/bills/scheduled", asyncHandler(async (req, res) => {
   );
 }));
 
-router.get("/bills/history", requireAuth, asyncHandler(async (req, res) => {
-  const where = isAdmin(req) ? undefined : { customerId: getAuthenticatedCustomerId(req) };
-  const rows = await Bill.findAll({ where, order: [["createdAt", "DESC"]], limit: 500 });
+router.post("/bills/scheduled/:id/run", asyncHandler(async (req, res) => {
+  const result = await runScheduledPayment(req.params.id);
+  res.json(result);
+}));
+
+router.get("/investments", asyncHandler(async (req, res) => {
+  const rows = await Investment.findAll({ order: [["createdAt", "DESC"]] });
   res.json(
-    rows.map((b) => ({
-      id: b.id,
-      accountId: parseBillAccountId(b.description),
-      customerId: b.customerId,
-      payee: b.billType,
-      amount: Number(b.amount),
-      scheduledDate: b.dueDate,
-      status: b.status === "paid" ? "processed" : b.status,
-      createdAt: b.createdAt,
-      description: b.description,
+    rows.map((x) => ({
+      id: x.id,
+      customerId: x.customerId,
+      name: x.investmentType,
+      amount: Number(x.amount),
+      annualRate: Number(x.expectedReturn || 0),
+      createdAt: x.createdAt,
     }))
   );
 }));
 
-router.post("/bills/scheduled/:id/run", asyncHandler(async (req, res) => {
-  const result = await runScheduledPayment(req.params.id);
-  res.json(result);
+router.post("/investments", asyncHandler(async (req, res) => {
+  const payload = req.body || {};
+  const row = await createInvestment({
+    customerId: payload.customerId,
+    name: payload.name,
+    amount: Number(payload.amount),
+    annualRate: Number(payload.annualRate),
+  });
+  res.status(201).json(row);
 }));
 
 router.post("/statements/request", requireAuth, asyncHandler(async (req, res) => {
@@ -1328,6 +934,7 @@ router.post("/statements/request", requireAuth, asyncHandler(async (req, res) =>
 
   const requestRow = await StatementRequest.create({
     customerId: customer.id,
+    accountId: account.id,
     fullName: payload.fullName || customer.fullName,
     accountHolder: payload.accountHolder || account.accountHolder || customer.fullName,
     accountNumber: payload.accountNumber || account.accountNumber,
@@ -1375,11 +982,13 @@ router.patch("/admin/statement-requests/:id", requireAuth, requireAdmin, asyncHa
     status,
     adminNote: payload.adminNote ? String(payload.adminNote).trim() : null,
     reviewedBy: req.auth?.email || "admin",
+    reviewedByAdminId: Number(req.auth?.userId) || null,
     reviewedAt: new Date(),
   };
 
   if (status === "pending") {
     updates.reviewedBy = null;
+    updates.reviewedByAdminId = null;
     updates.reviewedAt = null;
     updates.adminNote = null;
   }
@@ -1460,7 +1069,10 @@ router.get("/statements/:accountId", requireAuth, asyncHandler(async (req, res) 
 
   const approvedRequest = await StatementRequest.findOne({
     where: {
-      accountNumber: account.accountNumber,
+      [Op.or]: [
+        { accountId: account.id },
+        { accountNumber: account.accountNumber },
+      ],
       status: "approved",
       ...(isAdmin(req) ? {} : { customerId: getAuthenticatedCustomerId(req) }),
     },
@@ -1492,7 +1104,10 @@ router.get("/statements/:accountId/download", requireAuth, asyncHandler(async (r
 
   const approvedRequest = await StatementRequest.findOne({
     where: {
-      accountNumber: account.accountNumber,
+      [Op.or]: [
+        { accountId: account.id },
+        { accountNumber: account.accountNumber },
+      ],
       status: "approved",
       ...(isAdmin(req) ? {} : { customerId: getAuthenticatedCustomerId(req) }),
     },
@@ -1564,48 +1179,9 @@ router.get("/admin/notifications/logs", asyncHandler(async (req, res) => {
   res.json(await getNotificationLogs(limit));
 }));
 
-router.post("/admin/test-sms", asyncHandler(async (req, res) => {
-  const mobile = String(req.body?.mobile || "").trim();
-  const message = String(req.body?.message || "Test SMS from Bank of Fiji").trim();
-
-  if (!mobile) {
-    return res.status(400).json({ error: "mobile is required" });
-  }
-  if (!message) {
-    return res.status(400).json({ error: "message is required" });
-  }
-
-  const result = await sendSms({ to: mobile, message });
-  res.status(201).json({
-    status: result.status || "queued",
-    provider: result.provider || null,
-    providerMessageId: result.providerMessageId || null,
-    mobile,
-    message,
-  });
-}));
-
-
-// List OTP attempts for admin
 router.get("/admin/otp-attempts", asyncHandler(async (req, res) => {
   const limit = Number(req.query.limit || 200);
   res.json(await getOtpAttempts(limit));
-}));
-
-// Admin override: verify OTP manually
-router.patch("/admin/otp-verifications/:id/verify", asyncHandler(async (req, res) => {
-  const id = req.params.id;
-  const otpRow = await OtpVerification.findByPk(id);
-  if (!otpRow) {
-    return res.status(404).json({ error: "OTP verification not found" });
-  }
-  if (otpRow.verified) {
-    return res.status(400).json({ error: "OTP already verified" });
-  }
-  otpRow.verified = true;
-  otpRow.lastAttemptAt = new Date();
-  await otpRow.save();
-  res.json({ success: true, message: "OTP marked as verified by admin", otpVerification: otpRow });
 }));
 
 router.get("/config/interest-rate", (req, res) => {
@@ -1694,11 +1270,9 @@ router.post("/loan-applications", asyncHandler(async (req, res) => {
     termMonths: Number(loan.termMonths),
     purpose: payload.purpose,
     monthlyIncome: Number(payload.monthlyIncome || 0),
-    occupation: payload.occupation || payload.employmentStatus || "unknown",
+    employmentStatus: payload.employmentStatus || "unknown",
     status: loan.status,
     createdAt: loan.createdAt,
-    submittedAt: loan.createdAt,
-    reviewedAt: null,
   };
   res.status(201).json(row);
 }));
@@ -1714,11 +1288,9 @@ router.get("/loan-applications", asyncHandler(async (req, res) => {
       termMonths: Number(l.termMonths),
       purpose: l.loanType,
       monthlyIncome: 0,
-      occupation: "unknown",
+      employmentStatus: "unknown",
       status: l.status,
       createdAt: l.createdAt,
-      submittedAt: l.createdAt,
-      reviewedAt: ["approved", "rejected"].includes(String(l.status || "").toLowerCase()) ? l.updatedAt : null,
     }))
   );
 }));
@@ -1731,10 +1303,6 @@ router.patch("/admin/loan-applications/:id", asyncHandler(async (req, res) => {
 
   const payload = req.body || {};
   const updates = {};
-  const previousStatus = String(loan.status || "").toLowerCase();
-  const requestedStatus = payload.status !== undefined ? String(payload.status).toLowerCase() : previousStatus;
-  const shouldDisburse = previousStatus !== "approved" && requestedStatus === "approved";
-
   if (payload.status !== undefined) {
     updates.status = payload.status;
   }
@@ -1745,50 +1313,7 @@ router.patch("/admin/loan-applications/:id", asyncHandler(async (req, res) => {
     }
     updates.interestRate = rate;
   }
-
-  if (shouldDisburse) {
-    const destinationAccount = await Account.findOne({
-      where: {
-        customerId: loan.customerId,
-        status: { [Op.notIn]: ["frozen", "suspended", "closed"] },
-      },
-      order: [["createdAt", "ASC"]],
-    });
-
-    if (!destinationAccount) {
-      return res.status(400).json({ error: "Cannot approve loan: customer has no eligible account for disbursement" });
-    }
-
-    await Loan.sequelize.transaction(async (dbTx) => {
-      const principalAmount = Number(loan.principal || 0);
-      const currentBalance = Number(destinationAccount.balance || 0);
-      const updatedBalance = Number((currentBalance + principalAmount).toFixed(2));
-
-      await destinationAccount.update({ balance: updatedBalance }, { transaction: dbTx });
-      await Transaction.create(
-        {
-          accountId: destinationAccount.id,
-          accountNumber: destinationAccount.accountNumber,
-          type: "credit",
-          amount: principalAmount,
-          description: `Loan disbursement for application #${loan.id}`,
-          status: "completed",
-          balanceAfter: updatedBalance,
-        },
-        { transaction: dbTx }
-      );
-
-      await loan.update(
-        {
-          ...updates,
-          disbursedAmount: principalAmount,
-        },
-        { transaction: dbTx }
-      );
-    });
-  } else {
-    await loan.update(updates);
-  }
+  await loan.update(updates);
 
   res.json({
     id: loan.id,
@@ -1799,8 +1324,6 @@ router.patch("/admin/loan-applications/:id", asyncHandler(async (req, res) => {
     status: loan.status,
     interestRate: Number(loan.interestRate || 0),
     createdAt: loan.createdAt,
-    submittedAt: loan.createdAt,
-    reviewedAt: ["approved", "rejected"].includes(String(loan.status || "").toLowerCase()) ? loan.updatedAt : null,
   });
 }));
 

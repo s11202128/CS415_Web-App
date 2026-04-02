@@ -36,7 +36,11 @@ fun LoginScreen(viewModel: AuthViewModel, onOpenRegister: () -> Unit = {}) {
             .fillMaxSize()
             .background(
                 brush = Brush.verticalGradient(
-                    listOf(Color(0xFFF1F6FF), Color(0xFFE8FFF9), Color(0xFFFFFFFF))
+                    listOf(
+                        MaterialTheme.colorScheme.background,
+                        MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.35f),
+                        MaterialTheme.colorScheme.surface
+                    )
                 )
             )
     ) {
@@ -65,7 +69,7 @@ fun LoginScreen(viewModel: AuthViewModel, onOpenRegister: () -> Unit = {}) {
                     OutlinedTextField(
                         value = uiState.email,
                         onValueChange = viewModel::onEmailChanged,
-                        label = { Text("Email") },
+                        label = { Text("Email or Mobile") },
                         modifier = Modifier.fillMaxWidth(),
                         singleLine = true
                     )

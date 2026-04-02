@@ -7,6 +7,10 @@ const Registration = sequelize.define('Registration', {
     autoIncrement: true,
     primaryKey: true,
   },
+  customerId: {
+    type: DataTypes.BIGINT.UNSIGNED,
+    allowNull: true,
+  },
   fullName: {
     type: DataTypes.STRING,
     allowNull: false,

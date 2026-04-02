@@ -48,6 +48,10 @@ const StatementRequest = sequelize.define('StatementRequest', {
     type: DataTypes.STRING,
     allowNull: true,
   },
+  reviewedByAdminId: {
+    type: DataTypes.BIGINT.UNSIGNED,
+    allowNull: true,
+  },
   reviewedAt: {
     type: DataTypes.DATE,
     allowNull: true,

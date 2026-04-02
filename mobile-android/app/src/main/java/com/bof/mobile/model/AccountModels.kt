@@ -55,3 +55,8 @@ data class BillerItem(
     val code: String,
     val name: String
 )
+
+data class CreateAccountRequest(
+    val type: String,
+    val openingBalance: Double
+)

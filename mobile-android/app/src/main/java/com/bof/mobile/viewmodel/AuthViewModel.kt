@@ -40,15 +40,20 @@ class AuthViewModel(private val authRepository: AuthRepository) : ViewModel() {
 
     fun login() {
         val current = _uiState.value
-        if (current.email.isBlank() || current.password.isBlank()) {
-            _uiState.update { it.copy(errorMessage = "Email and password are required") }
+        val identifier = current.email.trim()
+        if (identifier.isBlank() || current.password.isBlank()) {
+            _uiState.update { it.copy(errorMessage = "Email or mobile and password are required") }
+            return
+        }
+        if (!isEmailOrMobile(identifier)) {
+            _uiState.update { it.copy(errorMessage = "Enter a valid email address or mobile number") }
             return
         }
 
         viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true, errorMessage = null) }
 
-            when (val result = authRepository.login(current.email, current.password)) {
+            when (val result = authRepository.login(identifier, current.password)) {
                 is ApiResult.Success -> {
                     _uiState.update {
                         it.copy(
@@ -82,6 +87,14 @@ class AuthViewModel(private val authRepository: AuthRepository) : ViewModel() {
         val current = _uiState.value
         if (current.fullName.isBlank() || current.mobile.isBlank() || current.email.isBlank() || current.password.isBlank()) {
             _uiState.update { it.copy(errorMessage = "All registration fields are required") }
+            return
+        }
+        if (!isEmail(current.email.trim())) {
+            _uiState.update { it.copy(errorMessage = "Enter a valid email address") }
+            return
+        }
+        if (!isMobile(current.mobile.trim())) {
+            _uiState.update { it.copy(errorMessage = "Enter a valid mobile number") }
             return
         }
         if (current.password != current.confirmPassword) {
@@ -120,6 +133,9 @@ class AuthViewModel(private val authRepository: AuthRepository) : ViewModel() {
     fun logout() {
         _uiState.update {
             it.copy(
+                fullName = "",
+                mobile = "",
+                email = "",
                 token = null,
                 userId = null,
                 customerId = null,
@@ -130,5 +146,17 @@ class AuthViewModel(private val authRepository: AuthRepository) : ViewModel() {
                 errorMessage = null
             )
         }
+    }
+
+    private fun isEmailOrMobile(value: String): Boolean = isEmail(value) || isMobile(value)
+
+    private fun isEmail(value: String): Boolean {
+        val emailRegex = Regex("^[A-Za-z0-9+_.-]+@[A-Za-z0-9.-]+$")
+        return emailRegex.matches(value)
+    }
+
+    private fun isMobile(value: String): Boolean {
+        val mobileRegex = Regex("^[+]?[0-9]{7,15}$")
+        return mobileRegex.matches(value)
     }
 }

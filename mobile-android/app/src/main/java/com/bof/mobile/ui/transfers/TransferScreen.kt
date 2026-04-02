@@ -32,10 +32,11 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.bof.mobile.ui.components.ScreenHeader
 import com.bof.mobile.viewmodel.TransferViewModel
 
 @Composable
-fun TransferScreen(viewModel: TransferViewModel) {
+fun TransferScreen(viewModel: TransferViewModel, canGoBack: Boolean, onBack: () -> Unit) {
     val uiState by viewModel.uiState.collectAsState()
 
     LaunchedEffect(Unit) {
@@ -47,7 +48,11 @@ fun TransferScreen(viewModel: TransferViewModel) {
             .fillMaxSize()
             .background(
                 brush = Brush.verticalGradient(
-                    listOf(Color(0xFFF1F6FF), Color(0xFFE8FFF9), Color(0xFFFFFFFF))
+                    listOf(
+                        MaterialTheme.colorScheme.background,
+                        MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.35f),
+                        MaterialTheme.colorScheme.surface
+                    )
                 )
             )
     ) {
@@ -58,19 +63,15 @@ fun TransferScreen(viewModel: TransferViewModel) {
             verticalArrangement = Arrangement.Top
         ) {
             item {
-                // Hero header
-                Surface(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(bottom = 16.dp),
-                    color = Color.Transparent
-                ) {
-                    Column {
-                        Text("Transfers", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
-                        Text("Send money securely", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                }
+                ScreenHeader(
+                    title = "Transfers",
+                    subtitle = "Send money securely",
+                    onBack = onBack,
+                    enabled = canGoBack
+                )
             }
+
+            item { Spacer(modifier = Modifier.height(16.dp)) }
 
             // Transfer form section
             item {

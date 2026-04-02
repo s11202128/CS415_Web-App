@@ -1,0 +1,23 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "Run backend server",
+			"type": "shell",
+			"command": "npm",
+			"args": [
+				"--prefix",
+				"server",
+				"run",
+				"start"
+			],
+			"isBackground": true
+		},
+		{
+			"label": "Run backend server direct",
+			"type": "shell",
+			"command": "cd server && npm run start",
+			"isBackground": true
+		}
+	]
+}

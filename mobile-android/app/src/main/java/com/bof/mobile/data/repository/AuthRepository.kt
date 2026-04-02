@@ -27,9 +27,9 @@ class AuthRepository(private val apiService: ApiService) {
         return e.message() ?: "Request failed"
     }
 
-    suspend fun login(email: String, password: String): ApiResult<LoginResponse> {
+    suspend fun login(identifier: String, password: String): ApiResult<LoginResponse> {
         return try {
-            val result = apiService.login(LoginRequest(email = email, password = password))
+            val result = apiService.login(LoginRequest(email = identifier, password = password))
             ApiResult.Success(result)
         } catch (e: HttpException) {
             ApiResult.Error(message = extractErrorMessage(e), code = e.code())

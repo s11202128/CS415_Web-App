@@ -15,6 +15,14 @@ const LoginLog = sequelize.define('LoginLog', {
     type: DataTypes.BIGINT.UNSIGNED,
     allowNull: true,
   },
+  customerId: {
+    type: DataTypes.BIGINT.UNSIGNED,
+    allowNull: true,
+  },
+  adminId: {
+    type: DataTypes.BIGINT.UNSIGNED,
+    allowNull: true,
+  },
   email: {
     type: DataTypes.STRING,
     allowNull: false,

@@ -69,6 +69,49 @@ async function safeAddColumn(queryInterface, tableName, columnName, definition) 
   }
 }
 
+function quoteIdentifier(identifier) {
+  return `\`${String(identifier || "").replace(/`/g, "``")}\``;
+}
+
+async function cleanupDuplicateForeignKeys() {
+  const [duplicates] = await sequelize.query(`
+    SELECT
+      TABLE_NAME,
+      COLUMN_NAME,
+      REFERENCED_TABLE_NAME,
+      REFERENCED_COLUMN_NAME,
+      GROUP_CONCAT(CONSTRAINT_NAME ORDER BY CONSTRAINT_NAME SEPARATOR ',') AS constraintNames,
+      COUNT(*) AS constraintCount
+    FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE
+    WHERE TABLE_SCHEMA = DATABASE()
+      AND REFERENCED_TABLE_NAME IS NOT NULL
+    GROUP BY TABLE_NAME, COLUMN_NAME, REFERENCED_TABLE_NAME, REFERENCED_COLUMN_NAME
+    HAVING COUNT(*) > 1
+  `);
+
+  for (const row of duplicates) {
+    const constraintNames = String(row.constraintNames || "")
+      .split(",")
+      .map((name) => name.trim())
+      .filter(Boolean);
+
+    // Keep the first deterministic name and remove duplicate FK constraints.
+    const [, ...toDrop] = constraintNames;
+    for (const constraintName of toDrop) {
+      try {
+        await sequelize.query(
+          `ALTER TABLE ${quoteIdentifier(row.TABLE_NAME)} DROP FOREIGN KEY ${quoteIdentifier(constraintName)}`
+        );
+      } catch (error) {
+        console.warn(
+          `Skipping duplicate FK drop for ${row.TABLE_NAME}.${row.COLUMN_NAME} (${constraintName}):`,
+          error.message
+        );
+      }
+    }
+  }
+}
+
 const initializeDatabase = async () => {
   try {
     // First, create the database if it doesn't exist
@@ -262,7 +305,141 @@ const initializeDatabase = async () => {
       defaultValue: "",
     });
 
+    const transactionColumns = await queryInterface.describeTable("transactions");
+    if (!transactionColumns.accountId) {
+      await safeAddColumn(queryInterface, "transactions", "accountId", {
+        type: DataTypes.BIGINT.UNSIGNED,
+        allowNull: true,
+      });
+    }
+    if (!transactionColumns.accountNumber) {
+      await safeAddColumn(queryInterface, "transactions", "accountNumber", {
+        type: DataTypes.STRING,
+        allowNull: true,
+      });
+    }
+    if (transactionColumns.accountId || !transactionColumns.accountNumber) {
+      await sequelize.query(`
+        UPDATE transactions t
+        INNER JOIN accounts a ON a.id = t.accountId
+        SET t.accountNumber = a.accountNumber
+        WHERE t.accountNumber IS NULL OR TRIM(t.accountNumber) = ''
+      `);
+    }
+    await sequelize.query(`
+      UPDATE transactions t
+      INNER JOIN accounts a ON a.accountNumber = t.accountNumber
+      SET t.accountId = a.id
+      WHERE t.accountId IS NULL AND t.accountNumber IS NOT NULL AND TRIM(t.accountNumber) <> ''
+    `);
+    await queryInterface.changeColumn("transactions", "accountNumber", {
+      type: DataTypes.STRING,
+      allowNull: false,
+    });
+    await queryInterface.changeColumn("transactions", "accountId", {
+      type: DataTypes.BIGINT.UNSIGNED,
+      allowNull: false,
+      references: {
+        model: "accounts",
+        key: "id",
+      },
+      onUpdate: "CASCADE",
+      onDelete: "RESTRICT",
+    });
+
+    const statementRequestColumns = await queryInterface.describeTable("statement_requests");
+    if (!statementRequestColumns.accountId) {
+      await safeAddColumn(queryInterface, "statement_requests", "accountId", {
+        type: DataTypes.BIGINT.UNSIGNED,
+        allowNull: true,
+      });
+    }
+    if (!statementRequestColumns.accountNumber) {
+      await safeAddColumn(queryInterface, "statement_requests", "accountNumber", {
+        type: DataTypes.STRING,
+        allowNull: true,
+      });
+    }
+    if (statementRequestColumns.accountId || !statementRequestColumns.accountNumber) {
+      await sequelize.query(`
+        UPDATE statement_requests sr
+        INNER JOIN accounts a ON a.id = sr.accountId
+        SET sr.accountNumber = a.accountNumber
+        WHERE sr.accountNumber IS NULL OR TRIM(sr.accountNumber) = ''
+      `);
+    }
+    await sequelize.query(`
+      UPDATE statement_requests sr
+      INNER JOIN accounts a ON a.accountNumber = sr.accountNumber
+      SET sr.accountId = a.id
+      WHERE sr.accountId IS NULL AND sr.accountNumber IS NOT NULL AND TRIM(sr.accountNumber) <> ''
+    `);
+    await queryInterface.changeColumn("statement_requests", "accountNumber", {
+      type: DataTypes.STRING,
+      allowNull: false,
+    });
+    await queryInterface.changeColumn("statement_requests", "accountId", {
+      type: DataTypes.BIGINT.UNSIGNED,
+      allowNull: false,
+      references: {
+        model: "accounts",
+        key: "id",
+      },
+      onUpdate: "CASCADE",
+      onDelete: "RESTRICT",
+    });
+
+    if (!statementRequestColumns.reviewedByAdminId) {
+      await safeAddColumn(queryInterface, "statement_requests", "reviewedByAdminId", {
+        type: DataTypes.BIGINT.UNSIGNED,
+        allowNull: true,
+      });
+    }
+
+    await sequelize.query(`
+      UPDATE statement_requests sr
+      INNER JOIN admins a ON LOWER(a.email) = LOWER(sr.reviewedBy)
+      SET sr.reviewedByAdminId = a.id
+      WHERE sr.reviewedByAdminId IS NULL AND sr.reviewedBy IS NOT NULL AND TRIM(sr.reviewedBy) <> ''
+    `);
+
+    await queryInterface.changeColumn("statement_requests", "reviewedByAdminId", {
+      type: DataTypes.BIGINT.UNSIGNED,
+      allowNull: true,
+      references: {
+        model: "admins",
+        key: "id",
+      },
+      onUpdate: "CASCADE",
+      onDelete: "SET NULL",
+    });
+
     const registrationColumns = await queryInterface.describeTable("registrations");
+    if (!registrationColumns.customerId) {
+      await safeAddColumn(queryInterface, "registrations", "customerId", {
+        type: DataTypes.BIGINT.UNSIGNED,
+        allowNull: true,
+      });
+    }
+
+    await sequelize.query(`
+      UPDATE registrations r
+      INNER JOIN customers c ON LOWER(c.email) = LOWER(r.email)
+      SET r.customerId = c.id
+      WHERE r.customerId IS NULL
+    `);
+
+    await queryInterface.changeColumn("registrations", "customerId", {
+      type: DataTypes.BIGINT.UNSIGNED,
+      allowNull: true,
+      references: {
+        model: "customers",
+        key: "id",
+      },
+      onUpdate: "CASCADE",
+      onDelete: "SET NULL",
+    });
+
     if (!registrationColumns.nationalId) {
       await safeAddColumn(queryInterface, "registrations", "nationalId", {
         type: DataTypes.STRING,
@@ -329,6 +506,56 @@ const initializeDatabase = async () => {
         allowNull: true,
       });
     }
+
+    const loginLogColumns = await queryInterface.describeTable("login_logs");
+    if (!loginLogColumns.customerId) {
+      await safeAddColumn(queryInterface, "login_logs", "customerId", {
+        type: DataTypes.BIGINT.UNSIGNED,
+        allowNull: true,
+      });
+    }
+    if (!loginLogColumns.adminId) {
+      await safeAddColumn(queryInterface, "login_logs", "adminId", {
+        type: DataTypes.BIGINT.UNSIGNED,
+        allowNull: true,
+      });
+    }
+
+    await sequelize.query(`
+      UPDATE login_logs
+      SET customerId = userId
+      WHERE userType = 'customer' AND userId IS NOT NULL AND customerId IS NULL
+    `);
+
+    await sequelize.query(`
+      UPDATE login_logs
+      SET adminId = userId
+      WHERE userType = 'admin' AND userId IS NOT NULL AND adminId IS NULL
+    `);
+
+    await queryInterface.changeColumn("login_logs", "customerId", {
+      type: DataTypes.BIGINT.UNSIGNED,
+      allowNull: true,
+      references: {
+        model: "customers",
+        key: "id",
+      },
+      onUpdate: "CASCADE",
+      onDelete: "SET NULL",
+    });
+
+    await queryInterface.changeColumn("login_logs", "adminId", {
+      type: DataTypes.BIGINT.UNSIGNED,
+      allowNull: true,
+      references: {
+        model: "admins",
+        key: "id",
+      },
+      onUpdate: "CASCADE",
+      onDelete: "SET NULL",
+    });
+
+    await cleanupDuplicateForeignKeys();
 
     const loanColumns = await queryInterface.describeTable("loans");
     if (!loanColumns.loanProductId) {

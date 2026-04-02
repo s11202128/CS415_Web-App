@@ -16,6 +16,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
@@ -67,6 +68,27 @@ fun AppRoot() {
 
     var showRegister by remember { mutableStateOf(false) }
     var activeTab by remember { mutableStateOf(MainTab.DASHBOARD) }
+    val navigationHistory = remember { mutableStateListOf<MainTab>() }
+
+    fun navigateTo(tab: MainTab) {
+        if (activeTab != tab) {
+            navigationHistory.add(activeTab)
+            activeTab = tab
+        }
+    }
+
+    fun goBack() {
+        if (navigationHistory.isNotEmpty()) {
+            activeTab = navigationHistory.removeAt(navigationHistory.lastIndex)
+        }
+    }
+
+    fun logout() {
+        authViewModel.logout()
+        showRegister = false
+        activeTab = MainTab.DASHBOARD
+        navigationHistory.clear()
+    }
 
     if (!authState.isLoggedIn) {
         if (showRegister) {
@@ -86,68 +108,40 @@ fun AppRoot() {
     val customerId = authState.customerId ?: 0
 
     if (authState.isAdmin) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(12.dp),
-            verticalArrangement = Arrangement.Top
-        ) {
-            Text("Welcome Admin ${authState.fullName}", style = MaterialTheme.typography.titleMedium)
-            Spacer(modifier = Modifier.height(10.dp))
-
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                Button(onClick = {
-                    authViewModel.logout()
-                    showRegister = false
-                    activeTab = MainTab.DASHBOARD
-                }) { Text("Logout") }
-            }
-
-            Spacer(modifier = Modifier.height(12.dp))
-            AdminDashboardScreen(viewModel = adminViewModel)
-        }
+        AdminDashboardScreen(
+            viewModel = adminViewModel,
+            canGoBack = navigationHistory.isNotEmpty(),
+            onBack = { goBack() },
+            onLogout = { logout() }
+        )
         return
     }
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(12.dp),
-            verticalArrangement = Arrangement.Top
-    ) {
-        Text("Welcome ${authState.fullName}", style = MaterialTheme.typography.titleMedium)
-        Spacer(modifier = Modifier.height(10.dp))
-
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            Button(onClick = { activeTab = MainTab.DASHBOARD }) { Text("Dashboard") }
-            Button(onClick = { activeTab = MainTab.ACCOUNTS }) { Text("Accounts") }
-            Button(onClick = { activeTab = MainTab.TRANSFERS }) { Text("Transfers") }
-            Button(onClick = { activeTab = MainTab.FEATURES }) { Text("Features") }
-            Button(onClick = {
-                authViewModel.logout()
-                showRegister = false
-                activeTab = MainTab.DASHBOARD
-            }) { Text("Logout") }
-        }
-
-        Spacer(modifier = Modifier.height(12.dp))
-
-        when (activeTab) {
-            MainTab.DASHBOARD -> DashboardScreen(
-                viewModel = dashboardViewModel, 
-                customerId = customerId,
-                onLogout = { 
-                    authViewModel.logout()
-                    showRegister = false
-                    activeTab = MainTab.DASHBOARD
-                },
-                onNavigateToTransfers = { activeTab = MainTab.TRANSFERS },
-                onNavigateToAccounts = { activeTab = MainTab.ACCOUNTS },
-                onNavigateToFeatures = { activeTab = MainTab.FEATURES }
-            )
-            MainTab.ACCOUNTS -> AccountsScreen(viewModel = accountsViewModel)
-            MainTab.TRANSFERS -> TransferScreen(viewModel = transferViewModel)
-            MainTab.FEATURES -> FeatureHubScreen(viewModel = featureViewModel, customerId = customerId)
-        }
+    when (activeTab) {
+        MainTab.DASHBOARD -> DashboardScreen(
+            viewModel = dashboardViewModel,
+            featureViewModel = featureViewModel,
+            customerId = customerId,
+            onLogout = { logout() },
+            onNavigateToTransfers = { navigateTo(MainTab.TRANSFERS) },
+            onNavigateToAccounts = { navigateTo(MainTab.ACCOUNTS) },
+            onNavigateToFeatures = { navigateTo(MainTab.FEATURES) }
+        )
+        MainTab.ACCOUNTS -> AccountsScreen(
+            viewModel = accountsViewModel,
+            canGoBack = navigationHistory.isNotEmpty(),
+            onBack = { goBack() }
+        )
+        MainTab.TRANSFERS -> TransferScreen(
+            viewModel = transferViewModel,
+            canGoBack = navigationHistory.isNotEmpty(),
+            onBack = { goBack() }
+        )
+        MainTab.FEATURES -> FeatureHubScreen(
+            viewModel = featureViewModel,
+            customerId = customerId,
+            canGoBack = navigationHistory.isNotEmpty(),
+            onBack = { goBack() }
+        )
     }
 }

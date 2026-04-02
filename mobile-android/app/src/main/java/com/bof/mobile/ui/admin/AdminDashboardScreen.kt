@@ -38,13 +38,14 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.bof.mobile.ui.components.ScreenHeader
 import com.bof.mobile.viewmodel.AdminMenuGroup
 import com.bof.mobile.viewmodel.AdminTab
 import com.bof.mobile.viewmodel.AdminUiState
 import com.bof.mobile.viewmodel.AdminViewModel
 
 @Composable
-fun AdminDashboardScreen(viewModel: AdminViewModel) {
+fun AdminDashboardScreen(viewModel: AdminViewModel, canGoBack: Boolean, onBack: () -> Unit, onLogout: () -> Unit) {
     val uiState by viewModel.uiState.collectAsState()
     var menuExpanded by remember { mutableStateOf(false) }
 
@@ -58,9 +59,9 @@ fun AdminDashboardScreen(viewModel: AdminViewModel) {
             .background(
                 brush = Brush.verticalGradient(
                     listOf(
-                        Color(0xFFFFF5EC),
-                        Color(0xFFFFFDF7),
-                        Color(0xFFFFFFFF)
+                        MaterialTheme.colorScheme.background,
+                        MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.35f),
+                        MaterialTheme.colorScheme.surface
                     )
                 )
             )
@@ -72,20 +73,15 @@ fun AdminDashboardScreen(viewModel: AdminViewModel) {
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            Surface(
-                modifier = Modifier.fillMaxWidth(),
-                shape = MaterialTheme.shapes.large,
-                tonalElevation = 2.dp,
-                color = MaterialTheme.colorScheme.surface
-            ) {
-                Column(modifier = Modifier.padding(16.dp)) {
-                    Text("Admin Dashboard", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
-                    Text(
-                        "Organized by sections and feature tabs for faster operations.",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
+            ScreenHeader(
+                title = "Admin Dashboard",
+                subtitle = "Organized by sections and feature tabs for faster operations.",
+                onBack = onBack,
+                enabled = canGoBack
+            )
+
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                Button(onClick = onLogout) { Text("Logout") }
             }
 
             if (uiState.isLoading) {

@@ -34,10 +34,11 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.bof.mobile.ui.components.ScreenHeader
 import com.bof.mobile.viewmodel.FeatureViewModel
 
 @Composable
-fun FeatureHubScreen(viewModel: FeatureViewModel, customerId: Int) {
+fun FeatureHubScreen(viewModel: FeatureViewModel, customerId: Int, canGoBack: Boolean, onBack: () -> Unit) {
     val uiState by viewModel.uiState.collectAsState()
 
     LaunchedEffect(customerId) {
@@ -50,9 +51,9 @@ fun FeatureHubScreen(viewModel: FeatureViewModel, customerId: Int) {
             .background(
                 brush = Brush.verticalGradient(
                     listOf(
-                        Color(0xFFF1F6FF),
-                        Color(0xFFE8FFF9),
-                        Color(0xFFFFFFFF)
+                        MaterialTheme.colorScheme.background,
+                        MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.35f),
+                        MaterialTheme.colorScheme.surface
                     )
                 )
             )
@@ -64,21 +65,12 @@ fun FeatureHubScreen(viewModel: FeatureViewModel, customerId: Int) {
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            Surface(
-                modifier = Modifier.fillMaxWidth(),
-                shape = MaterialTheme.shapes.large,
-                tonalElevation = 2.dp,
-                color = MaterialTheme.colorScheme.surface
-            ) {
-                Column(modifier = Modifier.padding(16.dp)) {
-                    Text("More Features", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
-                    Text(
-                        "Manage profile, payments, statements, loans, and investments in one place.",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-            }
+            ScreenHeader(
+                title = "More Features",
+                subtitle = "Manage profile, payments, statements, loans, and investments in one place.",
+                onBack = onBack,
+                enabled = canGoBack
+            )
 
             if (uiState.isLoading) {
                 Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
@@ -102,40 +94,6 @@ fun FeatureHubScreen(viewModel: FeatureViewModel, customerId: Int) {
                     containerColor = MaterialTheme.colorScheme.secondaryContainer,
                     textColor = MaterialTheme.colorScheme.onSecondaryContainer
                 )
-            }
-
-            FeaturePanel("Profile") {
-                OutlinedTextField(
-                    value = uiState.fullName,
-                    onValueChange = viewModel::onFullNameChanged,
-                    label = { Text("Full name") },
-                    modifier = Modifier.fillMaxWidth()
-                )
-                OutlinedTextField(
-                    value = uiState.mobile,
-                    onValueChange = viewModel::onMobileChanged,
-                    label = { Text("Mobile") },
-                    modifier = Modifier.fillMaxWidth()
-                )
-                OutlinedTextField(
-                    value = uiState.nationalId,
-                    onValueChange = viewModel::onNationalIdChanged,
-                    label = { Text("National ID") },
-                    modifier = Modifier.fillMaxWidth()
-                )
-                OutlinedTextField(
-                    value = uiState.residencyStatus,
-                    onValueChange = viewModel::onResidencyStatusChanged,
-                    label = { Text("Residency status") },
-                    modifier = Modifier.fillMaxWidth()
-                )
-                OutlinedTextField(
-                    value = uiState.tin,
-                    onValueChange = viewModel::onTinChanged,
-                    label = { Text("TIN") },
-                    modifier = Modifier.fillMaxWidth()
-                )
-                Button(onClick = viewModel::updateProfile, modifier = Modifier.fillMaxWidth()) { Text("Update profile") }
             }
 
             FeaturePanel("Bill Payments") {
@@ -248,15 +206,6 @@ fun FeatureHubScreen(viewModel: FeatureViewModel, customerId: Int) {
                             Text(row.description, modifier = Modifier.width(220.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                     }
-                }
-            }
-
-            FeaturePanel("Notifications") {
-                OutlinedButton(onClick = { viewModel.loadNotifications(customerId) }, modifier = Modifier.fillMaxWidth()) {
-                    Text("Refresh notifications")
-                }
-                uiState.notifications.take(5).forEach { item ->
-                    Text("${item.notificationType}: ${item.message}")
                 }
             }
 

@@ -132,7 +132,6 @@ class FeatureViewModel(private val featureRepository: FeatureRepository) : ViewM
         loadScheduledBills()
         loadBillHistory()
         loadStatementRequests()
-        loadNotifications(customerId)
         loadLoanProducts()
         loadLoanApplications()
         loadInterestSummaries()

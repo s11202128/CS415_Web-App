@@ -38,7 +38,11 @@ fun RegisterScreen(viewModel: AuthViewModel, onBackToLogin: () -> Unit = {}) {
             .fillMaxSize()
             .background(
                 brush = Brush.verticalGradient(
-                    listOf(Color(0xFFF1F6FF), Color(0xFFE8FFF9), Color(0xFFFFFFFF))
+                    listOf(
+                        MaterialTheme.colorScheme.background,
+                        MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.35f),
+                        MaterialTheme.colorScheme.surface
+                    )
                 )
             )
     ) {
