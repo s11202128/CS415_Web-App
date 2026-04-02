@@ -16,7 +16,8 @@ data class DepositResponse(
 
 data class WithdrawRequest(
     val accountId: Int,
-    val amount: Double
+    val amount: Double,
+    val note: String? = null
 )
 
 data class WithdrawResponse(

@@ -41,7 +41,7 @@ async function handleDeposit(req, res) {
  */
 async function handleWithdraw(req, res) {
   try {
-    const { accountId, amount } = req.body;
+    const { accountId, amount, note } = req.body;
 
     // Validation
     if (!accountId || accountId <= 0) {
@@ -58,7 +58,7 @@ async function handleWithdraw(req, res) {
     }
 
     // Call service
-    const result = await withdraw({ accountId, amount: numericAmount });
+    const result = await withdraw({ accountId, amount: numericAmount, note });
 
     res.status(200).json(result);
   } catch (error) {

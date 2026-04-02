@@ -106,7 +106,7 @@ async function deposit({ accountId, amount, note }) {
  * @param {number} amount - Amount to withdraw
  * @returns {Promise<Object>} Status and transfer ID if OTP required
  */
-async function withdraw({ accountId, amount }) {
+async function withdraw({ accountId, amount, note }) {
   if (!accountId || accountId <= 0) {
     throw new Error("Invalid account ID");
   }
@@ -132,17 +132,17 @@ async function withdraw({ accountId, amount }) {
 
   // If withdrawal > 1000, require OTP
   if (amount > 1000) {
-    return await initiateWithdrawalOtp({ accountId, amount, account });
+    return await initiateWithdrawalOtp({ accountId, amount, account, note });
   }
 
   // Direct withdrawal (no OTP needed)
-  return await completeWithdrawal({ accountId, amount, account });
+  return await completeWithdrawal({ accountId, amount, account, note });
 }
 
 /**
  * Initiate withdrawal with OTP verification for amounts > 1000
  */
-async function initiateWithdrawalOtp({ accountId, amount, account }) {
+async function initiateWithdrawalOtp({ accountId, amount, account, note }) {
   const withdrawalId = `WTH-${Date.now()}-${Math.random().toString(36).substring(7).toUpperCase()}`;
   const otp = makeSixDigitCode();
   const hashedOtp = hashOtp(otp);
@@ -157,6 +157,7 @@ async function initiateWithdrawalOtp({ accountId, amount, account }) {
     metadata: JSON.stringify({
       accountId,
       amount: Number(amount),
+        note: String(note || "").trim(),
     }),
     expiresAt: new Date(Date.now() + OTP_EXPIRY_MINUTES * 60 * 1000),
     verified: false,
@@ -187,7 +188,7 @@ async function initiateWithdrawalOtp({ accountId, amount, account }) {
 /**
  * Complete withdrawal after OTP verification or for small amounts
  */
-async function completeWithdrawal({ accountId, amount, account }) {
+async function completeWithdrawal({ accountId, amount, account, note }) {
   // Calculate new balance
   const newBalance = Number((parseFloat(account.balance) - amount).toFixed(2));
 
@@ -200,7 +201,7 @@ async function completeWithdrawal({ accountId, amount, account }) {
     accountNumber: account.accountNumber,
     type: "withdraw",
     amount: Number(amount),
-    description: "Withdrawal",
+    description: String(note || "").trim() || "Withdrawal",
     status: "completed",
     balanceAfter: newBalance,
   });
@@ -285,7 +286,7 @@ async function verifyWithdrawalOtp({ withdrawalId, otp }) {
   }
 
   // Complete withdrawal
-  return await completeWithdrawal({ accountId, amount, account });
+  return await completeWithdrawal({ accountId, amount, account, note: safeParseMetadata(pending.metadata).note });
 }
 
 module.exports = {

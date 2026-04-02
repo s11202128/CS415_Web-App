@@ -86,6 +86,7 @@ data class FeatureUiState(
     val depositNote: String = "",
     val withdrawAccountId: String = "",
     val withdrawAmount: String = "",
+    val withdrawNote: String = "",
     val withdrawOtp: String = "",
     val showWithdrawOtpField: Boolean = false,
     val withdrawalId: String? = null
@@ -144,6 +145,7 @@ class FeatureViewModel(private val featureRepository: FeatureRepository) : ViewM
     fun onDepositNoteChanged(value: String) = _uiState.update { it.copy(depositNote = value) }
     fun onWithdrawAccountIdChanged(value: String) = _uiState.update { it.copy(withdrawAccountId = value) }
     fun onWithdrawAmountChanged(value: String) = _uiState.update { it.copy(withdrawAmount = value) }
+    fun onWithdrawNoteChanged(value: String) = _uiState.update { it.copy(withdrawNote = value) }
     fun onWithdrawOtpChanged(value: String) = _uiState.update { it.copy(withdrawOtp = value) }
 
     fun loadInitialData(customerId: Int) {
@@ -613,7 +615,7 @@ class FeatureViewModel(private val featureRepository: FeatureRepository) : ViewM
 
         viewModelScope.launch {
             setLoading(true)
-            when (val result = featureRepository.withdraw(WithdrawRequest(accountId, amount))) {
+            when (val result = featureRepository.withdraw(WithdrawRequest(accountId, amount, state.withdrawNote.ifBlank { null }))) {
                 is ApiResult.Success -> {
                     if (result.data.requiresOtp) {
                         // OTP required, show OTP field
@@ -621,7 +623,7 @@ class FeatureViewModel(private val featureRepository: FeatureRepository) : ViewM
                             it.copy(
                                 showWithdrawOtpField = true,
                                 withdrawalId = result.data.withdrawalId,
-                                successMessage = "OTP sent to your phone",
+                                successMessage = "OTP verification required",
                                 errorMessage = null
                             )
                         }
@@ -631,6 +633,7 @@ class FeatureViewModel(private val featureRepository: FeatureRepository) : ViewM
                             it.copy(
                                 withdrawAmount = "",
                                 withdrawAccountId = "",
+                                withdrawNote = "",
                                 withdrawOtp = "",
                                 showWithdrawOtpField = false,
                                 withdrawalId = null,
@@ -670,6 +673,7 @@ class FeatureViewModel(private val featureRepository: FeatureRepository) : ViewM
                         it.copy(
                             withdrawAmount = "",
                             withdrawAccountId = "",
+                            withdrawNote = "",
                             withdrawOtp = "",
                             showWithdrawOtpField = false,
                             withdrawalId = null,
