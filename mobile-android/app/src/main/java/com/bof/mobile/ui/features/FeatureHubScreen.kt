@@ -96,46 +96,6 @@ fun FeatureHubScreen(viewModel: FeatureViewModel, customerId: Int, canGoBack: Bo
                 )
             }
 
-            FeaturePanel("Bill Payments") {
-                OutlinedTextField(
-                    value = uiState.billAccountId,
-                    onValueChange = viewModel::onBillAccountIdChanged,
-                    label = { Text("Account ID") },
-                    modifier = Modifier.fillMaxWidth()
-                )
-                OutlinedTextField(
-                    value = uiState.billPayee,
-                    onValueChange = viewModel::onBillPayeeChanged,
-                    label = { Text("Payee") },
-                    modifier = Modifier.fillMaxWidth()
-                )
-                OutlinedTextField(
-                    value = uiState.billAmount,
-                    onValueChange = viewModel::onBillAmountChanged,
-                    label = { Text("Amount") },
-                    modifier = Modifier.fillMaxWidth()
-                )
-                OutlinedTextField(
-                    value = uiState.scheduledDate,
-                    onValueChange = viewModel::onScheduledDateChanged,
-                    label = { Text("Scheduled date (YYYY-MM-DD)") },
-                    modifier = Modifier.fillMaxWidth()
-                )
-                Button(onClick = viewModel::payBillManual, modifier = Modifier.fillMaxWidth()) { Text("Pay bill now") }
-                OutlinedButton(onClick = viewModel::scheduleBill, modifier = Modifier.fillMaxWidth()) { Text("Schedule bill") }
-                OutlinedButton(onClick = viewModel::loadScheduledBills, modifier = Modifier.fillMaxWidth()) { Text("Refresh scheduled") }
-                OutlinedButton(onClick = viewModel::loadBillHistory, modifier = Modifier.fillMaxWidth()) { Text("Refresh bill history") }
-
-                uiState.scheduledBills.take(3).forEach { bill ->
-                    OutlinedButton(onClick = { viewModel.runScheduledBill(bill.id) }, modifier = Modifier.fillMaxWidth()) {
-                        Text("Run #${bill.id} ${bill.payee} FJD ${"%.2f".format(bill.amount)}")
-                    }
-                }
-                uiState.billHistory.take(3).forEach { bill ->
-                    Text("${bill.status.uppercase()} ${bill.payee} FJD ${"%.2f".format(bill.amount)}")
-                }
-            }
-
             FeaturePanel("Statements") {
                 OutlinedTextField(
                     value = uiState.statementAccountId,

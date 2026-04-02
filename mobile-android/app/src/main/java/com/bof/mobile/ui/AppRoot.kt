@@ -33,6 +33,7 @@ import com.bof.mobile.ui.accounts.CreateAccountScreen
 import com.bof.mobile.ui.admin.AdminDashboardScreen
 import com.bof.mobile.ui.auth.LoginScreen
 import com.bof.mobile.ui.auth.RegisterScreen
+import com.bof.mobile.ui.billpayment.BillPaymentScreen
 import com.bof.mobile.ui.dashboard.DashboardScreen
 import com.bof.mobile.ui.deposit.DepositScreen
 import com.bof.mobile.ui.features.FeatureHubScreen
@@ -52,7 +53,8 @@ private enum class MainTab {
     TRANSFERS,
     FEATURES,
     DEPOSIT,
-    WITHDRAW
+    WITHDRAW,
+    BILL_PAYMENT
 }
 
 @Composable
@@ -138,7 +140,7 @@ fun AppRoot() {
             onNavigateToDeposit = { navigateTo(MainTab.DEPOSIT) },
             onNavigateToWithdraw = { navigateTo(MainTab.WITHDRAW) },
             onNavigateToFunding = { navigateTo(MainTab.FEATURES) },
-            onNavigateToBillPayment = { navigateTo(MainTab.FEATURES) }
+            onNavigateToBillPayment = { navigateTo(MainTab.BILL_PAYMENT) }
         )
         MainTab.CREATE_ACCOUNT -> CreateAccountScreen(
             accountRepository = accountRepository,
@@ -179,6 +181,12 @@ fun AppRoot() {
         MainTab.WITHDRAW -> WithdrawScreen(
             featureViewModel = featureViewModel,
             accountsList = dashboardState.data?.accounts ?: emptyList(),
+            canGoBack = navigationHistory.isNotEmpty(),
+            onBack = { goBack() }
+        )
+        MainTab.BILL_PAYMENT -> BillPaymentScreen(
+            viewModel = featureViewModel,
+            customerId = customerId,
             canGoBack = navigationHistory.isNotEmpty(),
             onBack = { goBack() }
         )
