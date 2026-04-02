@@ -103,9 +103,7 @@ data class UpdateProfileRequest(
     val nationalId: String,
     val residencyStatus: String,
     val tin: String,
-    val email: String? = null,
-    val currentPassword: String? = null,
-    val newPassword: String? = null
+    val email: String? = null
 )
 
 data class ForgotPasswordRequest(

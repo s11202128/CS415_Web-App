@@ -80,12 +80,8 @@ fun CreateAccountScreen(
     var countryMenuExpanded by remember { mutableStateOf(false) }
     var phoneNumber by remember { mutableStateOf("") }
     var selectedAccountType by remember { mutableStateOf(SignupAccountType.SIMPLE_ACCESS) }
-    var currentPassword by remember { mutableStateOf("") }
-    var password by remember { mutableStateOf("") }
-    var confirmPassword by remember { mutableStateOf("") }
-    var showCurrentPassword by remember { mutableStateOf(false) }
-    var showPassword by remember { mutableStateOf(false) }
-    var showConfirmPassword by remember { mutableStateOf(false) }
+    var accountPassword by remember { mutableStateOf("") }
+    var showAccountPassword by remember { mutableStateOf(false) }
     var agreedToTerms by remember { mutableStateOf(false) }
     var isSubmitting by remember { mutableStateOf(false) }
     var successMessage by remember { mutableStateOf<String?>(null) }
@@ -94,9 +90,7 @@ fun CreateAccountScreen(
     var nameTouched by remember { mutableStateOf(false) }
     var emailTouched by remember { mutableStateOf(false) }
     var phoneTouched by remember { mutableStateOf(false) }
-    var currentPasswordTouched by remember { mutableStateOf(false) }
-    var passwordTouched by remember { mutableStateOf(false) }
-    var confirmPasswordTouched by remember { mutableStateOf(false) }
+    var accountPasswordTouched by remember { mutableStateOf(false) }
     var termsTouched by remember { mutableStateOf(false) }
 
     val trimmedName = fullName.trim()
@@ -106,26 +100,21 @@ fun CreateAccountScreen(
     val nameValid = trimmedName.isNotEmpty()
     val emailValid = Regex("^[A-Za-z0-9+_.-]+@[A-Za-z0-9.-]+$").matches(trimmedEmail)
     val phoneValid = trimmedPhone.isNotEmpty()
-    val passwordHasLength = password.length >= 8
-    val passwordHasUpper = password.any { it.isUpperCase() }
-    val passwordHasNumber = password.any { it.isDigit() }
-    val passwordValid = passwordHasLength && passwordHasUpper && passwordHasNumber
-    val passwordConfirmMatches = confirmPassword == password
-    val wantsPasswordChange = currentPassword.isNotBlank() || password.isNotBlank() || confirmPassword.isNotBlank()
-    val passwordSectionValid = if (!wantsPasswordChange) true else (currentPassword.isNotBlank() && passwordValid && passwordConfirmMatches)
+    val passwordHasLength = accountPassword.length >= 8
+    val passwordHasUpper = accountPassword.any { it.isUpperCase() }
+    val passwordHasNumber = accountPassword.any { it.isDigit() }
+    val accountPasswordValid = passwordHasLength && passwordHasUpper && passwordHasNumber
     val termsValid = agreedToTerms
 
-    val formValid = nameValid && emailValid && phoneValid && passwordSectionValid && termsValid
+    val formValid = nameValid && emailValid && phoneValid && accountPasswordValid && termsValid
 
     val nameError = if (nameTouched && !nameValid) "Full name is required" else null
     val emailError = if (emailTouched && !emailValid) "Enter a valid email address" else null
     val phoneError = if (phoneTouched && !phoneValid) "Phone number is required" else null
-    val currentPasswordError = if (currentPasswordTouched && wantsPasswordChange && currentPassword.isBlank()) "Current password is required" else null
-    val passwordError = if (passwordTouched && wantsPasswordChange && !passwordValid) "New password does not meet all requirements" else null
-    val confirmPasswordError = if (confirmPasswordTouched && wantsPasswordChange && !passwordConfirmMatches) "Passwords do not match" else null
+    val passwordError = if (accountPasswordTouched && !accountPasswordValid) "Account password does not meet all requirements" else null
     val termsError = if (termsTouched && !termsValid) "You must agree before continuing" else null
 
-    LaunchedEffect(fullName, email, phoneNumber, currentPassword, password, confirmPassword, agreedToTerms) {
+    LaunchedEffect(fullName, email, phoneNumber, accountPassword, agreedToTerms) {
         successMessage = null
         submitErrorMessage = null
     }
@@ -320,51 +309,26 @@ fun CreateAccountScreen(
                     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
 
                     Text(
-                        text = "Set New Password (optional)",
+                        text = "Account Password",
                         style = MaterialTheme.typography.labelLarge,
                         fontWeight = FontWeight.SemiBold
                     )
                     OutlinedTextField(
-                        value = currentPassword,
+                        value = accountPassword,
                         onValueChange = {
-                            currentPassword = it
-                            currentPasswordTouched = true
+                            accountPassword = it
+                            accountPasswordTouched = true
                         },
                         modifier = Modifier.fillMaxWidth(),
-                        label = { Text("Current password") },
-                        placeholder = { Text("Enter current password") },
-                        singleLine = true,
-                        visualTransformation = if (showCurrentPassword) VisualTransformation.None else PasswordVisualTransformation(),
-                        trailingIcon = {
-                            IconButton(onClick = { showCurrentPassword = !showCurrentPassword }) {
-                                Icon(
-                                    imageVector = if (showCurrentPassword) Icons.Filled.VisibilityOff else Icons.Filled.Visibility,
-                                    contentDescription = if (showCurrentPassword) "Hide current password" else "Show current password"
-                                )
-                            }
-                        },
-                        isError = currentPasswordError != null
-                    )
-                    if (currentPasswordError != null) {
-                        InlineError(currentPasswordError)
-                    }
-
-                    OutlinedTextField(
-                        value = password,
-                        onValueChange = {
-                            password = it
-                            passwordTouched = true
-                        },
-                        modifier = Modifier.fillMaxWidth(),
-                        label = { Text("New password") },
+                        label = { Text("Account password") },
                         placeholder = { Text("Enter a password") },
                         singleLine = true,
-                        visualTransformation = if (showPassword) VisualTransformation.None else PasswordVisualTransformation(),
+                        visualTransformation = if (showAccountPassword) VisualTransformation.None else PasswordVisualTransformation(),
                         trailingIcon = {
-                            IconButton(onClick = { showPassword = !showPassword }) {
+                            IconButton(onClick = { showAccountPassword = !showAccountPassword }) {
                                 Icon(
-                                    imageVector = if (showPassword) Icons.Filled.VisibilityOff else Icons.Filled.Visibility,
-                                    contentDescription = if (showPassword) "Hide new password" else "Show new password"
+                                    imageVector = if (showAccountPassword) Icons.Filled.VisibilityOff else Icons.Filled.Visibility,
+                                    contentDescription = if (showAccountPassword) "Hide password" else "Show password"
                                 )
                             }
                         },
@@ -372,31 +336,6 @@ fun CreateAccountScreen(
                     )
                     if (passwordError != null) {
                         InlineError(passwordError)
-                    }
-
-                    OutlinedTextField(
-                        value = confirmPassword,
-                        onValueChange = {
-                            confirmPassword = it
-                            confirmPasswordTouched = true
-                        },
-                        modifier = Modifier.fillMaxWidth(),
-                        label = { Text("Confirm new password") },
-                        placeholder = { Text("Re-enter new password") },
-                        singleLine = true,
-                        visualTransformation = if (showConfirmPassword) VisualTransformation.None else PasswordVisualTransformation(),
-                        trailingIcon = {
-                            IconButton(onClick = { showConfirmPassword = !showConfirmPassword }) {
-                                Icon(
-                                    imageVector = if (showConfirmPassword) Icons.Filled.VisibilityOff else Icons.Filled.Visibility,
-                                    contentDescription = if (showConfirmPassword) "Hide confirm password" else "Show confirm password"
-                                )
-                            }
-                        },
-                        isError = confirmPasswordError != null
-                    )
-                    if (confirmPasswordError != null) {
-                        InlineError(confirmPasswordError)
                     }
 
                     PasswordRule(label = "At least 8 characters", valid = passwordHasLength)
@@ -449,9 +388,7 @@ fun CreateAccountScreen(
                             nameTouched = true
                             emailTouched = true
                             phoneTouched = true
-                            currentPasswordTouched = true
-                            passwordTouched = true
-                            confirmPasswordTouched = true
+                            accountPasswordTouched = true
                             termsTouched = true
 
                             if (!formValid || isSubmitting) return@Button
@@ -464,9 +401,7 @@ fun CreateAccountScreen(
                                         customerId = customerId,
                                         fullName = trimmedName,
                                         mobile = "$countryCode$trimmedPhone",
-                                        email = trimmedEmail,
-                                        currentPassword = currentPassword.takeIf { it.isNotBlank() },
-                                        newPassword = password.takeIf { it.isNotBlank() }
+                                        email = trimmedEmail
                                     )
                                 ) {
                                     is ApiResult.Success -> Unit

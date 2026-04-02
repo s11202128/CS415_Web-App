@@ -17,9 +17,7 @@ class AccountRepository(private val apiService: ApiService) {
         customerId: Int,
         fullName: String,
         mobile: String,
-        email: String,
-        currentPassword: String? = null,
-        newPassword: String? = null
+        email: String
     ): ApiResult<Unit> {
         return try {
             apiService.updateProfile(
@@ -30,9 +28,7 @@ class AccountRepository(private val apiService: ApiService) {
                     nationalId = "",
                     residencyStatus = "resident",
                     tin = "",
-                    email = email,
-                    currentPassword = currentPassword,
-                    newPassword = newPassword
+                    email = email
                 )
             )
             ApiResult.Success(Unit)
