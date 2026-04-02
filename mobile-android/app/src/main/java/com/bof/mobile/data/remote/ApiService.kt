@@ -83,6 +83,9 @@ interface ApiService {
     @POST("accounts")
     suspend fun createAccount(@Body request: CreateAccountRequest): AccountItem
 
+    @POST("accounts/request")
+    suspend fun requestAccount(@Body request: CreateAccountRequest): AccountItem
+
     @GET("accounts/{id}/details")
     suspend fun getAccountDetails(@Path("id") accountId: Int, @Query("limit") limit: Int): AccountDetailsResponse
 
@@ -190,6 +193,18 @@ interface ApiService {
 
     @PATCH("admin/accounts/{id}")
     suspend fun updateAdminAccount(@Path("id") id: Int, @Body body: Map<String, @JvmSuppressWildcards Any?>): AccountItem
+
+    @PATCH("admin/accounts/{id}/approve")
+    suspend fun approveAdminAccount(
+        @Path("id") id: Int,
+        @Body body: Map<String, @JvmSuppressWildcards Any?>
+    ): AccountItem
+
+    @PATCH("admin/accounts/{id}/reject")
+    suspend fun rejectAdminAccount(
+        @Path("id") id: Int,
+        @Body body: Map<String, @JvmSuppressWildcards Any?>
+    ): AccountItem
 
     @POST("admin/accounts/{id}/freeze")
     suspend fun freezeAdminAccount(@Path("id") id: Int): AccountItem

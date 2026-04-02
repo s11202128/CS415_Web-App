@@ -18,27 +18,41 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.bof.mobile.model.AccountItem
 import com.bof.mobile.ui.components.ScreenHeader
 import com.bof.mobile.viewmodel.AccountsViewModel
 
+private enum class AccountsTab {
+    OVERVIEW,
+    CREATE
+}
+
 @Composable
-fun AccountsScreen(viewModel: AccountsViewModel, canGoBack: Boolean, onBack: () -> Unit) {
+fun AccountsScreen(
+    viewModel: AccountsViewModel,
+    canGoBack: Boolean,
+    onBack: () -> Unit,
+    onNavigateToCreateAccount: () -> Unit = {}
+) {
     val uiState by viewModel.uiState.collectAsState()
+    var selectedTab by remember { mutableStateOf(AccountsTab.OVERVIEW) }
 
     LaunchedEffect(Unit) {
         viewModel.loadAccounts()
@@ -88,158 +102,238 @@ fun AccountsScreen(viewModel: AccountsViewModel, canGoBack: Boolean, onBack: () 
                 )
             }
 
-            if (uiState.accounts.isEmpty()) {
-                AccountsMessageBanner(text = "No accounts found", isError = true)
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                FilterChip(
+                    selected = selectedTab == AccountsTab.OVERVIEW,
+                    onClick = { selectedTab = AccountsTab.OVERVIEW },
+                    label = { Text("Account Overview") },
+                    colors = FilterChipDefaults.filterChipColors(
+                        selectedContainerColor = MaterialTheme.colorScheme.primaryContainer
+                    )
+                )
+                FilterChip(
+                    selected = selectedTab == AccountsTab.CREATE,
+                    onClick = { selectedTab = AccountsTab.CREATE },
+                    label = { Text("Create New Account") },
+                    colors = FilterChipDefaults.filterChipColors(
+                        selectedContainerColor = MaterialTheme.colorScheme.primaryContainer
+                    )
+                )
+            }
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            if (selectedTab == AccountsTab.OVERVIEW) {
+                OverviewTab(accounts = uiState.accounts)
                 return@Column
             }
 
-            Text("My Accounts", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-            Spacer(modifier = Modifier.height(8.dp))
+            CreateTab(
+                uiState = uiState,
+                onOpenCreateAccount = onNavigateToCreateAccount,
+                onSelectAccount = viewModel::selectAccount,
+                onLoadPreviousPage = viewModel::loadPreviousPage,
+                onLoadNextPage = viewModel::loadNextPage
+            )
+        }
+    }
+}
 
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(bottom = 12.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                uiState.accounts.forEach { account ->
-                    Card(
-                        modifier = Modifier.fillMaxWidth(),
-                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
-                    ) {
-                        Column(modifier = Modifier.padding(12.dp)) {
-                            Text(
-                                text = account.type.ifBlank { "Account" },
-                                style = MaterialTheme.typography.labelLarge,
-                                color = MaterialTheme.colorScheme.primary
-                            )
-                            Spacer(modifier = Modifier.height(2.dp))
-                            Text(
-                                text = "FJD ${"%.2f".format(account.balance)}",
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.SemiBold
-                            )
-                            Text(
-                                text = maskAccountNumber(account.accountNumber),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                            Spacer(modifier = Modifier.height(8.dp))
-                            OutlinedButton(
-                                onClick = { viewModel.selectAccount(account.id) },
-                                modifier = Modifier.fillMaxWidth(),
-                                colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.primary)
-                            ) {
-                                Text("View details")
-                            }
-                        }
-                    }
-                }
-            }
+@Composable
+private fun OverviewTab(accounts: List<AccountItem>) {
+    val totalBalance = accounts.sumOf { it.balance }
+    val simpleCount = accounts.count { it.type.equals("Simple Access", ignoreCase = true) }
+    val savingsCount = accounts.count { it.type.equals("Savings", ignoreCase = true) }
 
-            // Accounts list with horizontal scroll and sticky header
-            Card(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(bottom = 12.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                elevation = CardDefaults.cardElevation(defaultElevation = 3.dp)
-            ) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        elevation = CardDefaults.cardElevation(defaultElevation = 3.dp)
+    ) {
+        Column(
+            modifier = Modifier.padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            Text("Account Overview", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+            Text("Total Accounts: ${accounts.size}", style = MaterialTheme.typography.bodyMedium)
+            Text("Simple Access: $simpleCount", style = MaterialTheme.typography.bodyMedium)
+            Text("Savings: $savingsCount", style = MaterialTheme.typography.bodyMedium)
+            Text(
+                "Total Balance: FJD ${"%.2f".format(totalBalance)}",
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.SemiBold
+            )
+        }
+    }
+
+    Spacer(modifier = Modifier.height(10.dp))
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        elevation = CardDefaults.cardElevation(defaultElevation = 3.dp)
+    ) {
+        Column(
+            modifier = Modifier.padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Text("Account Summaries", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+
+            if (accounts.isEmpty()) {
+                Text(
+                    text = "No account summaries available yet.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            } else {
                 val scrollState = rememberScrollState()
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .background(MaterialTheme.colorScheme.surface)
                         .horizontalScroll(scrollState)
-                        .padding(12.dp)
                 ) {
-                    // Sticky header row
                     Row(
                         modifier = Modifier
                             .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.08f))
-                            .padding(vertical = 8.dp),
+                            .padding(vertical = 8.dp)
                     ) {
-                        Text("Account #", modifier = Modifier.width(120.dp), fontWeight = FontWeight.Bold)
-                        Text("Type", modifier = Modifier.width(100.dp), fontWeight = FontWeight.Bold)
-                        Text("Holder", modifier = Modifier.width(180.dp), fontWeight = FontWeight.Bold)
-                        Text("Balance", modifier = Modifier.width(120.dp), fontWeight = FontWeight.Bold)
-                        Text("Status", modifier = Modifier.width(100.dp), fontWeight = FontWeight.Bold)
-                        Text("Actions", modifier = Modifier.width(100.dp), fontWeight = FontWeight.Bold)
+                        Text("ID", modifier = Modifier.width(70.dp), fontWeight = FontWeight.Bold)
+                        Text("Account Number", modifier = Modifier.width(170.dp), fontWeight = FontWeight.Bold)
+                        Text("PIN", modifier = Modifier.width(80.dp), fontWeight = FontWeight.Bold)
+                        Text("Type", modifier = Modifier.width(140.dp), fontWeight = FontWeight.Bold)
+                        Text("Charge", modifier = Modifier.width(120.dp), fontWeight = FontWeight.Bold)
                     }
-                    // Data rows
-                    uiState.accounts.forEach { account ->
+
+                    accounts.forEach { account ->
                         Row(
                             modifier = Modifier
-                                .background(if (account.id % 2 == 0) MaterialTheme.colorScheme.surface else MaterialTheme.colorScheme.surfaceVariant)
-                                .padding(vertical = 8.dp),
-                            verticalAlignment = Alignment.CenterVertically
+                                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f))
+                                .padding(vertical = 8.dp)
                         ) {
-                            Text(account.accountNumber, modifier = Modifier.width(120.dp), style = MaterialTheme.typography.bodyMedium)
-                            Text(account.type, modifier = Modifier.width(100.dp), style = MaterialTheme.typography.bodyMedium)
-                            Text(account.accountHolder, modifier = Modifier.width(180.dp), style = MaterialTheme.typography.bodyMedium)
-                            Text("FJD ${"%.2f".format(account.balance)}", modifier = Modifier.width(120.dp), style = MaterialTheme.typography.bodyMedium)
-                            Text(account.status, modifier = Modifier.width(100.dp), style = MaterialTheme.typography.bodyMedium)
-                            Row(
-                                modifier = Modifier.width(100.dp),
-                                horizontalArrangement = Arrangement.spacedBy(6.dp)
-                            ) {
-                                OutlinedButton(
-                                    onClick = { viewModel.selectAccount(account.id) },
-                                    modifier = Modifier.height(36.dp)
-                                ) { Text("View") }
-                            }
+                            Text(account.id.toString(), modifier = Modifier.width(70.dp), style = MaterialTheme.typography.bodyMedium)
+                            Text(account.accountNumber, modifier = Modifier.width(170.dp), style = MaterialTheme.typography.bodyMedium)
+                            Text(account.accountPin ?: "----", modifier = Modifier.width(80.dp), style = MaterialTheme.typography.bodyMedium)
+                            Text(account.type, modifier = Modifier.width(140.dp), style = MaterialTheme.typography.bodyMedium)
+                            Text("FJD ${"%.2f".format(account.maintenanceFee)}", modifier = Modifier.width(120.dp), style = MaterialTheme.typography.bodyMedium)
                         }
                     }
                 }
             }
+        }
+    }
+}
 
-            // Selected account details
-            val details = uiState.selectedAccountDetails
-            if (details != null) {
-                Text("Selected Account", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                Spacer(modifier = Modifier.height(8.dp))
+@Composable
+private fun CreateTab(
+    uiState: com.bof.mobile.viewmodel.AccountsUiState,
+    onOpenCreateAccount: () -> Unit,
+    onSelectAccount: (Int) -> Unit,
+    onLoadPreviousPage: () -> Unit,
+    onLoadNextPage: () -> Unit
+) {
+    Button(
+        onClick = onOpenCreateAccount,
+        modifier = Modifier.fillMaxWidth(),
+        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
+    ) {
+        Text("Open Create Account Form")
+    }
 
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
-                    elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
-                ) {
-                    Column(modifier = Modifier.padding(12.dp)) {
-                        Text("Holder: ${details.customer.fullName}", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
-                        Text("Status: ${details.account.status}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    Spacer(modifier = Modifier.height(10.dp))
 
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Text("Recent Transactions", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
-                        
-                        details.transactions.take(5).forEach { tx ->
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(vertical = 4.dp),
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                Column {
-                                    Text(tx.kind.uppercase(), style = MaterialTheme.typography.bodySmall)
-                                    Text(tx.description, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                }
-                                Text("FJD ${"%.2f".format(tx.amount)}", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold)
-                            }
-                        }
+    if (uiState.accounts.isEmpty()) {
+        AccountsMessageBanner(text = "No accounts found", isError = true)
+        return
+    }
+
+    Text("My Accounts", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+    Spacer(modifier = Modifier.height(8.dp))
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(bottom = 12.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        uiState.accounts.forEach { account ->
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+            ) {
+                Column(modifier = Modifier.padding(12.dp)) {
+                    Text(
+                        text = account.type.ifBlank { "Account" },
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text(
+                        text = "FJD ${"%.2f".format(account.balance)}",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Text(
+                        text = maskAccountNumber(account.accountNumber),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    OutlinedButton(
+                        onClick = { onSelectAccount(account.id) },
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.primary)
+                    ) {
+                        Text("View details")
                     }
                 }
+            }
+        }
+    }
 
-                if (uiState.selectedAccountId != null) {
-                    Spacer(modifier = Modifier.height(12.dp))
-                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        OutlinedButton(onClick = viewModel::loadPreviousPage, enabled = uiState.page > 1) {
-                            Text("Previous")
+    val details = uiState.selectedAccountDetails
+    if (details != null) {
+        Text("Selected Account", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+        Spacer(modifier = Modifier.height(8.dp))
+
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+            elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+        ) {
+            Column(modifier = Modifier.padding(12.dp)) {
+                Text("Holder: ${details.customer.fullName}", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+                Text("Status: ${details.account.status}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+
+                Spacer(modifier = Modifier.height(8.dp))
+                Text("Recent Transactions", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
+
+                details.transactions.take(5).forEach { tx ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 4.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Column {
+                            Text(tx.kind.uppercase(), style = MaterialTheme.typography.bodySmall)
+                            Text(tx.description, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
-                        Text("Page ${uiState.page} / ${uiState.totalPages}", modifier = Modifier.align(Alignment.CenterVertically))
-                        OutlinedButton(onClick = viewModel::loadNextPage, enabled = uiState.page < uiState.totalPages) {
-                            Text("Next")
-                        }
+                        Text("FJD ${"%.2f".format(tx.amount)}", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold)
                     }
+                }
+            }
+        }
+
+        if (uiState.selectedAccountId != null) {
+            Spacer(modifier = Modifier.height(12.dp))
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                OutlinedButton(onClick = onLoadPreviousPage, enabled = uiState.page > 1) {
+                    Text("Previous")
+                }
+                Text("Page ${uiState.page} / ${uiState.totalPages}", modifier = Modifier.align(Alignment.CenterVertically))
+                OutlinedButton(onClick = onLoadNextPage, enabled = uiState.page < uiState.totalPages) {
+                    Text("Next")
                 }
             }
         }
@@ -249,27 +343,6 @@ fun AccountsScreen(viewModel: AccountsViewModel, canGoBack: Boolean, onBack: () 
 private fun maskAccountNumber(accountNumber: String): String {
     val suffix = accountNumber.takeLast(4)
     return if (suffix.isBlank()) "...." else ".... $suffix"
-}
-
-@Composable
-private fun AccountItem(account: AccountItem, onSelect: () -> Unit) {
-    Column(modifier = Modifier
-        .fillMaxWidth()
-        .padding(vertical = 8.dp)) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text("${account.accountNumber} (${account.type})", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
-                Text("Balance: FJD ${"%.2f".format(account.balance)}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-            OutlinedButton(onClick = onSelect) {
-                Text("View", style = MaterialTheme.typography.labelSmall)
-            }
-        }
-    }
 }
 
 @Composable

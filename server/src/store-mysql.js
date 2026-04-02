@@ -146,6 +146,10 @@ function createRandom12DigitNumber() {
   return value;
 }
 
+function generateRandomAccountPin() {
+  return String(Math.floor(Math.random() * 10000)).padStart(4, "0");
+}
+
 async function generateRandomAccountNumber() {
   const maxAttempts = 20;
   for (let i = 0; i < maxAttempts; i += 1) {
@@ -1291,6 +1295,7 @@ module.exports = {
   setHighValueTransferThreshold,
   getNotificationLogs,
   generateRandomAccountNumber,
+  generateRandomAccountPin,
   registerUser,
   loginUser,
   verifyEmailToken,

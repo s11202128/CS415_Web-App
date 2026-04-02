@@ -291,6 +291,48 @@ const initializeDatabase = async () => {
         allowNull: true,
       });
     }
+    if (!accountColumns.accountPin) {
+      await safeAddColumn(queryInterface, "accounts", "accountPin", {
+        type: DataTypes.STRING,
+        allowNull: true,
+      });
+    }
+    if (!accountColumns.requestedOpeningBalance) {
+      await safeAddColumn(queryInterface, "accounts", "requestedOpeningBalance", {
+        type: DataTypes.DECIMAL(12, 2),
+        allowNull: true,
+      });
+    }
+    if (!accountColumns.approvedOpeningBalance) {
+      await safeAddColumn(queryInterface, "accounts", "approvedOpeningBalance", {
+        type: DataTypes.DECIMAL(12, 2),
+        allowNull: true,
+      });
+    }
+    if (!accountColumns.approvedByAdminId) {
+      await safeAddColumn(queryInterface, "accounts", "approvedByAdminId", {
+        type: DataTypes.BIGINT.UNSIGNED,
+        allowNull: true,
+      });
+    }
+    if (!accountColumns.approvedAt) {
+      await safeAddColumn(queryInterface, "accounts", "approvedAt", {
+        type: DataTypes.DATE,
+        allowNull: true,
+      });
+    }
+    if (!accountColumns.rejectionReason) {
+      await safeAddColumn(queryInterface, "accounts", "rejectionReason", {
+        type: DataTypes.STRING,
+        allowNull: true,
+      });
+    }
+
+    await sequelize.query(`
+      UPDATE accounts
+      SET accountPin = LPAD(FLOOR(RAND() * 10000), 4, '0')
+      WHERE accountPin IS NULL OR TRIM(accountPin) = ''
+    `);
 
     await sequelize.query(`
       UPDATE accounts a
@@ -303,6 +345,11 @@ const initializeDatabase = async () => {
       type: DataTypes.STRING,
       allowNull: false,
       defaultValue: "",
+    });
+    await queryInterface.changeColumn("accounts", "accountPin", {
+      type: DataTypes.STRING,
+      allowNull: false,
+      defaultValue: "0000",
     });
 
     const transactionColumns = await queryInterface.describeTable("transactions");

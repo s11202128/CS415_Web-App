@@ -65,6 +65,14 @@ class AdminRepository(private val apiService: ApiService) {
         apiService.updateAdminAccount(id, body)
     }
 
+    suspend fun approveAdminAccount(id: Int, approvedOpeningBalance: Double): ApiResult<AccountItem> = safeCall {
+        apiService.approveAdminAccount(id, mapOf("approvedOpeningBalance" to approvedOpeningBalance))
+    }
+
+    suspend fun rejectAdminAccount(id: Int, rejectionReason: String): ApiResult<AccountItem> = safeCall {
+        apiService.rejectAdminAccount(id, mapOf("rejectionReason" to rejectionReason))
+    }
+
     suspend fun freezeAdminAccount(id: Int): ApiResult<AccountItem> = safeCall {
         apiService.freezeAdminAccount(id)
     }

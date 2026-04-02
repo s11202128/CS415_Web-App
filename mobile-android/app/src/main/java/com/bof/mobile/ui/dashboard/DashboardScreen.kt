@@ -152,7 +152,7 @@ fun DashboardScreen(
 
         val totalBalance = data.accounts.sumOf { it.balance }
         val firstAccount = data.accounts.firstOrNull()
-        val cardSuffix = firstAccount?.accountNumber?.takeLast(4).orEmpty()
+        val accountNumberText = firstAccount?.accountNumber ?: "No account number"
         val filteredTransactions = data.recentTransactions.filter { tx ->
             when (txFilter) {
                 DashboardTxFilter.ALL -> true
@@ -191,7 +191,7 @@ fun DashboardScreen(
                     balance = totalBalance,
                     showBalance = showBalance,
                     onToggleVisibility = { showBalance = !showBalance },
-                    maskedNumber = if (cardSuffix.isBlank()) "**** **** **** 0000" else "**** **** **** $cardSuffix"
+                    maskedNumber = accountNumberText
                 )
             }
 
@@ -249,7 +249,7 @@ fun DashboardScreen(
                 .fillMaxWidth(),
             onWallet = onNavigateToAccounts,
             onReport = onNavigateToFeatures,
-            onAccount = onNavigateToFeatures
+            onAccount = onNavigateToAccounts
         )
 
         if (showNotifications) {

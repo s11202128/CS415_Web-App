@@ -421,7 +421,7 @@ fun CreateAccountScreen(
 
                                 when (val result = accountRepository.createAccount(request)) {
                                     is ApiResult.Success -> {
-                                        successMessage = "Profile synced and account created successfully (•••• ${result.data.accountNumber.takeLast(4)})."
+                                        successMessage = "Request submitted. Account ${result.data.accountNumber} is pending admin approval. PIN: ${result.data.accountPin ?: "----"}."
                                         onAccountCreated()
                                     }
                                     is ApiResult.Error -> {

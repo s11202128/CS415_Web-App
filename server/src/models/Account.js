@@ -22,6 +22,16 @@ const Account = sequelize.define('Account', {
       },
     },
   },
+  accountPin: {
+    type: DataTypes.STRING,
+    allowNull: false,
+    validate: {
+      is: {
+        args: /^\d{4}$/,
+        msg: "Reenter 4 digit pin",
+      },
+    },
+  },
   accountHolder: {
     type: DataTypes.STRING,
     allowNull: false,
@@ -30,6 +40,26 @@ const Account = sequelize.define('Account', {
   accountType: {
     type: DataTypes.STRING,
     allowNull: false,
+  },
+  requestedOpeningBalance: {
+    type: DataTypes.DECIMAL(12, 2),
+    allowNull: true,
+  },
+  approvedOpeningBalance: {
+    type: DataTypes.DECIMAL(12, 2),
+    allowNull: true,
+  },
+  approvedByAdminId: {
+    type: DataTypes.BIGINT.UNSIGNED,
+    allowNull: true,
+  },
+  approvedAt: {
+    type: DataTypes.DATE,
+    allowNull: true,
+  },
+  rejectionReason: {
+    type: DataTypes.STRING,
+    allowNull: true,
   },
   balance: {
     type: DataTypes.DECIMAL(12, 2),

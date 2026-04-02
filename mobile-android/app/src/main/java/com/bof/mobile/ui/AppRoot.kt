@@ -132,7 +132,7 @@ fun AppRoot() {
             customerId = customerId,
             onLogout = { logout() },
             onNavigateToTransfers = { navigateTo(MainTab.TRANSFERS) },
-            onNavigateToCreateAccount = { navigateTo(MainTab.CREATE_ACCOUNT) },
+            onNavigateToCreateAccount = { navigateTo(MainTab.ACCOUNTS) },
             onNavigateToAccounts = { navigateTo(MainTab.ACCOUNTS) },
             onNavigateToFeatures = { navigateTo(MainTab.FEATURES) },
             onNavigateToDeposit = { navigateTo(MainTab.DEPOSIT) },
@@ -143,12 +143,16 @@ fun AppRoot() {
             customerId = customerId,
             canGoBack = navigationHistory.isNotEmpty(),
             onBack = { goBack() },
-            onAccountCreated = { dashboardViewModel.loadDashboard(customerId) }
+            onAccountCreated = {
+                dashboardViewModel.loadDashboard(customerId)
+                navigateTo(MainTab.ACCOUNTS)
+            }
         )
         MainTab.ACCOUNTS -> AccountsScreen(
             viewModel = accountsViewModel,
             canGoBack = navigationHistory.isNotEmpty(),
-            onBack = { goBack() }
+            onBack = { goBack() },
+            onNavigateToCreateAccount = { navigateTo(MainTab.CREATE_ACCOUNT) }
         )
         MainTab.TRANSFERS -> TransferScreen(
             viewModel = transferViewModel,

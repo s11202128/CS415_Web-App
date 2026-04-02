@@ -43,7 +43,7 @@ class AccountRepository(private val apiService: ApiService) {
 
     suspend fun createAccount(request: CreateAccountRequest): ApiResult<AccountItem> {
         return try {
-            ApiResult.Success(apiService.createAccount(request))
+            ApiResult.Success(apiService.requestAccount(request))
         } catch (e: HttpException) {
             ApiResult.Error(message = "Failed to create account: ${e.message()}", code = e.code())
         } catch (e: IOException) {

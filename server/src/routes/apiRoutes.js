@@ -23,6 +23,7 @@ const {
   getLoginLogs,
   getOtpAttempts,
   reverseTransaction,
+  generateRandomAccountPin,
 } = require("../store-mysql");
 const { Customer, Account, Bill, Investment, Loan, Transaction, OtpVerification, StatementRequest } = require("../models");
 
@@ -78,10 +79,16 @@ const toCustomerResponse = (c) => ({
 const toAccountResponse = (a) => ({
   id: a.id,
   accountNumber: a.accountNumber,
+  accountPin: a.accountPin,
   customerId: a.customerId,
   accountHolder: a.accountHolder || a.Customer?.fullName || "",
   type: a.accountType,
   balance: Number(a.balance),
+  requestedOpeningBalance: a.requestedOpeningBalance == null ? null : Number(a.requestedOpeningBalance),
+  approvedOpeningBalance: a.approvedOpeningBalance == null ? null : Number(a.approvedOpeningBalance),
+  approvedByAdminId: a.approvedByAdminId || null,
+  approvedAt: a.approvedAt || null,
+  rejectionReason: a.rejectionReason || null,
   maintenanceFee: a.accountType === "Simple Access" ? 2.5 : 0,
   currency: a.currency,
   status: a.status,
@@ -372,6 +379,7 @@ router.post("/accounts", asyncHandler(async (req, res) => {
   const account = await Account.create({
     customerId: customer.id,
     accountNumber: providedAccountNumber || await generateRandomAccountNumber(),
+    accountPin: generateRandomAccountPin(),
     accountHolder: customer.fullName,
     accountType: payload.type,
     balance: Number(payload.openingBalance || 0),
@@ -409,14 +417,66 @@ router.post("/accounts/request", asyncHandler(async (req, res) => {
   const account = await Account.create({
     customerId,
     accountNumber: providedAccountNumber || await generateRandomAccountNumber(),
+    accountPin: generateRandomAccountPin(),
     accountHolder: customer.fullName,
     accountType: payload.type,
-    balance: Number(payload.openingBalance || 0),
+    requestedOpeningBalance: Number(payload.openingBalance || 0),
+    approvedOpeningBalance: null,
+    approvedByAdminId: null,
+    approvedAt: null,
+    rejectionReason: null,
+    balance: 0,
     currency: "FJD",
     status: "pending_approval",
   });
 
   res.status(201).json(toAccountResponse(account));
+}));
+
+router.patch("/admin/accounts/:id/approve", asyncHandler(async (req, res) => {
+  const account = await Account.findByPk(req.params.id);
+  if (!account) {
+    return res.status(404).json({ error: "Account not found" });
+  }
+
+  const approvedOpeningBalance = Number(req.body?.approvedOpeningBalance);
+  if (!Number.isFinite(approvedOpeningBalance) || approvedOpeningBalance < 0) {
+    return res.status(400).json({ error: "Valid approvedOpeningBalance is required" });
+  }
+
+  await account.update({
+    status: "active",
+    balance: approvedOpeningBalance,
+    approvedOpeningBalance,
+    approvedByAdminId: Number(req.auth?.userId || 0) || null,
+    approvedAt: new Date(),
+    rejectionReason: null,
+  });
+
+  res.json(toAccountResponse(account));
+}));
+
+router.patch("/admin/accounts/:id/reject", asyncHandler(async (req, res) => {
+  const account = await Account.findByPk(req.params.id);
+  if (!account) {
+    return res.status(404).json({ error: "Account not found" });
+  }
+
+  const reason = String(req.body?.rejectionReason || "").trim();
+  if (!reason) {
+    return res.status(400).json({ error: "rejectionReason is required" });
+  }
+
+  await account.update({
+    status: "rejected",
+    approvedOpeningBalance: null,
+    approvedByAdminId: Number(req.auth?.userId || 0) || null,
+    approvedAt: new Date(),
+    rejectionReason: reason,
+    balance: 0,
+  });
+
+  res.json(toAccountResponse(account));
 }));
 
 router.patch("/admin/accounts/:id", asyncHandler(async (req, res) => {
@@ -487,6 +547,7 @@ router.post("/admin/create-account", asyncHandler(async (req, res) => {
   const account = await Account.create({
     customerId: customer.id,
     accountNumber: providedAccountNumber || await generateRandomAccountNumber(),
+    accountPin: generateRandomAccountPin(),
     accountHolder: customer.fullName,
     accountType: payload.type,
     balance: Number(payload.openingBalance || 0),

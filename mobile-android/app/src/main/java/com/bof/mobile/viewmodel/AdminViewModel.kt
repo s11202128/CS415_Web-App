@@ -284,6 +284,43 @@ class AdminViewModel(private val repository: AdminRepository) : ViewModel() {
         }
     }
 
+    fun approveAccountRequest(id: Int, approvedOpeningBalance: Double) {
+        viewModelScope.launch {
+            when (val result = repository.approveAdminAccount(id, approvedOpeningBalance)) {
+                is ApiResult.Success -> {
+                    _uiState.update { state ->
+                        state.copy(
+                            accounts = state.accounts.map { if (it.id == id) result.data else it },
+                            successMessage = "Account approved",
+                            errorMessage = null
+                        )
+                    }
+                }
+                is ApiResult.Error -> setError(result.message)
+            }
+        }
+    }
+
+    fun rejectAccountRequest(id: Int, rejectionReason: String) {
+        if (rejectionReason.isBlank()) {
+            return setError("Rejection reason is required")
+        }
+        viewModelScope.launch {
+            when (val result = repository.rejectAdminAccount(id, rejectionReason)) {
+                is ApiResult.Success -> {
+                    _uiState.update { state ->
+                        state.copy(
+                            accounts = state.accounts.map { if (it.id == id) result.data else it },
+                            successMessage = "Account rejected",
+                            errorMessage = null
+                        )
+                    }
+                }
+                is ApiResult.Error -> setError(result.message)
+            }
+        }
+    }
+
     fun createDeposit() {
         val state = _uiState.value
         val accountId = state.depositAccountId.toIntOrNull()

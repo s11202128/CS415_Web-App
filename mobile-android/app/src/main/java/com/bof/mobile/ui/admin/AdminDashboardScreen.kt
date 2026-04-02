@@ -56,15 +56,7 @@ fun AdminDashboardScreen(viewModel: AdminViewModel, canGoBack: Boolean, onBack: 
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(
-                brush = Brush.verticalGradient(
-                    listOf(
-                        MaterialTheme.colorScheme.background,
-                        MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.35f),
-                        MaterialTheme.colorScheme.surface
-                    )
-                )
-            )
+            .background(MaterialTheme.colorScheme.background)
     ) {
         Column(
             modifier = Modifier
@@ -235,24 +227,85 @@ private fun VerificationTab(uiState: AdminUiState, viewModel: AdminViewModel) {
 
 @Composable
 private fun OverviewTab(uiState: AdminUiState, viewModel: AdminViewModel) {
-    Text("Overview", style = MaterialTheme.typography.titleLarge)
-    OutlinedButton(onClick = viewModel::loadOverview, modifier = Modifier.fillMaxWidth()) {
-        Text("Refresh report")
-    }
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            shape = MaterialTheme.shapes.large,
+            colors = CardDefaults.cardColors(containerColor = Color.Transparent),
+            elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
+        ) {
+            Box(
+                modifier = Modifier
+                    .background(
+                        brush = Brush.linearGradient(
+                            listOf(
+                                Color(0xFF1976D2),
+                                Color(0xFF5E35B1)
+                            )
+                        )
+                    )
+                    .padding(18.dp)
+            ) {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text(
+                        text = "Admin Overview",
+                        style = MaterialTheme.typography.titleLarge,
+                        color = Color.White,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        text = "Monitor approvals, balances, and banking activity from one place.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = Color.White.copy(alpha = 0.92f)
+                    )
 
-    val report = uiState.report
-    if (report != null) {
-        Text("Customers: ${report.metrics.totalCustomers}")
-        Text("Accounts: ${report.metrics.totalAccounts}")
-        Text("Total deposits: FJD ${"%.2f".format(report.metrics.totalDeposits)}")
-        Text("Pending loans: ${report.metrics.pendingLoans}")
-        Text("Frozen accounts: ${report.metrics.frozenAccounts}")
-        Text("Today's transactions: ${report.metrics.todaysTransactions}")
+                    val totalAccounts = uiState.accounts.size
+                    val pendingAccounts = uiState.accounts.count { it.status.equals("pending_approval", ignoreCase = true) }
+                    val activeAccounts = uiState.accounts.count { it.status.equals("active", ignoreCase = true) }
+                    val totalBalance = uiState.accounts.sumOf { it.balance }
 
-        Spacer(modifier = Modifier.height(8.dp))
-        Text("Recent transactions", style = MaterialTheme.typography.titleMedium)
-        report.recentTransactions.take(6).forEach {
-            Text("#${it.id} ${it.kind} FJD ${"%.2f".format(it.amount)} ${it.status}")
+                    AdminMetricCard(label = "Accounts", value = totalAccounts.toString())
+                    AdminMetricCard(label = "Pending approvals", value = pendingAccounts.toString())
+                    AdminMetricCard(label = "Active accounts", value = activeAccounts.toString())
+                    AdminMetricCard(label = "Total Balance", value = "FJD ${"%.2f".format(totalBalance)}")
+                }
+            }
+        }
+
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+            elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+        ) {
+            Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    Text("Banking Summary", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                    OutlinedButton(onClick = viewModel::loadOverview) {
+                        Text("Refresh report")
+                    }
+                }
+
+                val report = uiState.report
+                if (report != null) {
+                    Text("Customers: ${report.metrics.totalCustomers}")
+                    Text("Accounts: ${report.metrics.totalAccounts}")
+                    Text("Total deposits: FJD ${"%.2f".format(report.metrics.totalDeposits)}")
+                    Text("Pending loans: ${report.metrics.pendingLoans}")
+                    Text("Frozen accounts: ${report.metrics.frozenAccounts}")
+                    Text("Today's transactions: ${report.metrics.todaysTransactions}")
+
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text("Recent transactions", style = MaterialTheme.typography.titleMedium)
+                    report.recentTransactions.take(6).forEach {
+                        Text("#${it.id} ${it.kind} FJD ${"%.2f".format(it.amount)} ${it.status}")
+                    }
+                } else {
+                    Text(
+                        text = "No dashboard report is loaded yet.",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
         }
     }
 }
@@ -341,59 +394,163 @@ private fun CustomersTab(uiState: AdminUiState, viewModel: AdminViewModel) {
 
 @Composable
 private fun AccountsTab(uiState: AdminUiState, viewModel: AdminViewModel) {
-    Text("Accounts", style = MaterialTheme.typography.titleLarge)
-    OutlinedButton(onClick = viewModel::loadAccounts, modifier = Modifier.fillMaxWidth()) {
-        Text("Refresh accounts")
-    }
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            Text("Accounts", style = MaterialTheme.typography.titleLarge)
+            OutlinedButton(onClick = viewModel::loadAccounts) {
+                Text("Refresh accounts")
+            }
+        }
 
-    Spacer(modifier = Modifier.height(8.dp))
-    Text("Create account", style = MaterialTheme.typography.titleMedium)
-    Text(
-        "Customer must already exist. Use exact existing customer name from the Customers tab.",
-        style = MaterialTheme.typography.bodySmall,
-        color = MaterialTheme.colorScheme.onSurfaceVariant
-    )
-    OutlinedTextField(
-        value = uiState.createAccountCustomerName,
-        onValueChange = viewModel::onCreateAccountCustomerNameChanged,
-        label = { Text("Existing customer name") },
-        modifier = Modifier.fillMaxWidth()
-    )
-    OutlinedTextField(
-        value = uiState.createAccountType,
-        onValueChange = viewModel::onCreateAccountTypeChanged,
-        label = { Text("Type") },
-        modifier = Modifier.fillMaxWidth()
-    )
-    OutlinedTextField(
-        value = uiState.createAccountOpeningBalance,
-        onValueChange = viewModel::onCreateAccountOpeningBalanceChanged,
-        label = { Text("Opening balance") },
-        modifier = Modifier.fillMaxWidth()
-    )
-    OutlinedTextField(
-        value = uiState.createAccountNumber,
-        onValueChange = viewModel::onCreateAccountNumberChanged,
-        label = { Text("Custom account number (optional)") },
-        modifier = Modifier.fillMaxWidth()
-    )
-    Button(onClick = viewModel::createAccount, modifier = Modifier.fillMaxWidth()) {
-        Text("Create account")
-    }
+        Text(
+            "Openings and approvals are managed in Overview. This tab is for account-level operations.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
 
-    uiState.accounts.take(10).forEach { account ->
-        Spacer(modifier = Modifier.height(8.dp))
-        Text("#${account.id} ${account.accountNumber} ${account.type} ${account.status}")
-        Text("${account.accountHolder} | FJD ${"%.2f".format(account.balance)}")
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            OutlinedButton(
-                onClick = { viewModel.updateAccount(account.id, mapOf("status" to "active")) },
-                modifier = Modifier.weight(1f)
-            ) { Text("Activate") }
-            OutlinedButton(
-                onClick = { viewModel.freezeAccount(account.id) },
-                modifier = Modifier.weight(1f)
-            ) { Text("Freeze") }
+        Text("Create account", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+        Text(
+            "Customer must already exist. Use exact existing customer name from the Customers tab.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        OutlinedTextField(
+            value = uiState.createAccountCustomerName,
+            onValueChange = viewModel::onCreateAccountCustomerNameChanged,
+            label = { Text("Existing customer name") },
+            modifier = Modifier.fillMaxWidth()
+        )
+        OutlinedTextField(
+            value = uiState.createAccountType,
+            onValueChange = viewModel::onCreateAccountTypeChanged,
+            label = { Text("Type") },
+            modifier = Modifier.fillMaxWidth()
+        )
+        OutlinedTextField(
+            value = uiState.createAccountOpeningBalance,
+            onValueChange = viewModel::onCreateAccountOpeningBalanceChanged,
+            label = { Text("Opening balance") },
+            modifier = Modifier.fillMaxWidth()
+        )
+        OutlinedTextField(
+            value = uiState.createAccountNumber,
+            onValueChange = viewModel::onCreateAccountNumberChanged,
+            label = { Text("Custom account number (optional)") },
+            modifier = Modifier.fillMaxWidth()
+        )
+        Button(onClick = viewModel::createAccount, modifier = Modifier.fillMaxWidth()) {
+            Text("Create account")
+        }
+
+        Text("Account Summaries", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+        val summaryScrollState = rememberScrollState()
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .horizontalScroll(summaryScrollState)
+                .padding(bottom = 8.dp)
+        ) {
+            Row(
+                modifier = Modifier
+                    .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.08f))
+                    .padding(vertical = 8.dp)
+            ) {
+                Text("ID", modifier = Modifier.width(70.dp), fontWeight = FontWeight.Bold)
+                Text("Account Number", modifier = Modifier.width(170.dp), fontWeight = FontWeight.Bold)
+                Text("PIN", modifier = Modifier.width(80.dp), fontWeight = FontWeight.Bold)
+                Text("Type", modifier = Modifier.width(140.dp), fontWeight = FontWeight.Bold)
+                Text("Status", modifier = Modifier.width(130.dp), fontWeight = FontWeight.Bold)
+                Text("Balance", modifier = Modifier.width(120.dp), fontWeight = FontWeight.Bold)
+                Text("Requested", modifier = Modifier.width(120.dp), fontWeight = FontWeight.Bold)
+                Text("Approved", modifier = Modifier.width(120.dp), fontWeight = FontWeight.Bold)
+                Text("Charge", modifier = Modifier.width(120.dp), fontWeight = FontWeight.Bold)
+                Text("Approved At", modifier = Modifier.width(180.dp), fontWeight = FontWeight.Bold)
+                Text("Rejection Reason", modifier = Modifier.width(220.dp), fontWeight = FontWeight.Bold)
+                Text("Actions", modifier = Modifier.width(260.dp), fontWeight = FontWeight.Bold)
+            }
+
+            if (uiState.accounts.isEmpty()) {
+                Row(modifier = Modifier.padding(vertical = 10.dp)) {
+                    Text("No account summaries available yet.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            } else {
+                uiState.accounts.forEach { account ->
+                    var approveAmount by remember(account.id, account.requestedOpeningBalance) {
+                        mutableStateOf(
+                            "%.2f".format(
+                                account.requestedOpeningBalance ?: account.balance
+                            )
+                        )
+                    }
+                    var rejectionReason by remember(account.id) { mutableStateOf(account.rejectionReason ?: "") }
+                    Row(
+                        modifier = Modifier
+                            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.20f))
+                            .padding(vertical = 8.dp)
+                    ) {
+                        Text(account.id.toString(), modifier = Modifier.width(70.dp), style = MaterialTheme.typography.bodyMedium)
+                        Text(account.accountNumber, modifier = Modifier.width(170.dp), style = MaterialTheme.typography.bodyMedium)
+                        Text(account.accountPin ?: "----", modifier = Modifier.width(80.dp), style = MaterialTheme.typography.bodyMedium)
+                        Text(account.type, modifier = Modifier.width(140.dp), style = MaterialTheme.typography.bodyMedium)
+                        Text(account.status, modifier = Modifier.width(130.dp), style = MaterialTheme.typography.bodyMedium)
+                        Text("FJD ${"%.2f".format(account.balance)}", modifier = Modifier.width(120.dp), style = MaterialTheme.typography.bodyMedium)
+                        Text(
+                            text = account.requestedOpeningBalance?.let { "FJD ${"%.2f".format(it)}" } ?: "-",
+                            modifier = Modifier.width(120.dp),
+                            style = MaterialTheme.typography.bodyMedium
+                        )
+                        Text(
+                            text = account.approvedOpeningBalance?.let { "FJD ${"%.2f".format(it)}" } ?: "-",
+                            modifier = Modifier.width(120.dp),
+                            style = MaterialTheme.typography.bodyMedium
+                        )
+                        Text("FJD ${"%.2f".format(account.maintenanceFee)}", modifier = Modifier.width(120.dp), style = MaterialTheme.typography.bodyMedium)
+                        Text(account.approvedAt ?: "-", modifier = Modifier.width(180.dp), style = MaterialTheme.typography.bodyMedium)
+                        Text(account.rejectionReason ?: "-", modifier = Modifier.width(220.dp), style = MaterialTheme.typography.bodyMedium)
+
+                        Column(modifier = Modifier.width(260.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            if (account.status == "pending_approval") {
+                                OutlinedTextField(
+                                    value = approveAmount,
+                                    onValueChange = { approveAmount = it },
+                                    label = { Text("Approve amount") },
+                                    modifier = Modifier.width(250.dp)
+                                )
+                                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    OutlinedButton(
+                                        onClick = {
+                                            val parsed = approveAmount.toDoubleOrNull()
+                                            if (parsed != null && parsed >= 0) {
+                                                viewModel.approveAccountRequest(account.id, parsed)
+                                            }
+                                        }
+                                    ) { Text("Approve") }
+                                    OutlinedButton(
+                                        onClick = {
+                                            val reason = rejectionReason.ifBlank { "Rejected by admin" }
+                                            viewModel.rejectAccountRequest(account.id, reason)
+                                        }
+                                    ) { Text("Reject") }
+                                }
+                                OutlinedTextField(
+                                    value = rejectionReason,
+                                    onValueChange = { rejectionReason = it },
+                                    label = { Text("Rejection reason") },
+                                    modifier = Modifier.width(250.dp)
+                                )
+                            } else {
+                                Text("Managed", style = MaterialTheme.typography.bodySmall)
+                                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    OutlinedButton(
+                                        onClick = { viewModel.updateAccount(account.id, mapOf("status" to "active")) }
+                                    ) { Text("Activate") }
+                                    OutlinedButton(onClick = { viewModel.freezeAccount(account.id) }) { Text("Freeze") }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 }
@@ -752,6 +909,20 @@ private fun AdminMessageBanner(
         ) {
             Text(text = text, color = textColor, style = MaterialTheme.typography.bodyMedium)
             action?.invoke()
+        }
+    }
+}
+
+@Composable
+private fun AdminMetricCard(label: String, value: String) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = Color.White.copy(alpha = 0.14f)),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+    ) {
+        Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(label, style = MaterialTheme.typography.labelSmall, color = Color.White.copy(alpha = 0.88f))
+            Text(value, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Bold, color = Color.White)
         }
     }
 }
