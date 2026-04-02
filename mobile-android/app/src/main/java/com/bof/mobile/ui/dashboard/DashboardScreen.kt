@@ -196,7 +196,7 @@ fun DashboardScreen(
 
             item {
                 ActionButtonsSection(
-                    onAddMoney = onNavigateToFeatures,
+                    onCreateAccount = onNavigateToAccounts,
                     onSendMoney = onNavigateToTransfers,
                     onDeposit = onNavigateToDeposit,
                     onWithdraw = onNavigateToWithdraw
@@ -797,15 +797,15 @@ private fun BalanceCard(
 
 @Composable
 private fun ActionButtonsSection(
-    onAddMoney: () -> Unit,
+    onCreateAccount: () -> Unit,
     onSendMoney: () -> Unit,
     onDeposit: () -> Unit,
     onWithdraw: () -> Unit
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            ActionButtonCard("➕", "Add Money", onAddMoney, Modifier.weight(1f))
-            ActionButtonCard("↗", "Send Money", onSendMoney, Modifier.weight(1f))
+            ActionButtonCard("➕", "Create Account", onCreateAccount, Modifier.weight(1f))
+            ActionButtonCard("↗", "Transfer Money", onSendMoney, Modifier.weight(1f))
         }
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             ActionButtonCard("🏦", "Deposit", onDeposit, Modifier.weight(1f))
