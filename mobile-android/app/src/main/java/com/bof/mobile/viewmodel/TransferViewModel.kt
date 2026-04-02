@@ -4,208 +4,196 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.bof.mobile.data.repository.TransferRepository
 import com.bof.mobile.model.ApiResult
-import com.bof.mobile.model.BillerItem
-import com.bof.mobile.model.RecipientItem
+import com.bof.mobile.model.TransferMoneyRequest
+import com.bof.mobile.model.TransferMode
+import com.bof.mobile.model.TransferMoneyResponse
+import com.bof.mobile.model.VerifyTransferOtpRequest
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 data class TransferUiState(
+    val transferMode: TransferMode = TransferMode.INTERNAL,
     val fromAccountId: String = "",
-    val toAccountNumber: String = "",
+    val internalDestinationAccountId: String = "",
+    val recipientName: String = "",
+    val bankName: String = "",
+    val externalAccountNumber: String = "",
     val amount: String = "",
-    val description: String = "",
+    val note: String = "",
     val otp: String = "",
-    val destinationName: String? = null,
     val transferId: String? = null,
     val requiresOtp: Boolean = false,
-    val debugOtp: String? = null,
     val isLoading: Boolean = false,
-    val isLoadingRecipients: Boolean = false,
-    val recipients: List<RecipientItem> = emptyList(),
-    val billers: List<BillerItem> = emptyList(),
     val successMessage: String? = null,
-    val errorMessage: String? = null
+    val errorMessage: String? = null,
+    val dailyLimit: Double = 10000.0
 )
 
 class TransferViewModel(private val transferRepository: TransferRepository) : ViewModel() {
     private val _uiState = MutableStateFlow(TransferUiState())
     val uiState: StateFlow<TransferUiState> = _uiState
 
-    fun onFromAccountIdChanged(value: String) = _uiState.update { it.copy(fromAccountId = value) }
-    fun onToAccountNumberChanged(value: String) = _uiState.update { it.copy(toAccountNumber = value) }
-    fun onAmountChanged(value: String) = _uiState.update { it.copy(amount = value) }
-    fun onDescriptionChanged(value: String) = _uiState.update { it.copy(description = value) }
-    fun onOtpChanged(value: String) = _uiState.update { it.copy(otp = value) }
-
     fun clearMessages() = _uiState.update { it.copy(errorMessage = null, successMessage = null) }
 
-    fun searchRecipients(query: String) {
-        if (query.isBlank()) {
-            _uiState.update { it.copy(recipients = emptyList()) }
-            return
-        }
-
-        viewModelScope.launch {
-            _uiState.update { it.copy(isLoadingRecipients = true, errorMessage = null) }
-            when (val result = transferRepository.searchRecipients(query.trim())) {
-                is ApiResult.Success -> {
-                    _uiState.update {
-                        it.copy(
-                            isLoadingRecipients = false,
-                            recipients = result.data,
-                            errorMessage = null
-                        )
-                    }
-                }
-                is ApiResult.Error -> {
-                    _uiState.update {
-                        it.copy(
-                            isLoadingRecipients = false,
-                            errorMessage = result.message
-                        )
-                    }
-                }
-            }
-        }
+    fun onTransferModeChanged(mode: TransferMode) = _uiState.update {
+        it.copy(
+            transferMode = mode,
+            internalDestinationAccountId = "",
+            recipientName = "",
+            bankName = "",
+            externalAccountNumber = "",
+            otp = "",
+            transferId = null,
+            requiresOtp = false,
+            errorMessage = null,
+            successMessage = null
+        )
     }
 
-    fun loadBillers() {
-        viewModelScope.launch {
-            when (val result = transferRepository.getBillers()) {
-                is ApiResult.Success -> _uiState.update { it.copy(billers = result.data) }
-                is ApiResult.Error -> _uiState.update { it.copy(errorMessage = result.message) }
-            }
-        }
-    }
+    fun onFromAccountIdChanged(value: String) = _uiState.update { it.copy(fromAccountId = value) }
+    fun onInternalDestinationAccountIdChanged(value: String) = _uiState.update { it.copy(internalDestinationAccountId = value) }
+    fun onRecipientNameChanged(value: String) = _uiState.update { it.copy(recipientName = value) }
+    fun onBankNameChanged(value: String) = _uiState.update { it.copy(bankName = value) }
+    fun onExternalAccountNumberChanged(value: String) = _uiState.update { it.copy(externalAccountNumber = value) }
+    fun onAmountChanged(value: String) = _uiState.update { it.copy(amount = value) }
+    fun onNoteChanged(value: String) = _uiState.update { it.copy(note = value) }
+    fun onOtpChanged(value: String) = _uiState.update { it.copy(otp = value) }
 
-    fun validateDestination() {
+    fun submitTransfer() {
         val state = _uiState.value
         val fromAccountId = state.fromAccountId.toIntOrNull()
-        if (fromAccountId == null || state.toAccountNumber.isBlank()) {
-            _uiState.update { it.copy(errorMessage = "Provide source account id and destination account number") }
-            return
+        val amount = state.amount.toDoubleOrNull()
+
+        if (fromAccountId == null || fromAccountId <= 0) {
+            return setError("Please select a valid source account")
+        }
+        if (amount == null || amount <= 0) {
+            return setError("Amount must be greater than 0")
+        }
+        if (amount > state.dailyLimit) {
+            return setError("Amount exceeds daily transfer limit")
+        }
+
+        if (state.transferMode == TransferMode.INTERNAL) {
+            val destinationAccountId = state.internalDestinationAccountId.toIntOrNull()
+            if (destinationAccountId == null || destinationAccountId <= 0) {
+                return setError("Please select a destination account")
+            }
+            if (destinationAccountId == fromAccountId) {
+                return setError("Source and destination accounts must be different")
+            }
+        } else {
+            if (state.recipientName.isBlank()) return setError("Recipient name is required")
+            if (state.bankName.isBlank()) return setError("Bank name is required")
+            if (state.externalAccountNumber.isBlank()) return setError("Account number is required")
         }
 
         viewModelScope.launch {
-            _uiState.update { it.copy(isLoading = true, errorMessage = null, successMessage = null) }
-            when (
-                val result = transferRepository.validateDestination(
-                    fromAccountId = fromAccountId,
-                    toAccountNumber = state.toAccountNumber.trim()
-                )
-            ) {
-                is ApiResult.Success -> {
-                    _uiState.update {
-                        it.copy(
-                            isLoading = false,
-                            destinationName = result.data.customerName,
-                            errorMessage = null
-                        )
-                    }
-                }
-                is ApiResult.Error -> {
-                    _uiState.update {
-                        it.copy(
-                            isLoading = false,
-                            destinationName = null,
-                            errorMessage = result.message
-                        )
-                    }
-                }
+            setLoading(true)
+            val request = TransferMoneyRequest(
+                fromAccount = fromAccountId,
+                transferType = if (state.transferMode == TransferMode.INTERNAL) "internal" else "external",
+                toAccount = state.internalDestinationAccountId.toIntOrNull(),
+                recipientName = state.recipientName.ifBlank { null },
+                bankName = state.bankName.ifBlank { null },
+                accountNumber = state.externalAccountNumber.ifBlank { null },
+                amount = amount,
+                note = state.note.ifBlank { null }
+            )
+
+            when (val result = transferRepository.transfer(request)) {
+                is ApiResult.Success -> handleTransferSuccess(result.data, amount)
+                is ApiResult.Error -> setError(result.message)
             }
+            setLoading(false)
         }
     }
 
-    fun initiateTransfer() {
-        val state = _uiState.value
-        val fromAccountId = state.fromAccountId.toIntOrNull()
-        val amountValue = state.amount.toDoubleOrNull()
-
-        if (fromAccountId == null || state.toAccountNumber.isBlank() || amountValue == null || amountValue <= 0.0) {
-            _uiState.update {
-                it.copy(errorMessage = "Enter valid source account, destination account, and amount")
-            }
-            return
-        }
-
-        viewModelScope.launch {
-            _uiState.update { it.copy(isLoading = true, errorMessage = null, successMessage = null) }
-            when (
-                val result = transferRepository.initiateTransfer(
-                    fromAccountId = fromAccountId,
-                    toAccountNumber = state.toAccountNumber.trim(),
-                    amount = amountValue,
-                    description = state.description.trim()
-                )
-            ) {
-                is ApiResult.Success -> {
-                    val response = result.data
-                    val successMessage = if (response.requiresOtp) {
-                        "OTP sent. Enter OTP to complete transfer."
-                    } else {
-                        "Transfer completed successfully"
-                    }
-
-                    _uiState.update {
-                        it.copy(
-                            isLoading = false,
-                            requiresOtp = response.requiresOtp,
-                            transferId = response.transferId,
-                            debugOtp = response.otp,
-                            successMessage = successMessage,
-                            errorMessage = null
-                        )
-                    }
-                }
-                is ApiResult.Error -> {
-                    _uiState.update {
-                        it.copy(
-                            isLoading = false,
-                            errorMessage = result.message
-                        )
-                    }
-                }
-            }
-        }
-    }
-
-    fun verifyTransferOtp() {
+    fun verifyOtp() {
         val state = _uiState.value
         val transferId = state.transferId
-        if (transferId.isNullOrBlank() || state.otp.isBlank()) {
-            _uiState.update { it.copy(errorMessage = "Transfer id and OTP are required") }
-            return
+        if (transferId.isNullOrBlank()) {
+            return setError("Transfer ID not found")
+        }
+        if (state.otp.isBlank()) {
+            return setError("OTP is required")
         }
 
         viewModelScope.launch {
-            _uiState.update { it.copy(isLoading = true, errorMessage = null, successMessage = null) }
-            when (val result = transferRepository.verifyTransfer(transferId = transferId, otp = state.otp.trim())) {
+            setLoading(true)
+            when (val result = transferRepository.verifyTransferOtp(VerifyTransferOtpRequest(transferId, state.otp.trim()))) {
                 is ApiResult.Success -> {
                     _uiState.update {
                         it.copy(
-                            isLoading = false,
-                            requiresOtp = false,
+                            fromAccountId = "",
+                            internalDestinationAccountId = "",
+                            recipientName = "",
+                            bankName = "",
+                            externalAccountNumber = "",
+                            amount = "",
+                            note = "",
                             otp = "",
-                            successMessage = "Transfer verified successfully",
+                            transferId = null,
+                            requiresOtp = false,
+                            successMessage = result.data.message,
                             errorMessage = null
                         )
                     }
                 }
-                is ApiResult.Error -> {
-                    _uiState.update {
-                        it.copy(
-                            isLoading = false,
-                            errorMessage = result.message
-                        )
-                    }
-                }
+                is ApiResult.Error -> setError(result.message)
+            }
+            setLoading(false)
+        }
+    }
+
+    fun validateTransferReady(): Boolean {
+        val state = _uiState.value
+        val amount = state.amount.toDoubleOrNull() ?: return false
+        if (amount <= 0 || amount > state.dailyLimit) return false
+        return if (state.transferMode == TransferMode.INTERNAL) {
+            state.fromAccountId.isNotBlank() && state.internalDestinationAccountId.isNotBlank() && state.internalDestinationAccountId != state.fromAccountId
+        } else {
+            state.fromAccountId.isNotBlank() && state.recipientName.isNotBlank() && state.bankName.isNotBlank() && state.externalAccountNumber.isNotBlank()
+        }
+    }
+
+    private fun handleTransferSuccess(response: TransferMoneyResponse, amount: Double) {
+        if (response.requiresOtp) {
+            _uiState.update {
+                it.copy(
+                    transferId = response.transferId,
+                    requiresOtp = true,
+                    successMessage = response.message,
+                    errorMessage = null
+                )
+            }
+        } else {
+            _uiState.update {
+                it.copy(
+                    fromAccountId = "",
+                    internalDestinationAccountId = "",
+                    recipientName = "",
+                    bankName = "",
+                    externalAccountNumber = "",
+                    amount = "",
+                    note = "",
+                    otp = "",
+                    transferId = null,
+                    requiresOtp = false,
+                    successMessage = response.message.ifBlank { "Transfer successful - FJD ${String.format("%.2f", amount)}" },
+                    errorMessage = null
+                )
             }
         }
     }
 
-    fun prefillRecipient(accountNumber: String) {
-        _uiState.update { it.copy(toAccountNumber = accountNumber) }
+    private fun setLoading(value: Boolean) {
+        _uiState.update { it.copy(isLoading = value) }
+    }
+
+    private fun setError(message: String) {
+        _uiState.update { it.copy(errorMessage = message, successMessage = null) }
     }
 }

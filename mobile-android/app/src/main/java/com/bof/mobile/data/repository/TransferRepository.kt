@@ -6,8 +6,11 @@ import com.bof.mobile.model.BillerItem
 import com.bof.mobile.model.InitiateTransferRequest
 import com.bof.mobile.model.InitiateTransferResponse
 import com.bof.mobile.model.RecipientItem
+import com.bof.mobile.model.TransferMoneyRequest
+import com.bof.mobile.model.TransferMoneyResponse
 import com.bof.mobile.model.ValidateDestinationRequest
 import com.bof.mobile.model.ValidateDestinationResponse
+import com.bof.mobile.model.VerifyTransferOtpRequest
 import com.bof.mobile.model.VerifyTransferRequest
 import com.bof.mobile.model.VerifyTransferResponse
 import retrofit2.HttpException
@@ -65,6 +68,30 @@ class TransferRepository(private val apiService: ApiService) {
             ApiResult.Success(
                 apiService.verifyTransfer(VerifyTransferRequest(transferId = transferId, otp = otp))
             )
+        } catch (e: HttpException) {
+            ApiResult.Error(message = "OTP verification failed: ${e.message()}", code = e.code())
+        } catch (e: IOException) {
+            ApiResult.Error(message = "Network unavailable. Please try again.")
+        } catch (e: Exception) {
+            ApiResult.Error(message = e.message ?: "Unexpected error")
+        }
+    }
+
+    suspend fun transfer(request: TransferMoneyRequest): ApiResult<TransferMoneyResponse> {
+        return try {
+            ApiResult.Success(apiService.transfer(request))
+        } catch (e: HttpException) {
+            ApiResult.Error(message = "Transfer failed: ${e.message()}", code = e.code())
+        } catch (e: IOException) {
+            ApiResult.Error(message = "Network unavailable. Please try again.")
+        } catch (e: Exception) {
+            ApiResult.Error(message = e.message ?: "Unexpected error")
+        }
+    }
+
+    suspend fun verifyTransferOtp(request: VerifyTransferOtpRequest): ApiResult<TransferMoneyResponse> {
+        return try {
+            ApiResult.Success(apiService.verifyTransferOtp(request))
         } catch (e: HttpException) {
             ApiResult.Error(message = "OTP verification failed: ${e.message()}", code = e.code())
         } catch (e: IOException) {

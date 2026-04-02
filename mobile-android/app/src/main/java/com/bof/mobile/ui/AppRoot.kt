@@ -141,8 +141,10 @@ fun AppRoot() {
         )
         MainTab.TRANSFERS -> TransferScreen(
             viewModel = transferViewModel,
+            accountsList = dashboardState.data?.accounts ?: emptyList(),
             canGoBack = navigationHistory.isNotEmpty(),
-            onBack = { goBack() }
+            onBack = { goBack() },
+            onTransferCompleted = { dashboardViewModel.loadDashboard(customerId) }
         )
         MainTab.FEATURES -> FeatureHubScreen(
             viewModel = featureViewModel,

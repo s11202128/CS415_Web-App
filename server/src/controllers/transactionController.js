@@ -1,4 +1,4 @@
-const { deposit, withdraw, verifyWithdrawalOtp } = require("../services/transactionService");
+const { deposit, withdraw, verifyWithdrawalOtp, initiateBankTransfer, verifyBankTransferOtp } = require("../services/transactionService");
 
 /**
  * POST /api/transactions/deposit
@@ -100,8 +100,47 @@ async function handleVerifyWithdrawal(req, res) {
   }
 }
 
+/**
+ * POST /api/transactions/transfer
+ * Body: internal { fromAccount, toAccount, amount, note? }
+ * Body: external { fromAccount, recipientName, bankName, accountNumber, amount, note? }
+ */
+async function handleTransfer(req, res) {
+  try {
+    const result = await initiateBankTransfer(req.body || {});
+    res.status(200).json(result);
+  } catch (error) {
+    const statusCode = error.message.includes("not found") ? 404 : error.message.includes("Insufficient") ? 402 : 400;
+    res.status(statusCode).json({ success: false, message: error.message });
+  }
+}
+
+/**
+ * POST /api/transactions/transfer/verify
+ * Body: { transferId: string, otp: string }
+ */
+async function handleVerifyTransfer(req, res) {
+  try {
+    const { transferId, otp } = req.body || {};
+    if (!transferId || !String(transferId).trim()) {
+      return res.status(400).json({ success: false, message: "Transfer ID is required" });
+    }
+    if (!otp || !String(otp).trim()) {
+      return res.status(400).json({ success: false, message: "OTP is required" });
+    }
+
+    const result = await verifyBankTransferOtp({ transferId, otp });
+    res.status(200).json(result);
+  } catch (error) {
+    const statusCode = error.message.includes("not found") ? 404 : error.message.includes("Insufficient") ? 402 : 400;
+    res.status(statusCode).json({ success: false, message: error.message });
+  }
+}
+
 module.exports = {
   handleDeposit,
   handleWithdraw,
   handleVerifyWithdrawal,
+  handleTransfer,
+  handleVerifyTransfer,
 };

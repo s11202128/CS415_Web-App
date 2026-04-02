@@ -46,6 +46,8 @@ import com.bof.mobile.model.ScheduledBillItem
 import com.bof.mobile.model.StatementRequestItem
 import com.bof.mobile.model.StatementRequestPayload
 import com.bof.mobile.model.StatementRowItem
+import com.bof.mobile.model.TransferMoneyRequest
+import com.bof.mobile.model.TransferMoneyResponse
 import com.bof.mobile.model.TransactionItem
 import com.bof.mobile.model.UpdateProfileRequest
 import com.bof.mobile.model.ValidateDestinationRequest
@@ -53,6 +55,7 @@ import com.bof.mobile.model.ValidateDestinationResponse
 import com.bof.mobile.model.VerifyTransferRequest
 import com.bof.mobile.model.VerifyTransferResponse
 import com.bof.mobile.model.VerifyWithdrawalRequest
+import com.bof.mobile.model.VerifyTransferOtpRequest
 import com.bof.mobile.model.WithdrawRequest
 import com.bof.mobile.model.WithdrawResponse
 import retrofit2.http.Body
@@ -97,8 +100,14 @@ interface ApiService {
     @POST("transfers/initiate")
     suspend fun initiateTransfer(@Body request: InitiateTransferRequest): InitiateTransferResponse
 
+    @POST("transactions/transfer")
+    suspend fun transfer(@Body request: TransferMoneyRequest): TransferMoneyResponse
+
     @POST("otp/verify")
     suspend fun verifyTransfer(@Body request: VerifyTransferRequest): VerifyTransferResponse
+
+    @POST("transactions/transfer/verify")
+    suspend fun verifyTransferOtp(@Body request: VerifyTransferOtpRequest): TransferMoneyResponse
 
     @GET("recipients/search")
     suspend fun searchRecipients(@Query("q") query: String): List<RecipientItem>
