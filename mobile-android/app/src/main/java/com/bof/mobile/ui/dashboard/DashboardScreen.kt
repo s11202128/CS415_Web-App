@@ -70,7 +70,9 @@ fun DashboardScreen(
     onNavigateToAccounts: () -> Unit = {},
     onNavigateToFeatures: () -> Unit = {},
     onNavigateToDeposit: () -> Unit = {},
-    onNavigateToWithdraw: () -> Unit = {}
+    onNavigateToWithdraw: () -> Unit = {},
+    onNavigateToFunding: () -> Unit = {},
+    onNavigateToBillPayment: () -> Unit = {}
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val featureUiState by featureViewModel.uiState.collectAsState()
@@ -200,7 +202,9 @@ fun DashboardScreen(
                     onCreateAccount = onNavigateToCreateAccount,
                     onSendMoney = onNavigateToTransfers,
                     onDeposit = onNavigateToDeposit,
-                    onWithdraw = onNavigateToWithdraw
+                    onWithdraw = onNavigateToWithdraw,
+                    onFunding = onNavigateToFunding,
+                    onBillPayment = onNavigateToBillPayment
                 )
             }
 
@@ -801,7 +805,9 @@ private fun ActionButtonsSection(
     onCreateAccount: () -> Unit,
     onSendMoney: () -> Unit,
     onDeposit: () -> Unit,
-    onWithdraw: () -> Unit
+    onWithdraw: () -> Unit,
+    onFunding: () -> Unit,
+    onBillPayment: () -> Unit
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -811,6 +817,10 @@ private fun ActionButtonsSection(
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             ActionButtonCard("🏦", "Deposit", onDeposit, Modifier.weight(1f))
             ActionButtonCard("💸", "Withdraw", onWithdraw, Modifier.weight(1f))
+        }
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            ActionButtonCard("💼", "Funding", onFunding, Modifier.weight(1f))
+            ActionButtonCard("🧾", "Bill Payment", onBillPayment, Modifier.weight(1f))
         }
     }
 }

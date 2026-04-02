@@ -136,7 +136,9 @@ fun AppRoot() {
             onNavigateToAccounts = { navigateTo(MainTab.ACCOUNTS) },
             onNavigateToFeatures = { navigateTo(MainTab.FEATURES) },
             onNavigateToDeposit = { navigateTo(MainTab.DEPOSIT) },
-            onNavigateToWithdraw = { navigateTo(MainTab.WITHDRAW) }
+            onNavigateToWithdraw = { navigateTo(MainTab.WITHDRAW) },
+            onNavigateToFunding = { navigateTo(MainTab.FEATURES) },
+            onNavigateToBillPayment = { navigateTo(MainTab.FEATURES) }
         )
         MainTab.CREATE_ACCOUNT -> CreateAccountScreen(
             accountRepository = accountRepository,
