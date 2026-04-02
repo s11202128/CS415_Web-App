@@ -33,8 +33,10 @@ import com.bof.mobile.ui.admin.AdminDashboardScreen
 import com.bof.mobile.ui.auth.LoginScreen
 import com.bof.mobile.ui.auth.RegisterScreen
 import com.bof.mobile.ui.dashboard.DashboardScreen
+import com.bof.mobile.ui.deposit.DepositScreen
 import com.bof.mobile.ui.features.FeatureHubScreen
 import com.bof.mobile.ui.transfers.TransferScreen
+import com.bof.mobile.ui.withdraw.WithdrawScreen
 import com.bof.mobile.viewmodel.AccountsViewModel
 import com.bof.mobile.viewmodel.AdminViewModel
 import com.bof.mobile.viewmodel.AuthViewModel
@@ -46,7 +48,9 @@ private enum class MainTab {
     DASHBOARD,
     ACCOUNTS,
     TRANSFERS,
-    FEATURES
+    FEATURES,
+    DEPOSIT,
+    WITHDRAW
 }
 
 @Composable
@@ -106,6 +110,7 @@ fun AppRoot() {
     }
 
     val customerId = authState.customerId ?: 0
+    val dashboardState by dashboardViewModel.uiState.collectAsState()
 
     if (authState.isAdmin) {
         AdminDashboardScreen(
@@ -125,7 +130,9 @@ fun AppRoot() {
             onLogout = { logout() },
             onNavigateToTransfers = { navigateTo(MainTab.TRANSFERS) },
             onNavigateToAccounts = { navigateTo(MainTab.ACCOUNTS) },
-            onNavigateToFeatures = { navigateTo(MainTab.FEATURES) }
+            onNavigateToFeatures = { navigateTo(MainTab.FEATURES) },
+            onNavigateToDeposit = { navigateTo(MainTab.DEPOSIT) },
+            onNavigateToWithdraw = { navigateTo(MainTab.WITHDRAW) }
         )
         MainTab.ACCOUNTS -> AccountsScreen(
             viewModel = accountsViewModel,
@@ -143,5 +150,24 @@ fun AppRoot() {
             canGoBack = navigationHistory.isNotEmpty(),
             onBack = { goBack() }
         )
+        MainTab.DEPOSIT -> DepositScreen(
+            featureViewModel = featureViewModel,
+            accountsList = dashboardState.data?.accounts ?: emptyList(),
+            canGoBack = navigationHistory.isNotEmpty(),
+            onBack = { goBack() },
+            onDepositCompleted = { dashboardViewModel.loadDashboard(customerId) }
+        )
+        MainTab.WITHDRAW -> WithdrawScreen(
+            featureViewModel = featureViewModel,
+            accountsList = dashboardState.data?.accounts ?: emptyList(),
+            canGoBack = navigationHistory.isNotEmpty(),
+            onBack = { goBack() }
+        )
+    }
+
+    LaunchedEffect(activeTab, customerId) {
+        if ((activeTab == MainTab.DEPOSIT || activeTab == MainTab.WITHDRAW) && dashboardState.data == null) {
+            dashboardViewModel.loadDashboard(customerId)
+        }
     }
 }

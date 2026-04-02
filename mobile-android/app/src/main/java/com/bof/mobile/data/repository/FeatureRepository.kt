@@ -4,6 +4,8 @@ import com.bof.mobile.data.remote.ApiService
 import com.bof.mobile.model.ApiResult
 import com.bof.mobile.model.BillHistoryItem
 import com.bof.mobile.model.BillPaymentRequest
+import com.bof.mobile.model.DepositRequest
+import com.bof.mobile.model.DepositResponse
 import com.bof.mobile.model.ForgotPasswordRequest
 import com.bof.mobile.model.ForgotPasswordResponse
 import com.bof.mobile.model.InterestSummaryItem
@@ -21,6 +23,9 @@ import com.bof.mobile.model.StatementRequestItem
 import com.bof.mobile.model.StatementRequestPayload
 import com.bof.mobile.model.StatementRowItem
 import com.bof.mobile.model.UpdateProfileRequest
+import com.bof.mobile.model.VerifyWithdrawalRequest
+import com.bof.mobile.model.WithdrawRequest
+import com.bof.mobile.model.WithdrawResponse
 import retrofit2.HttpException
 import java.io.IOException
 
@@ -99,6 +104,18 @@ class FeatureRepository(private val apiService: ApiService) {
 
     suspend fun createInvestment(request: InvestmentRequest): ApiResult<InvestmentItem> = safeCall {
         apiService.createInvestment(request)
+    }
+
+    suspend fun deposit(request: DepositRequest): ApiResult<DepositResponse> = safeCall {
+        apiService.deposit(request)
+    }
+
+    suspend fun withdraw(request: WithdrawRequest): ApiResult<WithdrawResponse> = safeCall {
+        apiService.withdraw(request)
+    }
+
+    suspend fun verifyWithdrawal(request: VerifyWithdrawalRequest): ApiResult<WithdrawResponse> = safeCall {
+        apiService.verifyWithdrawal(request)
     }
 
     private suspend fun <T> safeCall(block: suspend () -> T): ApiResult<T> {

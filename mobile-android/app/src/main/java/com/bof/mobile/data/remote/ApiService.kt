@@ -20,6 +20,8 @@ import com.bof.mobile.model.BillHistoryItem
 import com.bof.mobile.model.BillPaymentRequest
 import com.bof.mobile.model.BillerItem
 import com.bof.mobile.model.DashboardResponse
+import com.bof.mobile.model.DepositRequest
+import com.bof.mobile.model.DepositResponse
 import com.bof.mobile.model.ForgotPasswordRequest
 import com.bof.mobile.model.ForgotPasswordResponse
 import com.bof.mobile.model.InitiateTransferRequest
@@ -50,6 +52,9 @@ import com.bof.mobile.model.ValidateDestinationRequest
 import com.bof.mobile.model.ValidateDestinationResponse
 import com.bof.mobile.model.VerifyTransferRequest
 import com.bof.mobile.model.VerifyTransferResponse
+import com.bof.mobile.model.VerifyWithdrawalRequest
+import com.bof.mobile.model.WithdrawRequest
+import com.bof.mobile.model.WithdrawResponse
 import retrofit2.http.Body
 import retrofit2.http.GET
 import retrofit2.http.PATCH
@@ -241,4 +246,13 @@ interface ApiService {
 
     @POST("year-end/interest-summaries")
     suspend fun generateInterestSummaries(@Body body: Map<String, @JvmSuppressWildcards Any>): List<InterestSummaryItem>
+
+    @POST("transactions/deposit")
+    suspend fun deposit(@Body request: DepositRequest): DepositResponse
+
+    @POST("transactions/withdraw")
+    suspend fun withdraw(@Body request: WithdrawRequest): WithdrawResponse
+
+    @POST("transactions/verify-withdrawal")
+    suspend fun verifyWithdrawal(@Body request: VerifyWithdrawalRequest): WithdrawResponse
 }

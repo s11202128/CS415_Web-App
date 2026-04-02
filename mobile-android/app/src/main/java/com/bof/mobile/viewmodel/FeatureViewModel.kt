@@ -6,6 +6,7 @@ import com.bof.mobile.data.repository.FeatureRepository
 import com.bof.mobile.model.ApiResult
 import com.bof.mobile.model.BillHistoryItem
 import com.bof.mobile.model.BillPaymentRequest
+import com.bof.mobile.model.DepositRequest
 import com.bof.mobile.model.InterestSummaryItem
 import com.bof.mobile.model.InvestmentRequest
 import com.bof.mobile.model.InvestmentItem
@@ -20,6 +21,8 @@ import com.bof.mobile.model.StatementRequestItem
 import com.bof.mobile.model.StatementRequestPayload
 import com.bof.mobile.model.StatementRowItem
 import com.bof.mobile.model.UpdateProfileRequest
+import com.bof.mobile.model.VerifyWithdrawalRequest
+import com.bof.mobile.model.WithdrawRequest
 import java.time.LocalDate
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -76,7 +79,16 @@ data class FeatureUiState(
     val investmentAmount: String = "",
     val investmentExpectedReturn: String = "",
     val investmentMaturityDate: String = "",
-    val investments: List<InvestmentItem> = emptyList()
+    val investments: List<InvestmentItem> = emptyList(),
+
+    val depositAccountId: String = "",
+    val depositAmount: String = "",
+    val depositNote: String = "",
+    val withdrawAccountId: String = "",
+    val withdrawAmount: String = "",
+    val withdrawOtp: String = "",
+    val showWithdrawOtpField: Boolean = false,
+    val withdrawalId: String? = null
 )
 
 class FeatureViewModel(private val featureRepository: FeatureRepository) : ViewModel() {
@@ -126,6 +138,13 @@ class FeatureViewModel(private val featureRepository: FeatureRepository) : ViewM
     fun onInvestmentAmountChanged(value: String) = _uiState.update { it.copy(investmentAmount = value) }
     fun onInvestmentExpectedReturnChanged(value: String) = _uiState.update { it.copy(investmentExpectedReturn = value) }
     fun onInvestmentMaturityDateChanged(value: String) = _uiState.update { it.copy(investmentMaturityDate = value) }
+
+    fun onDepositAccountIdChanged(value: String) = _uiState.update { it.copy(depositAccountId = value) }
+    fun onDepositAmountChanged(value: String) = _uiState.update { it.copy(depositAmount = value) }
+    fun onDepositNoteChanged(value: String) = _uiState.update { it.copy(depositNote = value) }
+    fun onWithdrawAccountIdChanged(value: String) = _uiState.update { it.copy(withdrawAccountId = value) }
+    fun onWithdrawAmountChanged(value: String) = _uiState.update { it.copy(withdrawAmount = value) }
+    fun onWithdrawOtpChanged(value: String) = _uiState.update { it.copy(withdrawOtp = value) }
 
     fun loadInitialData(customerId: Int) {
         loadProfile(customerId)
@@ -538,6 +557,124 @@ class FeatureViewModel(private val featureRepository: FeatureRepository) : ViewM
                             investmentAmount = "",
                             investmentExpectedReturn = "",
                             investmentMaturityDate = ""
+                        )
+                    }
+                }
+                is ApiResult.Error -> setError(result.message)
+            }
+            setLoading(false)
+        }
+    }
+
+    fun deposit() {
+        val state = _uiState.value
+        val accountId = state.depositAccountId.toIntOrNull()
+        val amount = state.depositAmount.toDoubleOrNull()
+
+        if (accountId == null || accountId <= 0) {
+            return setError("Please select a valid account")
+        }
+
+        if (amount == null || amount <= 0) {
+            return setError("Amount must be greater than 0")
+        }
+
+        viewModelScope.launch {
+            setLoading(true)
+            when (val result = featureRepository.deposit(DepositRequest(accountId, amount, state.depositNote.ifBlank { null }))) {
+                is ApiResult.Success -> {
+                    _uiState.update {
+                        it.copy(
+                            depositAmount = "",
+                            depositNote = "",
+                            successMessage = "Deposit successful - FJD ${String.format("%.2f", amount)} (Ref ${result.data.transactionId})",
+                            errorMessage = null
+                        )
+                    }
+                }
+                is ApiResult.Error -> setError(result.message)
+            }
+            setLoading(false)
+        }
+    }
+
+    fun withdraw() {
+        val state = _uiState.value
+        val accountId = state.withdrawAccountId.toIntOrNull()
+        val amount = state.withdrawAmount.toDoubleOrNull()
+
+        if (accountId == null || accountId <= 0) {
+            return setError("Please select a valid account")
+        }
+
+        if (amount == null || amount <= 0) {
+            return setError("Amount must be greater than 0")
+        }
+
+        viewModelScope.launch {
+            setLoading(true)
+            when (val result = featureRepository.withdraw(WithdrawRequest(accountId, amount))) {
+                is ApiResult.Success -> {
+                    if (result.data.requiresOtp) {
+                        // OTP required, show OTP field
+                        _uiState.update {
+                            it.copy(
+                                showWithdrawOtpField = true,
+                                withdrawalId = result.data.withdrawalId,
+                                successMessage = "OTP sent to your phone",
+                                errorMessage = null
+                            )
+                        }
+                    } else {
+                        // Direct withdrawal succeeded
+                        _uiState.update {
+                            it.copy(
+                                withdrawAmount = "",
+                                withdrawAccountId = "",
+                                withdrawOtp = "",
+                                showWithdrawOtpField = false,
+                                withdrawalId = null,
+                                successMessage = "Withdrawal successful - FJD ${String.format("%.2f", amount)}",
+                                errorMessage = null
+                            )
+                        }
+                    }
+                }
+                is ApiResult.Error -> setError(result.message)
+            }
+            setLoading(false)
+        }
+    }
+
+    fun verifyWithdrawalOtp() {
+        val state = _uiState.value
+        val withdrawalId = state.withdrawalId
+
+        if (withdrawalId.isNullOrBlank()) {
+            return setError("Withdrawal ID not found")
+        }
+
+        if (state.withdrawOtp.isBlank()) {
+            return setError("OTP is required")
+        }
+
+        viewModelScope.launch {
+            setLoading(true)
+            when (
+                val result = featureRepository.verifyWithdrawal(
+                    VerifyWithdrawalRequest(withdrawalId, state.withdrawOtp)
+                )
+            ) {
+                is ApiResult.Success -> {
+                    _uiState.update {
+                        it.copy(
+                            withdrawAmount = "",
+                            withdrawAccountId = "",
+                            withdrawOtp = "",
+                            showWithdrawOtpField = false,
+                            withdrawalId = null,
+                            successMessage = "Withdrawal verified and completed successfully",
+                            errorMessage = null
                         )
                     }
                 }

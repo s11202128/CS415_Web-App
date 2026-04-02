@@ -34,6 +34,7 @@ loadEnvFromFile();
 
 const authRoutes = require("./routes/authRoutes");
 const apiRoutes = require("./routes/apiRoutes");
+const transactionRoutes = require("./routes/transactionRoutes");
 const initializeDatabase = require("./database");
 const errorHandler = require("./middleware/errorHandler");
 
@@ -91,6 +92,7 @@ app.use((req, res, next) => {
 
 app.use("/api", authRoutes);
 app.use("/api", apiRoutes);
+app.use("/api/transactions", transactionRoutes);
 
 app.use(errorHandler);
 
