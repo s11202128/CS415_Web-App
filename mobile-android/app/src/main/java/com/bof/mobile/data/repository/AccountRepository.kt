@@ -13,6 +13,21 @@ import java.io.IOException
 
 class AccountRepository(private val apiService: ApiService) {
 
+    private fun extractHttpErrorMessage(e: HttpException, fallbackPrefix: String): String {
+        val raw = e.response()?.errorBody()?.string().orEmpty().trim()
+        if (raw.isBlank()) return "$fallbackPrefix: HTTP ${e.code()}"
+
+        // Handles backend payloads like {"error":"..."} without adding a JSON parser dependency here.
+        val extracted = Regex("\"error\"\\s*:\\s*\"([^\"]+)\"")
+            .find(raw)
+            ?.groupValues
+            ?.getOrNull(1)
+            ?.trim()
+
+        val message = extracted ?: raw
+        return "$fallbackPrefix: $message"
+    }
+
     suspend fun syncProfileData(
         customerId: Int,
         fullName: String,
@@ -33,7 +48,7 @@ class AccountRepository(private val apiService: ApiService) {
             )
             ApiResult.Success(Unit)
         } catch (e: HttpException) {
-            ApiResult.Error(message = "Failed to sync profile: ${e.message()}", code = e.code())
+            ApiResult.Error(message = extractHttpErrorMessage(e, "Failed to sync profile"), code = e.code())
         } catch (e: IOException) {
             ApiResult.Error(message = "Network unavailable. Please try again.")
         } catch (e: Exception) {

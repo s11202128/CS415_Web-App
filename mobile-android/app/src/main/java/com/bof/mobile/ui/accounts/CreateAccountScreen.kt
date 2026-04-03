@@ -396,20 +396,10 @@ fun CreateAccountScreen(
                             submitErrorMessage = null
                             isSubmitting = true
                             scope.launch {
-                                when (
-                                    val syncResult = accountRepository.syncProfileData(
-                                        customerId = customerId,
-                                        fullName = trimmedName,
-                                        mobile = "$countryCode$trimmedPhone",
-                                        email = trimmedEmail
-                                    )
-                                ) {
-                                    is ApiResult.Success -> Unit
-                                    is ApiResult.Error -> {
-                                        submitErrorMessage = syncResult.message
-                                        isSubmitting = false
-                                        return@launch
-                                    }
+                                if (customerId <= 0) {
+                                    submitErrorMessage = "Session expired. Please log in again."
+                                    isSubmitting = false
+                                    return@launch
                                 }
 
                                 val request = CreateAccountRequest(

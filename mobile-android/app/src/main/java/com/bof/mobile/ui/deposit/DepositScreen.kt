@@ -19,6 +19,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AttachMoney
 import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -63,11 +64,19 @@ fun DepositScreen(
     onDepositCompleted: () -> Unit = {}
 ) {
     val uiState by featureViewModel.uiState.collectAsState()
-    var accountMenuExpanded by remember { mutableStateOf(false) }
+    var fromAccountMenuExpanded by remember { mutableStateOf(false) }
+    var destinationAccountMenuExpanded by remember { mutableStateOf(false) }
 
-    LaunchedEffect(accountsList, uiState.depositAccountId) {
-        if (uiState.depositAccountId.isBlank() && accountsList.isNotEmpty()) {
-            featureViewModel.onDepositAccountIdChanged(accountsList.first().id.toString())
+    LaunchedEffect(accountsList, uiState.depositFromAccountId, uiState.depositDestinationAccountId) {
+        if (accountsList.isEmpty()) return@LaunchedEffect
+
+        if (uiState.depositFromAccountId.isBlank()) {
+            featureViewModel.onDepositFromAccountIdChanged(accountsList.first().id.toString())
+        }
+
+        if (uiState.depositDestinationAccountId.isBlank()) {
+            val defaultDestination = if (accountsList.size > 1) accountsList[1] else accountsList.first()
+            featureViewModel.onDepositDestinationAccountIdChanged(defaultDestination.id.toString())
         }
     }
 
@@ -81,18 +90,16 @@ fun DepositScreen(
         }
     }
 
-    val selectedAccount = accountsList.firstOrNull { it.id.toString() == uiState.depositAccountId }
-    val effectiveAccount = selectedAccount ?: accountsList.firstOrNull()
-    val accountIdValid = (uiState.depositAccountId.toIntOrNull()?.let { it > 0 } == true) || effectiveAccount != null
+    val selectedFromAccount = accountsList.firstOrNull { it.id.toString() == uiState.depositFromAccountId }
+    val selectedDestinationAccount = accountsList.firstOrNull { it.id.toString() == uiState.depositDestinationAccountId }
+    val fromAccountValid = selectedFromAccount != null
+    val destinationAccountValid = selectedDestinationAccount != null
+    val accountsDifferent =
+        selectedFromAccount != null && selectedDestinationAccount != null && selectedFromAccount.id != selectedDestinationAccount.id
+    val accountSelectionValid = fromAccountValid && destinationAccountValid && accountsDifferent
     val enteredAmount = uiState.depositAmount.toDoubleOrNull() ?: 0.0
     val amountValid = enteredAmount > 0.0
     val summaryAmount = if (amountValid) formatFjd(enteredAmount) else "FJD 0.00"
-
-    LaunchedEffect(effectiveAccount?.id, uiState.depositAccountId) {
-        if (uiState.depositAccountId.isBlank() && effectiveAccount != null) {
-            featureViewModel.onDepositAccountIdChanged(effectiveAccount.id.toString())
-        }
-    }
 
     Box(
         modifier = Modifier
@@ -141,15 +148,38 @@ fun DepositScreen(
             }
 
             AccountSelectorCard(
-                selectedAccount = effectiveAccount,
-                expanded = accountMenuExpanded,
-                onExpandedChange = { accountMenuExpanded = it },
+                label = "From Account",
+                selectedAccount = selectedFromAccount,
+                expanded = fromAccountMenuExpanded,
+                onExpandedChange = { fromAccountMenuExpanded = it },
                 onAccountSelected = {
-                    featureViewModel.onDepositAccountIdChanged(it.id.toString())
-                    accountMenuExpanded = false
+                    featureViewModel.onDepositFromAccountIdChanged(it.id.toString())
+                    fromAccountMenuExpanded = false
                 },
                 accountsList = accountsList
             )
+
+            AccountSelectorCard(
+                label = "Destination Account",
+                selectedAccount = selectedDestinationAccount,
+                expanded = destinationAccountMenuExpanded,
+                onExpandedChange = { destinationAccountMenuExpanded = it },
+                onAccountSelected = {
+                    featureViewModel.onDepositDestinationAccountIdChanged(it.id.toString())
+                    destinationAccountMenuExpanded = false
+                },
+                accountsList = accountsList
+            )
+
+            if (selectedFromAccount != null && selectedDestinationAccount != null && selectedFromAccount.id == selectedDestinationAccount.id) {
+                MessageBanner(
+                    text = "Choose different accounts for From and Destination.",
+                    containerColor = MaterialTheme.colorScheme.errorContainer,
+                    textColor = MaterialTheme.colorScheme.onErrorContainer,
+                    actionLabel = "OK",
+                    onAction = featureViewModel::clearMessages
+                )
+            }
 
             if (accountsList.isEmpty()) {
                 MessageBanner(
@@ -225,6 +255,16 @@ fun DepositScreen(
                     Spacer(modifier = Modifier.height(12.dp))
                     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                     Spacer(modifier = Modifier.height(12.dp))
+                    SummaryRow(
+                        label = "From",
+                        value = selectedFromAccount?.accountNumber?.let { "•••• ${it.takeLast(4)}" } ?: "Not selected"
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    SummaryRow(
+                        label = "Destination",
+                        value = selectedDestinationAccount?.accountNumber?.let { "•••• ${it.takeLast(4)}" } ?: "Not selected"
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
                     SummaryRow(label = "Deposit Amount", value = summaryAmount)
                     if (!uiState.depositNote.isNullOrBlank()) {
                         Spacer(modifier = Modifier.height(8.dp))
@@ -233,12 +273,56 @@ fun DepositScreen(
                 }
             }
 
+            if (uiState.showDepositOtpField) {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.18f)),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+                    shape = MaterialTheme.shapes.large
+                ) {
+                    Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                            Icon(
+                                imageVector = Icons.Filled.Lock,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                            Text(
+                                text = "Verify deposit OTP",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        }
+                        Text(
+                            text = "Enter the OTP sent to your registered mobile number to complete this deposit transfer.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        OutlinedTextField(
+                            value = uiState.depositOtp,
+                            onValueChange = { featureViewModel.onDepositOtpChanged(sanitizeCurrencyInput(it)) },
+                            modifier = Modifier.fillMaxWidth(),
+                            label = { Text("OTP") },
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                            singleLine = true,
+                            shape = MaterialTheme.shapes.medium
+                        )
+                    }
+                }
+            }
+
             Button(
-                onClick = { featureViewModel.deposit() },
+                onClick = {
+                    if (uiState.showDepositOtpField) {
+                        featureViewModel.verifyDepositOtp()
+                    } else {
+                        featureViewModel.deposit()
+                    }
+                },
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(54.dp),
-                enabled = !uiState.isLoading && accountIdValid && amountValid,
+                enabled = !uiState.isLoading && if (uiState.showDepositOtpField) uiState.depositOtp.isNotBlank() else (accountSelectionValid && amountValid),
                 shape = MaterialTheme.shapes.extraLarge,
                 colors = ButtonDefaults.buttonColors(
                     containerColor = MaterialTheme.colorScheme.primary,
@@ -252,7 +336,7 @@ fun DepositScreen(
                         color = MaterialTheme.colorScheme.onPrimary
                     )
                 } else {
-                    Text("Continue", fontWeight = FontWeight.SemiBold)
+                    Text(if (uiState.showDepositOtpField) "Verify & Complete" else "Continue", fontWeight = FontWeight.SemiBold)
                 }
             }
 
@@ -263,6 +347,7 @@ fun DepositScreen(
 
 @Composable
 private fun AccountSelectorCard(
+    label: String,
     selectedAccount: DashboardAccount?,
     expanded: Boolean,
     onExpandedChange: (Boolean) -> Unit,
@@ -270,7 +355,7 @@ private fun AccountSelectorCard(
     accountsList: List<DashboardAccount>
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        SectionLabel(text = "From Account")
+        SectionLabel(text = label)
 
         Box {
             Card(

@@ -37,6 +37,8 @@ import com.bof.mobile.ui.billpayment.BillPaymentScreen
 import com.bof.mobile.ui.dashboard.DashboardScreen
 import com.bof.mobile.ui.deposit.DepositScreen
 import com.bof.mobile.ui.features.FeatureHubScreen
+import com.bof.mobile.ui.funding.FundingScreen
+import com.bof.mobile.ui.statement.StatementScreen
 import com.bof.mobile.ui.transfers.TransferScreen
 import com.bof.mobile.ui.withdraw.WithdrawScreen
 import com.bof.mobile.viewmodel.AccountsViewModel
@@ -52,9 +54,11 @@ private enum class MainTab {
     ACCOUNTS,
     TRANSFERS,
     FEATURES,
+    FUNDING,
     DEPOSIT,
     WITHDRAW,
-    BILL_PAYMENT
+    BILL_PAYMENT,
+    STATEMENT
 }
 
 @Composable
@@ -139,8 +143,9 @@ fun AppRoot() {
             onNavigateToFeatures = { navigateTo(MainTab.FEATURES) },
             onNavigateToDeposit = { navigateTo(MainTab.DEPOSIT) },
             onNavigateToWithdraw = { navigateTo(MainTab.WITHDRAW) },
-            onNavigateToFunding = { navigateTo(MainTab.FEATURES) },
-            onNavigateToBillPayment = { navigateTo(MainTab.BILL_PAYMENT) }
+            onNavigateToFunding = { navigateTo(MainTab.FUNDING) },
+            onNavigateToBillPayment = { navigateTo(MainTab.BILL_PAYMENT) },
+            onNavigateToStatement = { navigateTo(MainTab.STATEMENT) }
         )
         MainTab.CREATE_ACCOUNT -> CreateAccountScreen(
             accountRepository = accountRepository,
@@ -171,6 +176,12 @@ fun AppRoot() {
             canGoBack = navigationHistory.isNotEmpty(),
             onBack = { goBack() }
         )
+        MainTab.FUNDING -> FundingScreen(
+            viewModel = featureViewModel,
+            customerId = customerId,
+            canGoBack = navigationHistory.isNotEmpty(),
+            onBack = { goBack() }
+        )
         MainTab.DEPOSIT -> DepositScreen(
             featureViewModel = featureViewModel,
             accountsList = dashboardState.data?.accounts ?: emptyList(),
@@ -182,9 +193,16 @@ fun AppRoot() {
             featureViewModel = featureViewModel,
             accountsList = dashboardState.data?.accounts ?: emptyList(),
             canGoBack = navigationHistory.isNotEmpty(),
-            onBack = { goBack() }
+            onBack = { goBack() },
+            onWithdrawCompleted = { dashboardViewModel.loadDashboard(customerId) }
         )
         MainTab.BILL_PAYMENT -> BillPaymentScreen(
+            viewModel = featureViewModel,
+            customerId = customerId,
+            canGoBack = navigationHistory.isNotEmpty(),
+            onBack = { goBack() }
+        )
+        MainTab.STATEMENT -> StatementScreen(
             viewModel = featureViewModel,
             customerId = customerId,
             canGoBack = navigationHistory.isNotEmpty(),

@@ -50,7 +50,7 @@ function isAdmin(req) {
 }
 
 function getAuthenticatedCustomerId(req) {
-  return Number(req.auth?.userId || 0);
+  return Number(req.auth?.customerId || 0);
 }
 
 function canAccessCustomer(req, customerId) {
@@ -390,7 +390,7 @@ router.post("/accounts", asyncHandler(async (req, res) => {
   res.status(201).json(toAccountResponse(account));
 }));
 
-router.post("/accounts/request", asyncHandler(async (req, res) => {
+router.post("/accounts/request", requireAuth, asyncHandler(async (req, res) => {
   const payload = req.body || {};
   if (!payload.type) {
     return res.status(400).json({ error: "type is required" });
@@ -399,9 +399,18 @@ router.post("/accounts/request", asyncHandler(async (req, res) => {
     return res.status(400).json({ error: "type must be Simple Access or Savings" });
   }
 
-  const customerId = Number(payload.customerId);
+  const requestedCustomerId = Number(payload.customerId);
+  const authenticatedCustomerId = getAuthenticatedCustomerId(req);
+  const customerId = Number.isFinite(requestedCustomerId) && requestedCustomerId > 0
+    ? requestedCustomerId
+    : authenticatedCustomerId;
+
   if (!Number.isFinite(customerId) || customerId <= 0) {
     return res.status(400).json({ error: "Valid customerId is required" });
+  }
+
+  if (!canAccessCustomer(req, customerId)) {
+    return res.status(403).json({ error: "Forbidden" });
   }
 
   const customer = await Customer.findByPk(customerId);

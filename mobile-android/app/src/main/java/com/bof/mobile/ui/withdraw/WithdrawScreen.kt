@@ -59,7 +59,8 @@ fun WithdrawScreen(
     featureViewModel: FeatureViewModel,
     accountsList: List<DashboardAccount>,
     canGoBack: Boolean,
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    onWithdrawCompleted: () -> Unit = {}
 ) {
     val uiState by featureViewModel.uiState.collectAsState()
     var accountMenuExpanded by remember { mutableStateOf(false) }
@@ -72,6 +73,13 @@ fun WithdrawScreen(
 
     LaunchedEffect(Unit) {
         featureViewModel.clearMessages()
+    }
+
+    LaunchedEffect(uiState.successMessage, uiState.showWithdrawOtpField) {
+        val successMessage = uiState.successMessage ?: return@LaunchedEffect
+        if (successMessage.startsWith("Withdrawal successful")) {
+            onWithdrawCompleted()
+        }
     }
 
     val selectedAccount = accountsList.firstOrNull { it.id.toString() == uiState.withdrawAccountId }

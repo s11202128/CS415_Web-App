@@ -6,7 +6,6 @@ import com.bof.mobile.data.repository.FeatureRepository
 import com.bof.mobile.model.ApiResult
 import com.bof.mobile.model.BillHistoryItem
 import com.bof.mobile.model.BillPaymentRequest
-import com.bof.mobile.model.DepositRequest
 import com.bof.mobile.model.InterestSummaryItem
 import com.bof.mobile.model.InvestmentRequest
 import com.bof.mobile.model.InvestmentItem
@@ -21,6 +20,7 @@ import com.bof.mobile.model.StatementRequestItem
 import com.bof.mobile.model.StatementRequestPayload
 import com.bof.mobile.model.StatementRowItem
 import com.bof.mobile.model.UpdateProfileRequest
+import com.bof.mobile.model.VerifyTransferOtpRequest
 import com.bof.mobile.model.VerifyWithdrawalRequest
 import com.bof.mobile.model.WithdrawRequest
 import java.time.LocalDate
@@ -81,9 +81,13 @@ data class FeatureUiState(
     val investmentMaturityDate: String = "",
     val investments: List<InvestmentItem> = emptyList(),
 
-    val depositAccountId: String = "",
+    val depositFromAccountId: String = "",
+    val depositDestinationAccountId: String = "",
     val depositAmount: String = "",
     val depositNote: String = "",
+    val depositOtp: String = "",
+    val depositTransferId: String? = null,
+    val showDepositOtpField: Boolean = false,
     val withdrawAccountId: String = "",
     val withdrawAmount: String = "",
     val withdrawNote: String = "",
@@ -140,9 +144,11 @@ class FeatureViewModel(private val featureRepository: FeatureRepository) : ViewM
     fun onInvestmentExpectedReturnChanged(value: String) = _uiState.update { it.copy(investmentExpectedReturn = value) }
     fun onInvestmentMaturityDateChanged(value: String) = _uiState.update { it.copy(investmentMaturityDate = value) }
 
-    fun onDepositAccountIdChanged(value: String) = _uiState.update { it.copy(depositAccountId = value) }
+    fun onDepositFromAccountIdChanged(value: String) = _uiState.update { it.copy(depositFromAccountId = value) }
+    fun onDepositDestinationAccountIdChanged(value: String) = _uiState.update { it.copy(depositDestinationAccountId = value) }
     fun onDepositAmountChanged(value: String) = _uiState.update { it.copy(depositAmount = value) }
     fun onDepositNoteChanged(value: String) = _uiState.update { it.copy(depositNote = value) }
+    fun onDepositOtpChanged(value: String) = _uiState.update { it.copy(depositOtp = value) }
     fun onWithdrawAccountIdChanged(value: String) = _uiState.update { it.copy(withdrawAccountId = value) }
     fun onWithdrawAmountChanged(value: String) = _uiState.update { it.copy(withdrawAmount = value) }
     fun onWithdrawNoteChanged(value: String) = _uiState.update { it.copy(withdrawNote = value) }
@@ -570,11 +576,20 @@ class FeatureViewModel(private val featureRepository: FeatureRepository) : ViewM
 
     fun deposit() {
         val state = _uiState.value
-        val accountId = state.depositAccountId.toIntOrNull()
+        val fromAccountId = state.depositFromAccountId.toIntOrNull()
+        val destinationAccountId = state.depositDestinationAccountId.toIntOrNull()
         val amount = state.depositAmount.toDoubleOrNull()
 
-        if (accountId == null || accountId <= 0) {
-            return setError("Please select a valid account")
+        if (fromAccountId == null || fromAccountId <= 0) {
+            return setError("Please select a valid from account")
+        }
+
+        if (destinationAccountId == null || destinationAccountId <= 0) {
+            return setError("Please select a valid destination account")
+        }
+
+        if (fromAccountId == destinationAccountId) {
+            return setError("From and destination accounts must be different")
         }
 
         if (amount == null || amount <= 0) {
@@ -583,13 +598,70 @@ class FeatureViewModel(private val featureRepository: FeatureRepository) : ViewM
 
         viewModelScope.launch {
             setLoading(true)
-            when (val result = featureRepository.deposit(DepositRequest(accountId, amount, state.depositNote.ifBlank { null }))) {
+            when (
+                val result = featureRepository.depositBetweenAccounts(
+                    fromAccountId = fromAccountId,
+                    destinationAccountId = destinationAccountId,
+                    amount = amount,
+                    note = state.depositNote.ifBlank { null }
+                )
+            ) {
+                is ApiResult.Success -> {
+                    if (result.data.requiresOtp) {
+                        _uiState.update {
+                            it.copy(
+                                depositTransferId = result.data.transferId,
+                                showDepositOtpField = true,
+                                successMessage = result.data.message.ifBlank { "OTP verification required" },
+                                errorMessage = null
+                            )
+                        }
+                    } else {
+                        _uiState.update {
+                            it.copy(
+                                depositAmount = "",
+                                depositNote = "",
+                                depositOtp = "",
+                                depositTransferId = null,
+                                showDepositOtpField = false,
+                                successMessage = "Deposit successful - FJD ${String.format("%.2f", amount)}",
+                                errorMessage = null
+                            )
+                        }
+                    }
+                }
+                is ApiResult.Error -> setError(result.message)
+            }
+            setLoading(false)
+        }
+    }
+
+    fun verifyDepositOtp() {
+        val state = _uiState.value
+        val transferId = state.depositTransferId
+        if (transferId.isNullOrBlank()) {
+            return setError("Deposit transfer ID not found")
+        }
+        if (state.depositOtp.isBlank()) {
+            return setError("OTP is required")
+        }
+
+        viewModelScope.launch {
+            setLoading(true)
+            when (
+                val result = featureRepository.verifyTransferOtp(
+                    VerifyTransferOtpRequest(transferId = transferId, otp = state.depositOtp.trim())
+                )
+            ) {
                 is ApiResult.Success -> {
                     _uiState.update {
                         it.copy(
                             depositAmount = "",
                             depositNote = "",
-                            successMessage = "Deposit successful - FJD ${String.format("%.2f", amount)} (Ref ${result.data.transactionId})",
+                            depositOtp = "",
+                            depositTransferId = null,
+                            showDepositOtpField = false,
+                            successMessage = "Deposit successful${result.data.amount?.let { amt -> " - FJD ${String.format("%.2f", amt)}" } ?: ""}",
                             errorMessage = null
                         )
                     }

@@ -22,7 +22,10 @@ import com.bof.mobile.model.ScheduledBillItem
 import com.bof.mobile.model.StatementRequestItem
 import com.bof.mobile.model.StatementRequestPayload
 import com.bof.mobile.model.StatementRowItem
+import com.bof.mobile.model.TransferMoneyRequest
+import com.bof.mobile.model.TransferMoneyResponse
 import com.bof.mobile.model.UpdateProfileRequest
+import com.bof.mobile.model.VerifyTransferOtpRequest
 import com.bof.mobile.model.VerifyWithdrawalRequest
 import com.bof.mobile.model.WithdrawRequest
 import com.bof.mobile.model.WithdrawResponse
@@ -110,12 +113,33 @@ class FeatureRepository(private val apiService: ApiService) {
         apiService.deposit(request)
     }
 
+    suspend fun depositBetweenAccounts(
+        fromAccountId: Int,
+        destinationAccountId: Int,
+        amount: Double,
+        note: String?
+    ): ApiResult<TransferMoneyResponse> = safeCall {
+        apiService.transfer(
+            TransferMoneyRequest(
+                fromAccount = fromAccountId,
+                transferType = "internal",
+                toAccount = destinationAccountId,
+                amount = amount,
+                note = note
+            )
+        )
+    }
+
     suspend fun withdraw(request: WithdrawRequest): ApiResult<WithdrawResponse> = safeCall {
         apiService.withdraw(request)
     }
 
     suspend fun verifyWithdrawal(request: VerifyWithdrawalRequest): ApiResult<WithdrawResponse> = safeCall {
         apiService.verifyWithdrawal(request)
+    }
+
+    suspend fun verifyTransferOtp(request: VerifyTransferOtpRequest): ApiResult<TransferMoneyResponse> = safeCall {
+        apiService.verifyTransferOtp(request)
     }
 
     private suspend fun <T> safeCall(block: suspend () -> T): ApiResult<T> {

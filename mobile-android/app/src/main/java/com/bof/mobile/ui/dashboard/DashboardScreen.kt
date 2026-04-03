@@ -19,8 +19,10 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CreditCard
+import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Security
+import androidx.compose.material.icons.filled.Timeline
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -32,6 +34,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.foundation.Image
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -45,11 +48,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.bof.mobile.R
 import com.bof.mobile.model.NotificationItem
+import com.bof.mobile.model.ProfileResponse
 import com.bof.mobile.viewmodel.DashboardViewModel
 import com.bof.mobile.viewmodel.FeatureViewModel
 
@@ -72,29 +78,25 @@ fun DashboardScreen(
     onNavigateToDeposit: () -> Unit = {},
     onNavigateToWithdraw: () -> Unit = {},
     onNavigateToFunding: () -> Unit = {},
-    onNavigateToBillPayment: () -> Unit = {}
+    onNavigateToBillPayment: () -> Unit = {},
+    onNavigateToStatement: () -> Unit = {}
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val featureUiState by featureViewModel.uiState.collectAsState()
     var showBalance by remember { mutableStateOf(true) }
     var showNotifications by remember { mutableStateOf(false) }
-    var showSettings by remember { mutableStateOf(false) }
+    var showProfile by remember { mutableStateOf(false) }
     var txFilter by remember { mutableStateOf(DashboardTxFilter.ALL) }
 
     LaunchedEffect(customerId) {
         viewModel.loadDashboard(customerId)
         featureViewModel.loadNotifications(customerId)
+        featureViewModel.loadProfile(customerId)
     }
 
     LaunchedEffect(showNotifications, customerId) {
         if (showNotifications) {
             featureViewModel.loadNotifications(customerId)
-        }
-    }
-
-    LaunchedEffect(showSettings, customerId) {
-        if (showSettings) {
-            featureViewModel.loadProfile(customerId)
         }
     }
 
@@ -158,8 +160,8 @@ fun DashboardScreen(
         val filteredTransactions = data.recentTransactions.filter { tx ->
             when (txFilter) {
                 DashboardTxFilter.ALL -> true
-                DashboardTxFilter.INCOME -> isIncomeTransaction(tx.type, tx.amount)
-                DashboardTxFilter.EXPENSE -> !isIncomeTransaction(tx.type, tx.amount)
+                DashboardTxFilter.INCOME -> isIncomeTransaction(tx.type, tx.description, tx.amount)
+                DashboardTxFilter.EXPENSE -> !isIncomeTransaction(tx.type, tx.description, tx.amount)
             }
         }
 
@@ -181,9 +183,10 @@ fun DashboardScreen(
             item {
                 HeaderSection(
                     name = data.customer.fullName,
+                    profile = featureUiState.profile,
                     notificationCount = featureUiState.notifications.size,
                     onOpenNotifications = { showNotifications = true },
-                    onOpenProfile = { showSettings = true },
+                    onOpenProfile = { showProfile = true },
                     onLogout = onLogout
                 )
             }
@@ -237,7 +240,11 @@ fun DashboardScreen(
                         title = filteredTransactions[idx].description.ifBlank { filteredTransactions[idx].type },
                         subtitle = filteredTransactions[idx].type,
                         amount = filteredTransactions[idx].amount,
-                        isIncome = isIncomeTransaction(filteredTransactions[idx].type, filteredTransactions[idx].amount)
+                        isIncome = isIncomeTransaction(
+                            filteredTransactions[idx].type,
+                            filteredTransactions[idx].description,
+                            filteredTransactions[idx].amount
+                        )
                     )
                 }
             }
@@ -251,9 +258,9 @@ fun DashboardScreen(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .fillMaxWidth(),
-            onWallet = onNavigateToAccounts,
+            onStatement = onNavigateToStatement,
             onReport = onNavigateToFeatures,
-            onAccount = onNavigateToAccounts
+            onActivity = onNavigateToAccounts
         )
 
         if (showNotifications) {
@@ -264,51 +271,11 @@ fun DashboardScreen(
             )
         }
 
-        if (showSettings) {
-            SettingsPanel(
-                uiState = featureUiState,
-                onFullNameChanged = featureViewModel::onFullNameChanged,
-                onMobileChanged = featureViewModel::onMobileChanged,
-                onNationalIdChanged = featureViewModel::onNationalIdChanged,
-                onResidencyStatusChanged = featureViewModel::onResidencyStatusChanged,
-                onTinChanged = featureViewModel::onTinChanged,
-                onUpdateProfile = featureViewModel::updateProfile,
-                onSendPasswordReset = featureViewModel::forgotPassword,
-                onDismiss = { showSettings = false }
+        if (showProfile && featureUiState.profile != null) {
+            ProfilePanel(
+                profile = featureUiState.profile!!,
+                onDismiss = { showProfile = false }
             )
-        }
-    }
-}
-
-@Composable
-private fun FeaturesTabSection(
-    onNavigateToTransfers: () -> Unit,
-    onNavigateToFeatures: () -> Unit
-) {
-    Column(modifier = Modifier
-        .fillMaxWidth()
-        .padding(vertical = 8.dp)) {
-        Text("Features", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-        Spacer(modifier = Modifier.height(8.dp))
-        Row(modifier = Modifier.fillMaxWidth()) {
-            FeatureButton("Transfer", onClick = onNavigateToTransfers)
-            FeatureButton("Pay Bills", onClick = onNavigateToFeatures)
-        }
-        Row(modifier = Modifier.fillMaxWidth()) {
-            FeatureButton("Statements", onClick = onNavigateToFeatures)
-            FeatureButton("Profile", onClick = onNavigateToFeatures)
-        }
-        Row(modifier = Modifier.fillMaxWidth()) {
-            FeatureButton("Notifications", onClick = onNavigateToFeatures)
-            FeatureButton("Loans", onClick = onNavigateToFeatures)
-        }
-        Row(modifier = Modifier.fillMaxWidth()) {
-            FeatureButton("Investments", onClick = onNavigateToFeatures)
-            FeatureButton("Interest", onClick = onNavigateToFeatures)
-        }
-        Row(modifier = Modifier.fillMaxWidth()) {
-            FeatureButton("Password Reset", onClick = onNavigateToFeatures)
-            Spacer(modifier = Modifier.weight(1f).padding(horizontal = 4.dp))
         }
     }
 }
@@ -316,6 +283,7 @@ private fun FeaturesTabSection(
 @Composable
 private fun HeaderSection(
     name: String,
+    profile: ProfileResponse?,
     notificationCount: Int,
     onOpenNotifications: () -> Unit,
     onOpenProfile: () -> Unit,
@@ -328,12 +296,26 @@ private fun HeaderSection(
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Surface(
-                modifier = Modifier.size(46.dp),
+                modifier = Modifier
+                    .size(46.dp),
                 shape = MaterialTheme.shapes.large,
                 color = MaterialTheme.colorScheme.secondaryContainer
             ) {
-                Box(contentAlignment = Alignment.Center) {
-                    Text("👤", style = MaterialTheme.typography.titleMedium)
+                Button(
+                    onClick = onOpenProfile,
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                        contentColor = MaterialTheme.colorScheme.onSecondaryContainer
+                    ),
+                    elevation = ButtonDefaults.buttonElevation(defaultElevation = 0.dp)
+                ) {
+                    Image(
+                        painter = painterResource(id = R.drawable.app_image),
+                        contentDescription = "Profile",
+                        modifier = Modifier.size(22.dp)
+                    )
                 }
             }
             Spacer(modifier = Modifier.size(10.dp))
@@ -355,7 +337,6 @@ private fun HeaderSection(
 
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             SmallIconActionButton(symbol = "🔔", badgeCount = notificationCount, onClick = onOpenNotifications)
-            SmallIconActionButton(symbol = "⚙", onClick = onOpenProfile)
             SmallIconActionButton(symbol = "⎋", onClick = onLogout)
         }
     }
@@ -390,6 +371,39 @@ private fun SmallIconActionButton(symbol: String, badgeCount: Int = 0, onClick: 
                     modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp)
                 )
             }
+        }
+    }
+}
+
+@Composable
+private fun RowScope.ProfileStatusChip(label: String, verified: Boolean? = null, value: String? = null) {
+    Card(
+        modifier = Modifier
+            .weight(1f)
+            .height(28.dp),
+        shape = MaterialTheme.shapes.small,
+        colors = CardDefaults.cardColors(
+            containerColor = when {
+                verified == true -> MaterialTheme.colorScheme.tertiaryContainer
+                verified == false -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
+                else -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
+            }
+        ),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+    ) {
+        Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
+            Text(
+                text = when {
+                    verified != null -> if (verified) "✓ $label" else "○ $label"
+                    value != null -> "$label: $value"
+                    else -> label
+                },
+                style = MaterialTheme.typography.labelSmall,
+                color = when {
+                    verified == true -> MaterialTheme.colorScheme.onTertiaryContainer
+                    else -> MaterialTheme.colorScheme.onSurfaceVariant
+                }
+            )
         }
     }
 }
@@ -740,6 +754,111 @@ private fun NotificationRow(item: NotificationItem) {
 }
 
 @Composable
+private fun ProfilePanel(
+    profile: ProfileResponse,
+    onDismiss: () -> Unit
+) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color.Black.copy(alpha = 0.35f))
+            .padding(16.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+            elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
+        ) {
+            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Surface(
+                            modifier = Modifier.size(40.dp),
+                            shape = MaterialTheme.shapes.medium,
+                            color = MaterialTheme.colorScheme.secondaryContainer
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Text("👤", style = MaterialTheme.typography.titleMedium)
+                            }
+                        }
+                        Spacer(modifier = Modifier.size(12.dp))
+                        Column {
+                            Text(
+                                "Profile",
+                                style = MaterialTheme.typography.titleLarge,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Text(
+                                profile.email,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                    Button(onClick = onDismiss) {
+                        Text("Close")
+                    }
+                }
+
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = MaterialTheme.shapes.large,
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.30f)),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+                ) {
+                    Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                            ProfileStatusChip(label = "Email verified", verified = profile.emailVerified)
+                            ProfileStatusChip(label = "Identity verified", verified = profile.identityVerified)
+                        }
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                            ProfileStatusChip(label = "Failed logins", value = profile.failedLoginAttempts.toString())
+                            ProfileStatusChip(label = "Registration", value = profile.registrationStatus)
+                        }
+
+                        if (!profile.lastLoginAt.isNullOrBlank()) {
+                            Text(
+                                text = "Last login: ${profile.lastLoginAt}",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+
+                        Text(
+                            text = "Name: ${profile.fullName}",
+                            style = MaterialTheme.typography.bodyMedium
+                        )
+                        Text(
+                            text = "Mobile: ${profile.mobile}",
+                            style = MaterialTheme.typography.bodyMedium
+                        )
+
+                        if (!profile.lockedUntil.isNullOrBlank()) {
+                            Card(
+                                modifier = Modifier.fillMaxWidth(),
+                                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)
+                            ) {
+                                Text(
+                                    text = "Account locked until ${profile.lockedUntil}",
+                                    modifier = Modifier.padding(12.dp),
+                                    color = MaterialTheme.colorScheme.onErrorContainer,
+                                    style = MaterialTheme.typography.bodySmall
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
 private fun BalanceCard(
     balance: Double,
     showBalance: Boolean,
@@ -948,9 +1067,9 @@ private fun TransactionItemRow(title: String, subtitle: String, amount: Double, 
 @Composable
 private fun DashboardFooter(
     modifier: Modifier = Modifier,
-    onWallet: () -> Unit,
+    onStatement: () -> Unit,
     onReport: () -> Unit,
-    onAccount: () -> Unit
+    onActivity: () -> Unit
 ) {
     Card(
         modifier = modifier,
@@ -965,15 +1084,15 @@ private fun DashboardFooter(
             verticalAlignment = Alignment.CenterVertically
         ) {
             BottomNavItem(symbol = "🏠", label = "Home", active = true, onClick = {})
-            BottomNavItem(symbol = "👛", label = "Wallet", active = false, onClick = onWallet)
+            BottomNavItem(icon = Icons.Filled.Description, label = "Statement", active = false, onClick = onStatement)
             BottomNavItem(symbol = "📊", label = "Report", active = false, onClick = onReport)
-            BottomNavItem(symbol = "👤", label = "Account", active = false, onClick = onAccount)
+            BottomNavItem(icon = Icons.Filled.Timeline, label = "Activity", active = false, onClick = onActivity)
         }
     }
 }
 
 @Composable
-private fun RowScope.BottomNavItem(symbol: String, label: String, active: Boolean, onClick: () -> Unit) {
+private fun RowScope.BottomNavItem(symbol: String? = null, icon: androidx.compose.ui.graphics.vector.ImageVector? = null, label: String, active: Boolean, onClick: () -> Unit) {
     Button(
         onClick = onClick,
         modifier = Modifier
@@ -987,16 +1106,39 @@ private fun RowScope.BottomNavItem(symbol: String, label: String, active: Boolea
         contentPadding = androidx.compose.foundation.layout.PaddingValues(vertical = 6.dp)
     ) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Text(symbol)
+            if (icon != null) {
+                Icon(imageVector = icon, contentDescription = label)
+            } else {
+                Text(symbol.orEmpty())
+            }
             Text(label, style = MaterialTheme.typography.labelSmall)
         }
     }
 }
 
-private fun isIncomeTransaction(type: String, amount: Double): Boolean {
-    val normalized = type.lowercase()
-    if (normalized.contains("deposit") || normalized.contains("credit") || normalized.contains("income")) return true
-    if (normalized.contains("withdraw") || normalized.contains("debit") || normalized.contains("expense") || normalized.contains("payment")) return false
+private fun isIncomeTransaction(type: String, description: String, amount: Double): Boolean {
+    val normalized = "${type.lowercase()} ${description.lowercase()}"
+    if (
+        normalized.contains("deposit") ||
+        normalized.contains("credit") ||
+        normalized.contains("income") ||
+        normalized.contains("salary") ||
+        normalized.contains("refund") ||
+        normalized.contains("cash in") ||
+        normalized.contains("transfer in") ||
+        normalized.contains("received") ||
+        normalized.contains("interest")
+    ) return true
+    if (
+        normalized.contains("withdraw") ||
+        normalized.contains("debit") ||
+        normalized.contains("expense") ||
+        normalized.contains("payment") ||
+        normalized.contains("bill") ||
+        normalized.contains("fee") ||
+        normalized.contains("transfer out") ||
+        normalized.contains("sent")
+    ) return false
     return amount >= 0
 }
 

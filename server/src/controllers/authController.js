@@ -7,6 +7,7 @@ function buildAuthResponse(user) {
   const token = jwt.sign(
     {
       userId: user.userId,
+      customerId: user.customerId,
       email: user.email,
       fullName: user.fullName,
       isAdmin: Boolean(user.isAdmin),

@@ -14,6 +14,7 @@ function requireAuth(req, res, next) {
     const decoded = jwt.verify(token, JWT_SECRET);
     req.auth = {
       userId: Number(decoded.userId),
+      customerId: Number(decoded.customerId || 0),
       email: decoded.email,
       fullName: decoded.fullName,
       isAdmin: Boolean(decoded.isAdmin),
