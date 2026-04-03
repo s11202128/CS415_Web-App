@@ -28,6 +28,7 @@ import com.bof.mobile.data.repository.AuthRepository
 import com.bof.mobile.data.repository.DashboardRepository
 import com.bof.mobile.data.repository.FeatureRepository
 import com.bof.mobile.data.repository.TransferRepository
+import com.bof.mobile.model.DashboardAccount
 import com.bof.mobile.ui.accounts.AccountsScreen
 import com.bof.mobile.ui.accounts.CreateAccountScreen
 import com.bof.mobile.ui.admin.AdminDashboardScreen
@@ -120,6 +121,17 @@ fun AppRoot() {
 
     val customerId = authState.customerId ?: 0
     val dashboardState by dashboardViewModel.uiState.collectAsState()
+    val accountsState by accountsViewModel.uiState.collectAsState()
+    val transferAccounts = accountsState.accounts.map {
+        DashboardAccount(
+            id = it.id,
+            accountNumber = it.accountNumber,
+            accountHolder = it.accountHolder,
+            accountType = it.type,
+            balance = it.balance,
+            status = it.status
+        )
+    }
 
     if (authState.isAdmin) {
         AdminDashboardScreen(
@@ -165,7 +177,7 @@ fun AppRoot() {
         )
         MainTab.TRANSFERS -> TransferScreen(
             viewModel = transferViewModel,
-            accountsList = dashboardState.data?.accounts ?: emptyList(),
+            accountsList = transferAccounts,
             canGoBack = navigationHistory.isNotEmpty(),
             onBack = { goBack() },
             onTransferCompleted = { dashboardViewModel.loadDashboard(customerId) }
@@ -213,6 +225,10 @@ fun AppRoot() {
     LaunchedEffect(activeTab, customerId) {
         if ((activeTab == MainTab.DEPOSIT || activeTab == MainTab.WITHDRAW) && dashboardState.data == null) {
             dashboardViewModel.loadDashboard(customerId)
+        }
+
+        if (activeTab == MainTab.TRANSFERS && accountsState.accounts.isEmpty()) {
+            accountsViewModel.loadAccounts()
         }
     }
 }

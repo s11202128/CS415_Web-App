@@ -1,8 +1,8 @@
 package com.bof.mobile.data.repository
 
 import com.bof.mobile.data.remote.ApiService
-import com.bof.mobile.model.ApiResult
 import com.bof.mobile.model.DashboardResponse
+import com.bof.mobile.model.ApiResult
 import retrofit2.HttpException
 import java.io.IOException
 
