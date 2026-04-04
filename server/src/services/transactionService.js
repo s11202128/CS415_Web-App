@@ -1,11 +1,12 @@
 const { Account, Transaction, OtpVerification } = require("../models");
 const { addNotification } = require("../store-mysql");
+const { sendSms } = require("./smsService");
 const sequelize = require("../config/database");
 const crypto = require("crypto");
 
-const OTP_EXPIRY_MINUTES = 5;
+const OTP_EXPIRY_MINUTES = 3;
 const OTP_MAX_ATTEMPTS = 3;
-const TRANSFER_OTP_THRESHOLD = 1000;
+let TRANSFER_OTP_THRESHOLD = Number(process.env.TRANSFER_OTP_THRESHOLD || 1000);
 const TRANSFER_DAILY_LIMIT = 10000;
 
 function makeSixDigitCode() {
@@ -34,6 +35,42 @@ function canAccessAccount(account, actor = {}) {
   }
   const actorCustomerId = Number(actor?.customerId || 0);
   return actorCustomerId > 0 && actorCustomerId === Number(account?.customerId || 0);
+}
+
+function normalizeFijiPhoneNumber(phoneNumber) {
+  const raw = String(phoneNumber || "").trim();
+  if (!raw) return "";
+  if (raw.startsWith("+")) return raw;
+
+  const digits = raw.replace(/\D/g, "");
+  if (!digits) return raw;
+
+  if (digits.startsWith("679")) {
+    return `+${digits}`;
+  }
+
+  if (digits.startsWith("0") && digits.length >= 8) {
+    return `+679${digits.replace(/^0+/, "")}`;
+  }
+
+  if (digits.length === 7 || digits.length === 8) {
+    return `+679${digits}`;
+  }
+
+  return `+${digits}`;
+}
+
+function getTransferOtpThreshold() {
+  return TRANSFER_OTP_THRESHOLD;
+}
+
+function setTransferOtpThreshold(value) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    throw new Error("Transfer OTP threshold must be greater than 0");
+  }
+  TRANSFER_OTP_THRESHOLD = parsed;
+  return TRANSFER_OTP_THRESHOLD;
 }
 
 /**
@@ -341,6 +378,7 @@ async function completeTransferNow({
   recipientName,
   bankName,
   accountNumber,
+  pendingDebitTransactionId,
   actor,
 }) {
   let sourceCustomerId = null;
@@ -381,19 +419,52 @@ async function completeTransferNow({
         ? `${note || `Transfer to ${recipientName || accountNumber || bankName || "external recipient"}`}`
         : `${note || `Transfer to account ${toAccountId}`}`;
 
-    const debitTx = await Transaction.create(
-      {
-        accountId: sourceAccount.id,
-        accountNumber: sourceAccount.accountNumber,
-        type: "debit",
-        amount,
-        description: sourceDescription,
-        status: "completed",
-        balanceAfter: sourceBalanceAfter,
-      },
-      { transaction: dbTx }
-    );
-    debitTransactionId = debitTx.id;
+    if (pendingDebitTransactionId) {
+      const pendingTx = await Transaction.findByPk(pendingDebitTransactionId, {
+        transaction: dbTx,
+        lock: dbTx.LOCK.UPDATE,
+      });
+      if (!pendingTx) {
+        throw new Error("Pending transaction not found");
+      }
+      if (String(pendingTx.status || "").toLowerCase() !== "pending") {
+        throw new Error("Pending transaction is no longer valid");
+      }
+      if (Number(pendingTx.accountId) !== Number(sourceAccount.id)) {
+        throw new Error("Pending transaction account mismatch");
+      }
+
+      await pendingTx.update(
+        {
+          type: "debit",
+          transactionType: "debit",
+          amount,
+          description: sourceDescription,
+          status: "completed",
+          date: new Date(),
+          balanceAfter: sourceBalanceAfter,
+          balance: sourceBalanceAfter,
+        },
+        { transaction: dbTx }
+      );
+      debitTransactionId = pendingTx.id;
+    } else {
+      const debitTx = await Transaction.create(
+        {
+          accountId: sourceAccount.id,
+          accountNumber: sourceAccount.accountNumber,
+          type: "debit",
+          transactionType: "debit",
+          amount,
+          description: sourceDescription,
+          status: "completed",
+          balanceAfter: sourceBalanceAfter,
+          balance: sourceBalanceAfter,
+        },
+        { transaction: dbTx }
+      );
+      debitTransactionId = debitTx.id;
+    }
 
     if (transferMode === "internal") {
       const destinationAccount = await Account.findByPk(toAccountId, {
@@ -454,6 +525,7 @@ async function completeTransferNow({
   return {
     success: true,
     message: "Transfer successful",
+    otpRequired: false,
     requiresOtp: false,
     transferId: null,
     transactionId: debitTransactionId,
@@ -479,24 +551,74 @@ async function initiateBankTransfer(payload, actor = {}) {
     throw new Error("Amount exceeds daily transfer limit");
   }
 
+  const sourceAccount = await Account.findByPk(fromAccountId);
+  if (!sourceAccount) {
+    throw new Error("Source account not found");
+  }
+  if (!canAccessAccount(sourceAccount, actor)) {
+    throw new Error("Forbidden: source account is not owned by authenticated user");
+  }
+  if (["frozen", "suspended", "closed"].includes(String(sourceAccount.status || "").toLowerCase())) {
+    throw new Error("Source account is not available for transfers");
+  }
+  if (parseFloat(sourceAccount.balance) < amount) {
+    throw new Error("Insufficient funds");
+  }
+
   if (transferMode === "internal") {
     const toAccountId = Number(payload.toAccount || payload.toAccountId || 0);
     if (!Number.isFinite(toAccountId) || toAccountId <= 0) {
       throw new Error("Destination account is required for internal transfers");
     }
 
-    if (amount > TRANSFER_OTP_THRESHOLD) {
+    const destinationAccount = await Account.findByPk(toAccountId);
+    if (!destinationAccount) {
+      throw new Error("Destination account not found");
+    }
+    if (!Boolean(actor?.isAdmin) && Number(destinationAccount.customerId) !== Number(sourceAccount.customerId)) {
+      throw new Error("Forbidden: internal transfers are only allowed between your own accounts");
+    }
+    if (Number(destinationAccount.id) === Number(sourceAccount.id)) {
+      throw new Error("Transfer accounts must be different");
+    }
+    if (["frozen", "suspended", "closed"].includes(String(destinationAccount.status || "").toLowerCase())) {
+      throw new Error("Destination account is not available for transfers");
+    }
+
+    const pendingTx = await Transaction.create({
+      accountId: sourceAccount.id,
+      accountNumber: sourceAccount.accountNumber,
+      type: "debit",
+      transactionType: "debit",
+      amount,
+      description: note || `Pending transfer to account ${toAccountId}`,
+      status: "pending",
+      date: new Date(),
+      balanceAfter: Number(sourceAccount.balance),
+      balance: Number(sourceAccount.balance),
+    });
+
+    if (amount > getTransferOtpThreshold()) {
       return await createTransferOtp({
         fromAccountId,
         transferMode,
         toAccountId,
         amount,
         note,
+        pendingTransactionId: pendingTx.id,
         actor,
       });
     }
 
-    return await completeTransferNow({ fromAccountId, toAccountId, transferMode, amount, note, actor });
+    return await completeTransferNow({
+      fromAccountId,
+      toAccountId,
+      transferMode,
+      amount,
+      note,
+      pendingDebitTransactionId: pendingTx.id,
+      actor,
+    });
   }
 
   const recipientName = String(payload.recipientName || "").trim();
@@ -507,7 +629,20 @@ async function initiateBankTransfer(payload, actor = {}) {
   if (!bankName) throw new Error("Bank name is required for external transfers");
   if (!accountNumber) throw new Error("Account number is required for external transfers");
 
-  if (amount > TRANSFER_OTP_THRESHOLD) {
+  const pendingTx = await Transaction.create({
+    accountId: sourceAccount.id,
+    accountNumber: sourceAccount.accountNumber,
+    type: "debit",
+    transactionType: "debit",
+    amount,
+    description: note || `Pending transfer to ${recipientName}`,
+    status: "pending",
+    date: new Date(),
+    balanceAfter: Number(sourceAccount.balance),
+    balance: Number(sourceAccount.balance),
+  });
+
+  if (amount > getTransferOtpThreshold()) {
     return await createTransferOtp({
       fromAccountId,
       transferMode,
@@ -516,6 +651,7 @@ async function initiateBankTransfer(payload, actor = {}) {
       recipientName,
       bankName,
       accountNumber,
+      pendingTransactionId: pendingTx.id,
       actor,
     });
   }
@@ -528,11 +664,23 @@ async function initiateBankTransfer(payload, actor = {}) {
     recipientName,
     bankName,
     accountNumber,
+    pendingDebitTransactionId: pendingTx.id,
     actor,
   });
 }
 
-async function createTransferOtp({ fromAccountId, transferMode, toAccountId, amount, note, recipientName, bankName, accountNumber, actor }) {
+async function createTransferOtp({
+  fromAccountId,
+  transferMode,
+  toAccountId,
+  amount,
+  note,
+  recipientName,
+  bankName,
+  accountNumber,
+  pendingTransactionId,
+  actor,
+}) {
   const transferId = `TRF-${Date.now()}-${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
   const otp = makeSixDigitCode();
   const hashedOtp = hashOtp(otp);
@@ -551,9 +699,24 @@ async function createTransferOtp({ fromAccountId, transferMode, toAccountId, amo
     if (!destinationAccount) {
       throw new Error("Destination account not found");
     }
+    if (Number(destinationAccount.id) === Number(sourceAccount.id)) {
+      throw new Error("Transfer accounts must be different");
+    }
     if (!Boolean(actor?.isAdmin) && Number(destinationAccount.customerId) !== Number(sourceAccount.customerId)) {
       throw new Error("Forbidden: internal transfers are only allowed between your own accounts");
     }
+    if (["frozen", "suspended", "closed"].includes(String(destinationAccount.status || "").toLowerCase())) {
+      throw new Error("Destination account is not available for transfers");
+    }
+  }
+
+  if (!Number.isFinite(Number(pendingTransactionId)) || Number(pendingTransactionId) <= 0) {
+    throw new Error("Pending transaction ID is required");
+  }
+
+  const pendingTx = await Transaction.findByPk(Number(pendingTransactionId));
+  if (!pendingTx || String(pendingTx.status || "").toLowerCase() !== "pending") {
+    throw new Error("Pending transaction not found");
   }
 
   await OtpVerification.create({
@@ -570,6 +733,7 @@ async function createTransferOtp({ fromAccountId, transferMode, toAccountId, amo
       bankName: bankName || null,
       accountNumber: accountNumber || null,
       note: note || "",
+      pendingTransactionId: Number(pendingTransactionId),
     }),
     expiresAt: new Date(Date.now() + OTP_EXPIRY_MINUTES * 60 * 1000),
     verified: false,
@@ -577,18 +741,26 @@ async function createTransferOtp({ fromAccountId, transferMode, toAccountId, amo
     maxAttempts: OTP_MAX_ATTEMPTS,
   });
 
-  await addNotification(
-    sourceAccount.customerId,
-    `OTP ${otp} for transfer of FJD ${amount.toFixed(2)} from account ${sourceAccount.id}.`,
-    "OTP_VERIFICATION"
-  );
+  const customer = await sourceAccount.getCustomer();
+  const recipientMobile = normalizeFijiPhoneNumber(customer?.mobile);
+  if (!recipientMobile) {
+    throw new Error("Customer mobile number is missing for OTP delivery");
+  }
+
+  await sendSms({
+    to: recipientMobile,
+    message: `Your OTP is ${otp}. It expires in ${OTP_EXPIRY_MINUTES} minutes. Ref: ${transferId}`,
+  });
 
   return {
     success: true,
     message: "OTP verification required",
+    otpRequired: true,
     requiresOtp: true,
     transferId,
+    transactionId: pendingTransactionId,
     attemptsRemaining: OTP_MAX_ATTEMPTS,
+    expiresInSeconds: OTP_EXPIRY_MINUTES * 60,
   };
 }
 
@@ -607,7 +779,7 @@ async function verifyBankTransferOtp({ transferId, otp, actor }) {
     throw new Error("Forbidden: cannot verify this transfer");
   }
   if (pending.verified) {
-    throw new Error("Transfer already verified");
+    throw new Error("OTP already used for this transaction");
   }
   if (new Date(pending.expiresAt).getTime() < Date.now()) {
     throw new Error("OTP has expired");
@@ -637,6 +809,7 @@ async function verifyBankTransferOtp({ transferId, otp, actor }) {
     recipientName: metadata.recipientName,
     bankName: metadata.bankName,
     accountNumber: metadata.accountNumber,
+    pendingDebitTransactionId: metadata.pendingTransactionId,
     actor,
   });
 
@@ -644,6 +817,7 @@ async function verifyBankTransferOtp({ transferId, otp, actor }) {
   return {
     success: true,
     message: "Transfer verified successfully",
+    otpRequired: false,
     transferId: pending.referenceCode,
     ...result,
   };
@@ -655,4 +829,6 @@ module.exports = {
   verifyWithdrawalOtp,
   initiateBankTransfer,
   verifyBankTransferOtp,
+  getTransferOtpThreshold,
+  setTransferOtpThreshold,
 };

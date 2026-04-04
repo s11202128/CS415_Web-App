@@ -15,6 +15,15 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
+sealed class OtpState {
+    data object Idle : OtpState()
+    data object Sending : OtpState()
+    data class OtpSent(val transferId: String, val message: String? = null) : OtpState()
+    data object Verifying : OtpState()
+    data class Verified(val message: String) : OtpState()
+    data class Error(val message: String) : OtpState()
+}
+
 data class TransferUiState(
     val accounts: List<AccountItem> = emptyList(),
     val accountsLoading: Boolean = false,
@@ -29,7 +38,9 @@ data class TransferUiState(
     val note: String = "",
     val otp: String = "",
     val transferId: String? = null,
+    val pendingTransactionId: Long? = null,
     val requiresOtp: Boolean = false,
+    val otpState: OtpState = OtpState.Idle,
     val isLoading: Boolean = false,
     val successMessage: String? = null,
     val errorMessage: String? = null,
@@ -89,7 +100,9 @@ class TransferViewModel(
             externalAccountNumber = "",
             otp = "",
             transferId = null,
+            pendingTransactionId = null,
             requiresOtp = false,
+            otpState = OtpState.Idle,
             errorMessage = null,
             successMessage = null,
             latestServerResponse = null
@@ -140,6 +153,7 @@ class TransferViewModel(
         }
 
         viewModelScope.launch {
+            _uiState.update { it.copy(otpState = OtpState.Sending, errorMessage = null, successMessage = null) }
             setLoading(true)
             val request = TransferMoneyRequest(
                 fromAccount = fromAccountId,
@@ -154,7 +168,10 @@ class TransferViewModel(
 
             when (val result = transferRepository.transfer(request)) {
                 is ApiResult.Success -> handleTransferSuccess(result.data, amount)
-                is ApiResult.Error -> setError(result.message)
+                is ApiResult.Error -> {
+                    _uiState.update { it.copy(otpState = OtpState.Error(result.message)) }
+                    setError(result.message)
+                }
             }
             setLoading(false)
         }
@@ -171,6 +188,7 @@ class TransferViewModel(
         }
 
         viewModelScope.launch {
+            _uiState.update { it.copy(otpState = OtpState.Verifying, errorMessage = null) }
             setLoading(true)
             when (val result = transferRepository.verifyTransferOtp(VerifyTransferOtpRequest(transferId, state.otp.trim()))) {
                 is ApiResult.Success -> {
@@ -185,7 +203,9 @@ class TransferViewModel(
                             note = "",
                             otp = "",
                             transferId = null,
+                            pendingTransactionId = null,
                             requiresOtp = false,
+                            otpState = OtpState.Verified(result.data.message.ifBlank { "Transfer verified successfully" }),
                             successMessage = result.data.message,
                             errorMessage = null,
                             latestServerResponse = result.data,
@@ -193,9 +213,32 @@ class TransferViewModel(
                         )
                     }
                 }
-                is ApiResult.Error -> setError(result.message)
+                is ApiResult.Error -> {
+                    _uiState.update { current ->
+                        current.copy(
+                            otpState = OtpState.Error(result.message),
+                            requiresOtp = true,
+                            errorMessage = result.message,
+                            successMessage = null
+                        )
+                    }
+                }
             }
             setLoading(false)
+        }
+    }
+
+    fun resetOtpFlow() {
+        _uiState.update {
+            it.copy(
+                otp = "",
+                transferId = null,
+                pendingTransactionId = null,
+                requiresOtp = false,
+                otpState = OtpState.Idle,
+                errorMessage = null,
+                successMessage = null
+            )
         }
     }
 
@@ -214,11 +257,26 @@ class TransferViewModel(
     }
 
     private fun handleTransferSuccess(response: TransferMoneyResponse, amount: Double) {
-        if (response.requiresOtp) {
+        val otpRequired = response.otpRequired ?: response.requiresOtp
+        if (otpRequired) {
+            val transferId = response.transferId
+            if (transferId.isNullOrBlank()) {
+                _uiState.update {
+                    it.copy(
+                        otpState = OtpState.Error("OTP required but transfer reference was missing"),
+                        errorMessage = "OTP required but transfer reference was missing",
+                        successMessage = null,
+                        requiresOtp = false
+                    )
+                }
+                return
+            }
             _uiState.update {
                 it.copy(
-                    transferId = response.transferId,
+                    transferId = transferId,
+                    pendingTransactionId = response.transactionId,
                     requiresOtp = true,
+                    otpState = OtpState.OtpSent(transferId = transferId, message = response.message),
                     successMessage = response.message,
                     errorMessage = null,
                     latestServerResponse = response,
@@ -237,7 +295,9 @@ class TransferViewModel(
                     note = "",
                     otp = "",
                     transferId = null,
+                    pendingTransactionId = null,
                     requiresOtp = false,
+                    otpState = OtpState.Verified(response.message.ifBlank { "Transfer successful - FJD ${String.format("%.2f", amount)}" }),
                     successMessage = response.message.ifBlank { "Transfer successful - FJD ${String.format("%.2f", amount)}" },
                     errorMessage = null,
                     latestServerResponse = response,

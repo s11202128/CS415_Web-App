@@ -52,6 +52,7 @@ import androidx.compose.ui.unit.dp
 import com.bof.mobile.model.DashboardAccount
 import com.bof.mobile.model.TransferMode
 import com.bof.mobile.ui.components.ScreenHeader
+import com.bof.mobile.viewmodel.OtpState
 import com.bof.mobile.viewmodel.TransferViewModel
 import java.text.NumberFormat
 import java.util.Currency
@@ -145,6 +146,12 @@ fun TransferScreen(
     val balanceSufficient = enteredAmount <= sourceBalance
     val submitEnabled = !uiState.isLoading && transferReady && amountWithinLimit && sourceIdResolved && destinationIdResolved && balanceSufficient
     val amountShown = if (enteredAmount > 0.0) formatFjd(enteredAmount) else "FJD 0.00"
+    val isOtpStep = uiState.transferId != null && when (uiState.otpState) {
+        is OtpState.OtpSent,
+        is OtpState.Verifying,
+        is OtpState.Error -> true
+        else -> false
+    }
 
     Box(
         modifier = Modifier
@@ -233,34 +240,107 @@ fun TransferScreen(
                 )
             }
 
-            AccountSelectorCard(
-                label = "From account",
-                accounts = eligibleAccounts,
-                selectedAccount = effectiveFromAccount,
-                expanded = fromAccountMenuExpanded,
-                enabled = eligibleAccounts.isNotEmpty(),
-                onExpandedChange = { fromAccountMenuExpanded = it },
-                onAccountSelected = {
-                    viewModel.onFromAccountIdChanged(it.id.toString())
-                    fromAccountMenuExpanded = false
-                }
-            )
-
-            if (canResolveDestination) {
+            if (!isOtpStep) {
                 AccountSelectorCard(
-                    label = "Destination account",
-                    accounts = eligibleAccounts.filter { it.id.toString() != uiState.fromAccountId },
-                    selectedAccount = effectiveDestinationAccount,
-                    expanded = destinationAccountMenuExpanded,
-                    enabled = eligibleAccounts.count { it.id.toString() != uiState.fromAccountId } > 0,
-                    onExpandedChange = { destinationAccountMenuExpanded = it },
+                    label = "From account",
+                    accounts = eligibleAccounts,
+                    selectedAccount = effectiveFromAccount,
+                    expanded = fromAccountMenuExpanded,
+                    enabled = eligibleAccounts.isNotEmpty(),
+                    onExpandedChange = { fromAccountMenuExpanded = it },
                     onAccountSelected = {
-                        viewModel.onInternalDestinationAccountIdChanged(it.id.toString())
-                        destinationAccountMenuExpanded = false
+                        viewModel.onFromAccountIdChanged(it.id.toString())
+                        fromAccountMenuExpanded = false
                     }
                 )
-            } else {
-                SectionLabel(text = "External beneficiary")
+
+                if (canResolveDestination) {
+                    AccountSelectorCard(
+                        label = "Destination account",
+                        accounts = eligibleAccounts.filter { it.id.toString() != uiState.fromAccountId },
+                        selectedAccount = effectiveDestinationAccount,
+                        expanded = destinationAccountMenuExpanded,
+                        enabled = eligibleAccounts.count { it.id.toString() != uiState.fromAccountId } > 0,
+                        onExpandedChange = { destinationAccountMenuExpanded = it },
+                        onAccountSelected = {
+                            viewModel.onInternalDestinationAccountIdChanged(it.id.toString())
+                            destinationAccountMenuExpanded = false
+                        }
+                    )
+                } else {
+                    SectionLabel(text = "External beneficiary")
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                        shape = MaterialTheme.shapes.large,
+                        elevation = CardDefaults.cardElevation(defaultElevation = 3.dp)
+                    ) {
+                        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                            OutlinedTextField(
+                                value = uiState.recipientName,
+                                onValueChange = viewModel::onRecipientNameChanged,
+                                modifier = Modifier.fillMaxWidth(),
+                                label = { Text("Recipient name") },
+                                singleLine = true
+                            )
+                            OutlinedTextField(
+                                value = uiState.bankName,
+                                onValueChange = viewModel::onBankNameChanged,
+                                modifier = Modifier.fillMaxWidth(),
+                                label = { Text("Bank name") },
+                                singleLine = true
+                            )
+                            OutlinedTextField(
+                                value = uiState.externalAccountNumber,
+                                onValueChange = viewModel::onExternalAccountNumberChanged,
+                                modifier = Modifier.fillMaxWidth(),
+                                label = { Text("Account number") },
+                                singleLine = true,
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                            )
+                        }
+                    }
+                }
+
+                SectionLabel(text = "Amount")
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                    shape = MaterialTheme.shapes.large,
+                    elevation = CardDefaults.cardElevation(defaultElevation = 3.dp)
+                ) {
+                    OutlinedTextField(
+                        value = uiState.amount,
+                        onValueChange = { viewModel.onAmountChanged(sanitizeCurrencyInput(it)) },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(16.dp),
+                        label = { Text("Transfer amount") },
+                        leadingIcon = { Text("FJD", fontWeight = FontWeight.SemiBold) },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                        singleLine = true
+                    )
+                }
+
+                SectionLabel(text = "Note (optional)")
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                    shape = MaterialTheme.shapes.large,
+                    elevation = CardDefaults.cardElevation(defaultElevation = 3.dp)
+                ) {
+                    OutlinedTextField(
+                        value = uiState.note,
+                        onValueChange = viewModel::onNoteChanged,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(16.dp),
+                        label = { Text("Payment note") },
+                        minLines = 2,
+                        maxLines = 4
+                    )
+                }
+
                 Card(
                     modifier = Modifier.fillMaxWidth(),
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
@@ -268,109 +348,38 @@ fun TransferScreen(
                     elevation = CardDefaults.cardElevation(defaultElevation = 3.dp)
                 ) {
                     Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                        OutlinedTextField(
-                            value = uiState.recipientName,
-                            onValueChange = viewModel::onRecipientNameChanged,
-                            modifier = Modifier.fillMaxWidth(),
-                            label = { Text("Recipient name") },
-                            singleLine = true
+                        Text(
+                            text = "Summary",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.SemiBold
                         )
-                        OutlinedTextField(
-                            value = uiState.bankName,
-                            onValueChange = viewModel::onBankNameChanged,
-                            modifier = Modifier.fillMaxWidth(),
-                            label = { Text("Bank name") },
-                            singleLine = true
+                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                        SummaryRow(
+                            "Source account",
+                            effectiveFromAccount?.let { "${it.accountNumber} (ID ${it.id})" } ?: "Not resolved"
                         )
-                        OutlinedTextField(
-                            value = uiState.externalAccountNumber,
-                            onValueChange = viewModel::onExternalAccountNumberChanged,
-                            modifier = Modifier.fillMaxWidth(),
-                            label = { Text("Account number") },
-                            singleLine = true,
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                        SummaryRow("Source holder", effectiveFromAccount?.accountHolder ?: "Not resolved")
+                        SummaryRow(
+                            "Destination",
+                            if (uiState.transferMode == TransferMode.INTERNAL) {
+                                effectiveDestinationAccount?.let { "${it.accountNumber} (ID ${it.id})" } ?: "Not resolved"
+                            } else {
+                                uiState.recipientName.ifBlank { "External beneficiary" }
+                            }
                         )
-                    }
-                }
-            }
-
-            SectionLabel(text = "Amount")
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                shape = MaterialTheme.shapes.large,
-                elevation = CardDefaults.cardElevation(defaultElevation = 3.dp)
-            ) {
-                OutlinedTextField(
-                    value = uiState.amount,
-                    onValueChange = { viewModel.onAmountChanged(sanitizeCurrencyInput(it)) },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(16.dp),
-                    label = { Text("Transfer amount") },
-                    leadingIcon = { Text("FJD", fontWeight = FontWeight.SemiBold) },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                    singleLine = true
-                )
-            }
-
-            SectionLabel(text = "Note (optional)")
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                shape = MaterialTheme.shapes.large,
-                elevation = CardDefaults.cardElevation(defaultElevation = 3.dp)
-            ) {
-                OutlinedTextField(
-                    value = uiState.note,
-                    onValueChange = viewModel::onNoteChanged,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(16.dp),
-                    label = { Text("Payment note") },
-                    minLines = 2,
-                    maxLines = 4
-                )
-            }
-
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                shape = MaterialTheme.shapes.large,
-                elevation = CardDefaults.cardElevation(defaultElevation = 3.dp)
-            ) {
-                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Text(
-                        text = "Summary",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.SemiBold
-                    )
-                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                    SummaryRow(
-                        "Source account",
-                        effectiveFromAccount?.let { "${it.accountNumber} (ID ${it.id})" } ?: "Not resolved"
-                    )
-                    SummaryRow("Source holder", effectiveFromAccount?.accountHolder ?: "Not resolved")
-                    SummaryRow(
-                        "Destination",
-                        if (uiState.transferMode == TransferMode.INTERNAL) {
-                            effectiveDestinationAccount?.let { "${it.accountNumber} (ID ${it.id})" } ?: "Not resolved"
-                        } else {
-                            uiState.recipientName.ifBlank { "External beneficiary" }
+                        SummaryRow("Amount", amountShown)
+                        SummaryRow("Daily limit", formatFjd(uiState.dailyLimit))
+                        if (!uiState.note.isBlank()) {
+                            SummaryRow("Note", uiState.note)
                         }
-                    )
-                    SummaryRow("Amount", amountShown)
-                    SummaryRow("Daily limit", formatFjd(uiState.dailyLimit))
-                    if (!uiState.note.isBlank()) {
-                        SummaryRow("Note", uiState.note)
-                    }
-                    if (enteredAmount > 1000.0) {
-                        SummaryRow("OTP", "Required above FJD 1,000")
+                        if (enteredAmount > 1000.0) {
+                            SummaryRow("OTP", "Required above FJD 1,000")
+                        }
                     }
                 }
             }
 
-            if (uiState.requiresOtp) {
+            if (isOtpStep) {
                 Card(
                     modifier = Modifier.fillMaxWidth(),
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.18f)),
@@ -391,6 +400,12 @@ fun TransferScreen(
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
+                        val otpReference = uiState.transferId ?: "-"
+                        Text(
+                            text = "Reference: $otpReference",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
                         OutlinedTextField(
                             value = uiState.otp,
                             onValueChange = { viewModel.onOtpChanged(it.filter { ch -> ch.isDigit() }.take(6)) },
@@ -403,39 +418,58 @@ fun TransferScreen(
                 }
             }
 
-            Button(
-                onClick = {
-                    if (uiState.requiresOtp) {
-                        viewModel.verifyOtp()
+            if (isOtpStep) {
+                Button(
+                    onClick = viewModel::verifyOtp,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(54.dp),
+                    enabled = !uiState.isLoading && uiState.otp.length == 6,
+                    shape = MaterialTheme.shapes.extraLarge,
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.primary,
+                        disabledContainerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.35f)
+                    )
+                ) {
+                    if (uiState.isLoading) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(20.dp),
+                            strokeWidth = 2.dp,
+                            color = MaterialTheme.colorScheme.onPrimary
+                        )
                     } else {
-                        viewModel.submitTransfer()
+                        Text(text = "Verify & Send", fontWeight = FontWeight.SemiBold)
                     }
-                },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(54.dp),
-                enabled = submitEnabled,
-                shape = MaterialTheme.shapes.extraLarge,
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = MaterialTheme.colorScheme.primary,
-                    disabledContainerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.35f)
-                )
-            ) {
-                if (uiState.isLoading) {
-                    CircularProgressIndicator(
-                        modifier = Modifier.size(20.dp),
-                        strokeWidth = 2.dp,
-                        color = MaterialTheme.colorScheme.onPrimary
+                }
+                TextButton(onClick = viewModel::resetOtpFlow, enabled = !uiState.isLoading) {
+                    Text("Back to transfer details")
+                }
+            } else {
+                Button(
+                    onClick = viewModel::submitTransfer,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(54.dp),
+                    enabled = submitEnabled,
+                    shape = MaterialTheme.shapes.extraLarge,
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.primary,
+                        disabledContainerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.35f)
                     )
-                } else {
-                    Text(
-                        text = if (uiState.requiresOtp) "Verify & Send" else "Continue",
-                        fontWeight = FontWeight.SemiBold
-                    )
+                ) {
+                    if (uiState.isLoading) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(20.dp),
+                            strokeWidth = 2.dp,
+                            color = MaterialTheme.colorScheme.onPrimary
+                        )
+                    } else {
+                        Text(text = "Continue", fontWeight = FontWeight.SemiBold)
+                    }
                 }
             }
 
-            if (uiState.transferMode == TransferMode.INTERNAL && eligibleAccounts.count { it.id.toString() != uiState.fromAccountId } == 0) {
+            if (!isOtpStep && uiState.transferMode == TransferMode.INTERNAL && eligibleAccounts.count { it.id.toString() != uiState.fromAccountId } == 0) {
                 Text(
                     text = "Add another account to transfer internally.",
                     style = MaterialTheme.typography.bodySmall,
@@ -443,7 +477,7 @@ fun TransferScreen(
                 )
             }
 
-            if (eligibleAccounts.isEmpty()) {
+            if (!isOtpStep && eligibleAccounts.isEmpty()) {
                 Text(
                     text = "No active approved accounts available for transfer.",
                     style = MaterialTheme.typography.bodySmall,
@@ -451,7 +485,7 @@ fun TransferScreen(
                 )
             }
 
-            if (!amountWithinLimit && enteredAmount > 0.0) {
+            if (!isOtpStep && !amountWithinLimit && enteredAmount > 0.0) {
                 Text(
                     text = "Transfer amount exceeds the daily limit.",
                     style = MaterialTheme.typography.bodySmall,
@@ -459,7 +493,7 @@ fun TransferScreen(
                 )
             }
 
-            if (!sourceIdResolved) {
+            if (!isOtpStep && !sourceIdResolved) {
                 Text(
                     text = "Select a source account before submitting.",
                     style = MaterialTheme.typography.bodySmall,
@@ -467,7 +501,7 @@ fun TransferScreen(
                 )
             }
 
-            if (canResolveDestination && !destinationIdResolved) {
+            if (!isOtpStep && canResolveDestination && !destinationIdResolved) {
                 Text(
                     text = "Select a destination account different from the source account.",
                     style = MaterialTheme.typography.bodySmall,
@@ -475,7 +509,7 @@ fun TransferScreen(
                 )
             }
 
-            if (!balanceSufficient && enteredAmount > 0.0) {
+            if (!isOtpStep && !balanceSufficient && enteredAmount > 0.0) {
                 Text(
                     text = "Insufficient source account balance.",
                     style = MaterialTheme.typography.bodySmall,

@@ -137,13 +137,13 @@ interface ApiService {
     @POST("transfers/initiate")
     suspend fun initiateTransfer(@Body request: InitiateTransferRequest): InitiateTransferResponse
 
-    @POST("transactions/transfer")
+    @POST("transactions/initiate-transfer")
     suspend fun transfer(@Body request: TransferMoneyRequest): TransferMoneyResponse
 
     @POST("otp/verify")
     suspend fun verifyTransfer(@Body request: VerifyTransferRequest): VerifyTransferResponse
 
-    @POST("transactions/transfer/verify")
+    @POST("transactions/confirm-transfer")
     suspend fun verifyTransferOtp(@Body request: VerifyTransferOtpRequest): TransferMoneyResponse
 
     @GET("recipients/search")

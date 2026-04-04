@@ -38,9 +38,21 @@ router.post("/verify-withdrawal", handleVerifyWithdrawal);
 router.post("/transfer", handleTransfer);
 
 /**
+ * POST /api/transactions/initiate-transfer
+ * Internal or external transfer initiation
+ */
+router.post("/initiate-transfer", handleTransfer);
+
+/**
  * POST /api/transactions/transfer/verify
  * Verify OTP for a high-value transfer
  */
 router.post("/transfer/verify", handleVerifyTransfer);
+
+/**
+ * POST /api/transactions/confirm-transfer
+ * Verify OTP for a high-value transfer (alias)
+ */
+router.post("/confirm-transfer", handleVerifyTransfer);
 
 module.exports = router;

@@ -55,6 +55,7 @@ data class TransferMoneyRequest(
 data class TransferMoneyResponse(
     val success: Boolean,
     val message: String,
+    val otpRequired: Boolean? = null,
     val requiresOtp: Boolean = false,
     val transferId: String? = null,
     val otp: String? = null,
