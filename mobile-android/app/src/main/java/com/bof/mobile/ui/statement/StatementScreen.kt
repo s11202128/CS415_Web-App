@@ -1,6 +1,5 @@
 package com.bof.mobile.ui.statement
 
-import android.app.DatePickerDialog
 import android.content.ContentValues
 import android.content.Context
 import android.content.Intent
@@ -10,7 +9,6 @@ import android.os.Environment
 import android.provider.MediaStore
 import android.widget.Toast
 import androidx.core.content.FileProvider
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -54,7 +52,6 @@ import com.bof.mobile.ui.components.ScreenHeader
 import com.bof.mobile.viewmodel.FeatureViewModel
 import java.io.File
 import java.io.IOException
-import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 
@@ -68,7 +65,6 @@ fun StatementScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val context = LocalContext.current
-    val dateFormatter = DateTimeFormatter.ISO_LOCAL_DATE
     var accountMenuExpanded by remember { mutableStateOf(false) }
 
     LaunchedEffect(customerId) {
@@ -206,22 +202,8 @@ fun StatementScreen(
                         readOnly = false,
                         enabled = !uiState.isLoading,
                         label = { Text("From Date") },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable(enabled = !uiState.isLoading) {
-                                val defaultDate = runCatching { LocalDate.parse(uiState.statementFromDate, dateFormatter) }
-                                    .getOrDefault(LocalDate.now().minusMonths(1))
-                                DatePickerDialog(
-                                    context,
-                                    { _, year, month, dayOfMonth ->
-                                        val selected = LocalDate.of(year, month + 1, dayOfMonth)
-                                        viewModel.onStatementFromDateChanged(selected.format(dateFormatter))
-                                    },
-                                    defaultDate.year,
-                                    defaultDate.monthValue - 1,
-                                    defaultDate.dayOfMonth
-                                ).show()
-                            }
+                        modifier = Modifier.fillMaxWidth(),
+                        supportingText = { Text("Format: yyyy-MM-dd") }
                     )
 
                     OutlinedTextField(
@@ -230,22 +212,8 @@ fun StatementScreen(
                         readOnly = false,
                         enabled = !uiState.isLoading,
                         label = { Text("To Date") },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable(enabled = !uiState.isLoading) {
-                                val defaultDate = runCatching { LocalDate.parse(uiState.statementToDate, dateFormatter) }
-                                    .getOrDefault(LocalDate.now())
-                                DatePickerDialog(
-                                    context,
-                                    { _, year, month, dayOfMonth ->
-                                        val selected = LocalDate.of(year, month + 1, dayOfMonth)
-                                        viewModel.onStatementToDateChanged(selected.format(dateFormatter))
-                                    },
-                                    defaultDate.year,
-                                    defaultDate.monthValue - 1,
-                                    defaultDate.dayOfMonth
-                                ).show()
-                            }
+                        modifier = Modifier.fillMaxWidth(),
+                        supportingText = { Text("Format: yyyy-MM-dd") }
                     )
 
                     Button(
