@@ -170,6 +170,19 @@ const toAccountResponse = (a) => ({
   createdAt: a.createdAt,
 });
 
+const toInvestmentResponse = (row) => ({
+  id: row.id,
+  customerId: row.customerId,
+  customerName: row.Customer?.fullName || "Unknown",
+  investmentType: row.investmentType,
+  amount: Number(row.amount),
+  expectedReturn: row.expectedReturn == null ? null : Number(row.expectedReturn),
+  maturityDate: row.maturityDate,
+  status: row.status,
+  createdAt: row.createdAt,
+  updatedAt: row.updatedAt,
+});
+
 const toStatementRequestResponse = (row) => ({
   id: row.id,
   customerId: row.customerId,
@@ -1603,6 +1616,144 @@ router.post("/investment", requireAuth, asyncHandler(async (req, res) => {
     status: row.status,
     createdAt: row.createdAt,
   });
+}));
+
+router.get("/admin/investments", requireAuth, requireAdmin, asyncHandler(async (req, res) => {
+  const customerId = Number(req.query.customerId || 0);
+  const status = String(req.query.status || "").trim().toLowerCase();
+
+  const where = {};
+  if (Number.isFinite(customerId) && customerId > 0) {
+    where.customerId = customerId;
+  }
+  if (status) {
+    where.status = status;
+  }
+
+  const rows = await Investment.findAll({
+    where,
+    include: [{ model: Customer, attributes: ["id", "fullName"] }],
+    order: [["createdAt", "DESC"]],
+    limit: 500,
+  });
+
+  res.json(rows.map(toInvestmentResponse));
+}));
+
+router.post("/admin/investments", requireAuth, requireAdmin, asyncHandler(async (req, res) => {
+  const payload = req.body || {};
+  const customer = await getCustomerForAccountPayload(payload, { allowAutoCreate: false });
+
+  const amount = Number(payload.amount);
+  const investmentType = String(payload.investmentType || "").trim();
+  const expectedReturn = payload.expectedReturn === undefined || payload.expectedReturn === null || String(payload.expectedReturn).trim() === ""
+    ? null
+    : Number(payload.expectedReturn);
+  const maturityDate = payload.maturityDate ? new Date(payload.maturityDate) : null;
+  const status = String(payload.status || "pending").trim().toLowerCase();
+
+  if (!investmentType) {
+    return res.status(400).json({ error: "investmentType is required" });
+  }
+  if (!Number.isFinite(amount) || amount <= 0) {
+    return res.status(400).json({ error: "amount must be greater than 0" });
+  }
+  if (expectedReturn !== null && !Number.isFinite(expectedReturn)) {
+    return res.status(400).json({ error: "expectedReturn must be a number when provided" });
+  }
+  if (maturityDate && Number.isNaN(maturityDate.getTime())) {
+    return res.status(400).json({ error: "maturityDate must be a valid date" });
+  }
+
+  const row = await Investment.create({
+    customerId: customer.id,
+    investmentType,
+    amount,
+    expectedReturn,
+    maturityDate,
+    notes: payload.notes ? String(payload.notes).trim() : null,
+    status,
+  });
+
+  const saved = await Investment.findByPk(row.id, {
+    include: [{ model: Customer, attributes: ["id", "fullName"] }],
+  });
+
+  res.status(201).json(toInvestmentResponse(saved));
+}));
+
+router.patch("/admin/investments/:id", requireAuth, requireAdmin, asyncHandler(async (req, res) => {
+  const row = await Investment.findByPk(req.params.id);
+  if (!row) {
+    return res.status(404).json({ error: "Investment not found" });
+  }
+
+  const payload = req.body || {};
+  const updates = {};
+
+  if (payload.investmentType !== undefined) {
+    const investmentType = String(payload.investmentType || "").trim();
+    if (!investmentType) {
+      return res.status(400).json({ error: "investmentType cannot be blank" });
+    }
+    updates.investmentType = investmentType;
+  }
+
+  if (payload.amount !== undefined) {
+    const amount = Number(payload.amount);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      return res.status(400).json({ error: "amount must be greater than 0" });
+    }
+    updates.amount = amount;
+  }
+
+  if (payload.expectedReturn !== undefined) {
+    if (payload.expectedReturn === null || String(payload.expectedReturn).trim() === "") {
+      updates.expectedReturn = null;
+    } else {
+      const expectedReturn = Number(payload.expectedReturn);
+      if (!Number.isFinite(expectedReturn)) {
+        return res.status(400).json({ error: "expectedReturn must be a number" });
+      }
+      updates.expectedReturn = expectedReturn;
+    }
+  }
+
+  if (payload.maturityDate !== undefined) {
+    if (payload.maturityDate === null || String(payload.maturityDate).trim() === "") {
+      updates.maturityDate = null;
+    } else {
+      const maturityDate = new Date(payload.maturityDate);
+      if (Number.isNaN(maturityDate.getTime())) {
+        return res.status(400).json({ error: "maturityDate must be a valid date" });
+      }
+      updates.maturityDate = maturityDate;
+    }
+  }
+
+  if (payload.status !== undefined) {
+    const status = String(payload.status || "").trim().toLowerCase();
+    if (!status) {
+      return res.status(400).json({ error: "status cannot be blank" });
+    }
+    updates.status = status;
+  }
+
+  if (payload.notes !== undefined) {
+    updates.notes = payload.notes == null ? null : String(payload.notes).trim();
+  }
+
+  if (!Object.keys(updates).length) {
+    return res.status(400).json({ error: "No valid update fields provided" });
+  }
+
+  await row.update(updates);
+
+  const saved = await Investment.findByPk(row.id, {
+    include: [{ model: Customer, attributes: ["id", "fullName"] }],
+  });
+
+  res.json(toInvestmentResponse(saved));
 }));
 
 router.post("/loan", requireAuth, asyncHandler(async (req, res) => {

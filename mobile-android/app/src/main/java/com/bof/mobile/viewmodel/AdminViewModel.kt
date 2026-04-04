@@ -126,6 +126,9 @@ class AdminViewModel(private val repository: AdminRepository) : ViewModel() {
 
     fun setActiveTab(tab: AdminTab) {
         _uiState.update { it.copy(activeMenu = tab.group, activeTab = tab) }
+        if (tab == AdminTab.INVESTMENTS) {
+            loadInvestments()
+        }
     }
 
     fun clearMessages() {
@@ -379,10 +382,8 @@ class AdminViewModel(private val repository: AdminRepository) : ViewModel() {
     }
 
     fun loadInvestments() {
-        val customerId = _uiState.value.investmentCustomerId.toIntOrNull()
-        val status = _uiState.value.investmentStatusFilter.ifBlank { null }
         viewModelScope.launch {
-            when (val result = repository.getAdminInvestments(customerId = customerId, status = status)) {
+            when (val result = repository.getAdminInvestments(customerId = null, status = null)) {
                 is ApiResult.Success -> _uiState.update { it.copy(investments = result.data, errorMessage = null) }
                 is ApiResult.Error -> setError(result.message)
             }
