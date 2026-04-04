@@ -2,9 +2,15 @@ package com.bof.mobile.model
 
 data class BillPaymentRequest(
     val accountId: Int,
+    val accountNumber: String? = null,
     val payee: String,
     val amount: Double,
-    val scheduledDate: String? = null
+    val scheduledDate: String? = null,
+    val billType: String? = null,
+    val paymentMethod: String? = null,
+    val note: String? = null,
+    val repeat: String? = null,
+    val paymentDate: String? = null
 )
 
 data class ScheduledBillItem(

@@ -148,7 +148,7 @@ fun DepositScreen(
             }
 
             AccountSelectorCard(
-                label = "From Account",
+                label = "From Account Number",
                 selectedAccount = selectedFromAccount,
                 expanded = fromAccountMenuExpanded,
                 onExpandedChange = { fromAccountMenuExpanded = it },
@@ -160,7 +160,7 @@ fun DepositScreen(
             )
 
             AccountSelectorCard(
-                label = "Destination Account",
+                label = "Destination Account Number",
                 selectedAccount = selectedDestinationAccount,
                 expanded = destinationAccountMenuExpanded,
                 onExpandedChange = { destinationAccountMenuExpanded = it },
@@ -375,13 +375,13 @@ private fun AccountSelectorCard(
                 ) {
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            text = selectedAccount?.accountType ?: "Select an account",
+                            text = selectedAccount?.accountNumber ?: "Select account number",
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.SemiBold
                         )
                         Spacer(modifier = Modifier.height(4.dp))
                         Text(
-                            text = selectedAccount?.accountNumber?.let { "•••• ${it.takeLast(4)}" } ?: "Tap to choose from your accounts",
+                            text = selectedAccount?.let { "${it.accountType} · ${it.accountHolder}" } ?: "Tap to choose from your linked bank accounts",
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -409,9 +409,9 @@ private fun AccountSelectorCard(
                     DropdownMenuItem(
                         text = {
                             Column {
-                                Text(account.accountType, fontWeight = FontWeight.Medium)
+                                Text(account.accountNumber, fontWeight = FontWeight.Medium)
                                 Text(
-                                    text = "•••• ${account.accountNumber.takeLast(4)} · ${formatFjd(account.balance)}",
+                                    text = "${account.accountType} · ${formatFjd(account.balance)}",
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )

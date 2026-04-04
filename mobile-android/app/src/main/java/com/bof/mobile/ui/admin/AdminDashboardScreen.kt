@@ -309,41 +309,6 @@ private fun OverviewTab(uiState: AdminUiState, viewModel: AdminViewModel) {
             }
         }
 
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-            elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
-        ) {
-            Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text("Banking Summary", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                    OutlinedButton(onClick = viewModel::loadOverview) {
-                        Text("Refresh report")
-                    }
-                }
-
-                val report = uiState.report
-                if (report != null) {
-                    Text("Customers: ${report.metrics.totalCustomers}")
-                    Text("Accounts: ${report.metrics.totalAccounts}")
-                    Text("Total deposits: FJD ${"%.2f".format(report.metrics.totalDeposits)}")
-                    Text("Pending loans: ${report.metrics.pendingLoans}")
-                    Text("Frozen accounts: ${report.metrics.frozenAccounts}")
-                    Text("Today's transactions: ${report.metrics.todaysTransactions}")
-
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text("Recent transactions", style = MaterialTheme.typography.titleMedium)
-                    report.recentTransactions.take(6).forEach {
-                        Text("#${it.id} ${it.kind} FJD ${"%.2f".format(it.amount)} ${it.status}")
-                    }
-                } else {
-                    Text(
-                        text = "No dashboard report is loaded yet.",
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-            }
-        }
     }
 }
 
@@ -1415,8 +1380,9 @@ private fun AdminTableCell(
 }
 
 @Composable
-private fun AdminStatusChip(status: String, width: androidx.compose.ui.unit.Dp) {
-    val normalized = status.lowercase()
+private fun AdminStatusChip(status: String?, width: androidx.compose.ui.unit.Dp) {
+    val resolvedStatus = status?.trim().takeUnless { it.isNullOrBlank() } ?: "unknown"
+    val normalized = resolvedStatus.lowercase()
     val containerColor = when {
         normalized.contains("approved") || normalized.contains("active") || normalized.contains("completed") -> {
             MaterialTheme.colorScheme.tertiaryContainer
@@ -1450,7 +1416,7 @@ private fun AdminStatusChip(status: String, width: androidx.compose.ui.unit.Dp) 
         color = containerColor
     ) {
         Text(
-            text = status,
+            text = resolvedStatus,
             modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
             style = MaterialTheme.typography.labelLarge,
             color = textColor,

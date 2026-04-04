@@ -2,6 +2,7 @@ package com.bof.mobile.data.repository
 
 import com.bof.mobile.data.remote.ApiService
 import com.bof.mobile.model.ApiResult
+import com.bof.mobile.model.AccountItem
 import com.bof.mobile.model.BillHistoryItem
 import com.bof.mobile.model.BillPaymentRequest
 import com.bof.mobile.model.ActivityLogItem
@@ -44,6 +45,8 @@ import java.io.IOException
 class FeatureRepository(private val apiService: ApiService) {
 
     suspend fun getProfile(customerId: Int): ApiResult<ProfileResponse> = safeCall { apiService.getProfile(customerId) }
+
+    suspend fun getAccounts(): ApiResult<List<AccountItem>> = safeCall { apiService.getAccounts() }
 
     suspend fun updateProfile(request: UpdateProfileRequest): ApiResult<ProfileResponse> = safeCall {
         apiService.updateProfile(request)

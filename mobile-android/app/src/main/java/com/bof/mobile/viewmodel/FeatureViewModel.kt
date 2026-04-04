@@ -18,6 +18,7 @@ import com.bof.mobile.model.LoanProductItem
 import com.bof.mobile.model.NotificationItem
 import com.bof.mobile.model.ProfileResponse
 import com.bof.mobile.model.AccountOverviewReport
+import com.bof.mobile.model.AccountItem
 import com.bof.mobile.model.ReportPoint
 import com.bof.mobile.model.ResetPasswordRequest
 import com.bof.mobile.model.ScheduledBillItem
@@ -42,6 +43,7 @@ data class FeatureUiState(
     val successMessage: String? = null,
 
     val profile: ProfileResponse? = null,
+    val customerAccounts: List<AccountItem> = emptyList(),
     val fullName: String = "",
     val mobile: String = "",
     val nationalId: String = "",
@@ -248,6 +250,7 @@ class FeatureViewModel(private val featureRepository: FeatureRepository) : ViewM
 
     fun loadInitialData(customerId: Int) {
         loadProfile(customerId)
+        loadCustomerAccounts()
         loadScheduledBills()
         loadBillHistory()
         loadStatementRequests()
@@ -289,6 +292,15 @@ class FeatureViewModel(private val featureRepository: FeatureRepository) : ViewM
                 is ApiResult.Error -> setError(result.message)
             }
             setLoading(false)
+        }
+    }
+
+    fun loadCustomerAccounts() {
+        viewModelScope.launch {
+            when (val result = featureRepository.getAccounts()) {
+                is ApiResult.Success -> _uiState.update { it.copy(customerAccounts = result.data, errorMessage = null) }
+                is ApiResult.Error -> setError(result.message)
+            }
         }
     }
 
@@ -428,13 +440,22 @@ class FeatureViewModel(private val featureRepository: FeatureRepository) : ViewM
             return setError("Bill payment needs accountId, payee and amount")
         }
 
+        payBillManual(
+            BillPaymentRequest(
+                accountId = accountId,
+                payee = state.billPayee,
+                amount = amount,
+                billType = null,
+                paymentMethod = null,
+                note = null
+            )
+        )
+    }
+
+    fun payBillManual(request: BillPaymentRequest) {
         viewModelScope.launch {
             setLoading(true)
-            when (
-                val result = featureRepository.payBillManual(
-                    BillPaymentRequest(accountId = accountId, payee = state.billPayee, amount = amount)
-                )
-            ) {
+            when (val result = featureRepository.payBillManual(request.copy(scheduledDate = null))) {
                 is ApiResult.Success -> {
                     _uiState.update {
                         it.copy(
@@ -444,6 +465,7 @@ class FeatureViewModel(private val featureRepository: FeatureRepository) : ViewM
                         )
                     }
                 }
+
                 is ApiResult.Error -> setError(result.message)
             }
             setLoading(false)
@@ -458,18 +480,20 @@ class FeatureViewModel(private val featureRepository: FeatureRepository) : ViewM
             return setError("Scheduled bill needs accountId, payee, amount and date")
         }
 
+        scheduleBill(
+            BillPaymentRequest(
+                accountId = accountId,
+                payee = state.billPayee,
+                amount = amount,
+                scheduledDate = state.scheduledDate
+            )
+        )
+    }
+
+    fun scheduleBill(request: BillPaymentRequest) {
         viewModelScope.launch {
             setLoading(true)
-            when (
-                val result = featureRepository.scheduleBill(
-                    BillPaymentRequest(
-                        accountId = accountId,
-                        payee = state.billPayee,
-                        amount = amount,
-                        scheduledDate = state.scheduledDate
-                    )
-                )
-            ) {
+            when (val result = featureRepository.scheduleBill(request)) {
                 is ApiResult.Success -> {
                     _uiState.update {
                         it.copy(
@@ -479,6 +503,7 @@ class FeatureViewModel(private val featureRepository: FeatureRepository) : ViewM
                         )
                     }
                 }
+
                 is ApiResult.Error -> setError(result.message)
             }
             setLoading(false)
