@@ -52,6 +52,10 @@ class FeatureRepository(private val apiService: ApiService) {
         apiService.updateProfile(request)
     }
 
+    suspend fun payBill(request: BillPaymentRequest): ApiResult<BillHistoryItem> = safeCall {
+        apiService.payBill(request)
+    }
+
     suspend fun payBillManual(request: BillPaymentRequest): ApiResult<BillHistoryItem> = safeCall {
         apiService.payBillManual(request)
     }

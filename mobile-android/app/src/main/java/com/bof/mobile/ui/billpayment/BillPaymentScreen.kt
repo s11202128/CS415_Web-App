@@ -75,7 +75,6 @@ fun BillPaymentScreen(
     var selectedTab by rememberSaveable { mutableStateOf(0) }
 
     var manualPayeeName by rememberSaveable { mutableStateOf("") }
-    var manualAccountNumber by rememberSaveable { mutableStateOf("") }
     var manualBillAmount by rememberSaveable { mutableStateOf("") }
     var manualBillType by rememberSaveable { mutableStateOf("") }
     var manualPaymentMethod by rememberSaveable { mutableStateOf("") }
@@ -83,7 +82,6 @@ fun BillPaymentScreen(
     var manualError by rememberSaveable { mutableStateOf<String?>(null) }
 
     var schedulePayeeName by rememberSaveable { mutableStateOf("") }
-    var scheduleAccountNumber by rememberSaveable { mutableStateOf("") }
     var scheduleBillAmount by rememberSaveable { mutableStateOf("") }
     var scheduleBillType by rememberSaveable { mutableStateOf("") }
     var schedulePaymentMethod by rememberSaveable { mutableStateOf("") }
@@ -92,21 +90,13 @@ fun BillPaymentScreen(
     var scheduleNote by rememberSaveable { mutableStateOf("") }
     var scheduleError by rememberSaveable { mutableStateOf<String?>(null) }
 
-    LaunchedEffect(uiState.customerAccounts) {
-        if (manualAccountNumber.isBlank()) {
-            manualAccountNumber = uiState.customerAccounts.firstOrNull()?.accountNumber.orEmpty()
-        }
-        if (scheduleAccountNumber.isBlank()) {
-            scheduleAccountNumber = uiState.customerAccounts.firstOrNull()?.accountNumber.orEmpty()
-        }
-    }
-
     val billTypes = remember { listOf("Utilities", "Internet", "Rent", "Insurance", "Subscription", "Other") }
     val paymentMethods = remember { listOf("Account Balance", "Debit Card", "Credit Card", "Bank Transfer") }
     val repeatOptions = remember { listOf("One-time", "Daily", "Weekly", "Monthly") }
 
     LaunchedEffect(customerId) {
         viewModel.initialize(customerId)
+        viewModel.loadAccounts()
         viewModel.loadScheduledBills()
         viewModel.loadBillHistory()
     }
@@ -176,22 +166,19 @@ fun BillPaymentScreen(
             when (selectedTab) {
                 0 -> ManualBillPage(
                     payeeName = manualPayeeName,
-                    accountNumber = manualAccountNumber,
                     billAmount = manualBillAmount,
                     billType = manualBillType,
                     paymentMethod = manualPaymentMethod,
                     note = manualNote,
                     billTypes = billTypes,
                     paymentMethods = paymentMethods,
-                    customerAccounts = uiState.customerAccounts,
+                    accounts = uiState.accounts,
+                    selectedAccount = uiState.selectedAccount,
                     isLoading = uiState.isLoading,
                     errorText = manualError,
+                    onAccountSelected = viewModel::selectAccount,
                     onPayeeNameChange = {
                         manualPayeeName = it
-                        manualError = null
-                    },
-                    onAccountNumberChange = {
-                        manualAccountNumber = it
                         manualError = null
                     },
                     onBillAmountChange = {
@@ -213,7 +200,7 @@ fun BillPaymentScreen(
                     onSubmit = {
                         val validationError = validateBillForm(
                             payeeName = manualPayeeName,
-                            accountNumber = manualAccountNumber,
+                            accountNumber = uiState.selectedAccount?.accountNumber.orEmpty(),
                             billAmount = manualBillAmount,
                             billType = manualBillType,
                             paymentMethod = manualPaymentMethod
@@ -222,15 +209,15 @@ fun BillPaymentScreen(
                             manualError = validationError
                             return@ManualBillPage
                         }
-                                    val selectedAccount = uiState.customerAccounts.firstOrNull { it.accountNumber == manualAccountNumber }
-                                    if (selectedAccount == null) {
+                        val selectedAccount = uiState.selectedAccount
+                        if (selectedAccount == null) {
                                         manualError = "Select a valid account number"
                                         return@ManualBillPage
                                     }
                         viewModel.payBillManual(
                             BillPaymentRequest(
-                                            accountId = selectedAccount.id,
-                                            accountNumber = selectedAccount.accountNumber,
+                                accountId = selectedAccount.id,
+                                accountNumber = selectedAccount.accountNumber,
                                 payee = manualPayeeName.trim(),
                                 amount = manualBillAmount.trim().toDouble(),
                                 billType = manualBillType,
@@ -243,7 +230,6 @@ fun BillPaymentScreen(
 
                 1 -> ScheduleBillPage(
                     payeeName = schedulePayeeName,
-                    accountNumber = scheduleAccountNumber,
                     billAmount = scheduleBillAmount,
                     billType = scheduleBillType,
                     paymentMethod = schedulePaymentMethod,
@@ -253,15 +239,13 @@ fun BillPaymentScreen(
                     billTypes = billTypes,
                     paymentMethods = paymentMethods,
                     repeatOptions = repeatOptions,
-                    customerAccounts = uiState.customerAccounts,
+                    accounts = uiState.accounts,
+                    selectedAccount = uiState.selectedAccount,
                     isLoading = uiState.isLoading,
                     errorText = scheduleError,
+                    onAccountSelected = viewModel::selectAccount,
                     onPayeeNameChange = {
                         schedulePayeeName = it
-                        scheduleError = null
-                    },
-                    onAccountNumberChange = {
-                        scheduleAccountNumber = it
                         scheduleError = null
                     },
                     onBillAmountChange = {
@@ -302,7 +286,7 @@ fun BillPaymentScreen(
                     onSubmit = {
                         val validationError = validateScheduledBillForm(
                             payeeName = schedulePayeeName,
-                            accountNumber = scheduleAccountNumber,
+                            accountNumber = uiState.selectedAccount?.accountNumber.orEmpty(),
                             billAmount = scheduleBillAmount,
                             billType = scheduleBillType,
                             paymentMethod = schedulePaymentMethod,
@@ -313,15 +297,15 @@ fun BillPaymentScreen(
                             scheduleError = validationError
                             return@ScheduleBillPage
                         }
-                                    val selectedAccount = uiState.customerAccounts.firstOrNull { it.accountNumber == scheduleAccountNumber }
-                                    if (selectedAccount == null) {
+                        val selectedAccount = uiState.selectedAccount
+                        if (selectedAccount == null) {
                                         scheduleError = "Select a valid account number"
                                         return@ScheduleBillPage
                                     }
                         viewModel.scheduleBill(
                             BillPaymentRequest(
-                                            accountId = selectedAccount.id,
-                                            accountNumber = selectedAccount.accountNumber,
+                                accountId = selectedAccount.id,
+                                accountNumber = selectedAccount.accountNumber,
                                 payee = schedulePayeeName.trim(),
                                 amount = scheduleBillAmount.trim().toDouble(),
                                 scheduledDate = schedulePaymentDate.trim(),
@@ -346,18 +330,18 @@ fun BillPaymentScreen(
 @Composable
 private fun ManualBillPage(
     payeeName: String,
-    accountNumber: String,
     billAmount: String,
     billType: String,
     paymentMethod: String,
     note: String,
     billTypes: List<String>,
     paymentMethods: List<String>,
-    customerAccounts: List<AccountItem>,
+    accounts: List<AccountItem>,
+    selectedAccount: AccountItem?,
     isLoading: Boolean,
     errorText: String?,
+    onAccountSelected: (AccountItem) -> Unit,
     onPayeeNameChange: (String) -> Unit,
-    onAccountNumberChange: (String) -> Unit,
     onBillAmountChange: (String) -> Unit,
     onBillTypeChange: (String) -> Unit,
     onPaymentMethodChange: (String) -> Unit,
@@ -370,17 +354,17 @@ private fun ManualBillPage(
     ) {
         ManualBillPaymentForm(
             payeeName = payeeName,
-            accountNumber = accountNumber,
             billAmount = billAmount,
             billType = billType,
             paymentMethod = paymentMethod,
             note = note,
             billTypes = billTypes,
             paymentMethods = paymentMethods,
-            customerAccounts = customerAccounts,
+            accounts = accounts,
+            selectedAccount = selectedAccount,
             isLoading = isLoading,
+            onAccountSelected = onAccountSelected,
             onPayeeNameChange = onPayeeNameChange,
-            onAccountNumberChange = onAccountNumberChange,
             onBillAmountChange = onBillAmountChange,
             onBillTypeChange = onBillTypeChange,
             onPaymentMethodChange = onPaymentMethodChange,
@@ -394,7 +378,6 @@ private fun ManualBillPage(
 @Composable
 private fun ScheduleBillPage(
     payeeName: String,
-    accountNumber: String,
     billAmount: String,
     billType: String,
     paymentMethod: String,
@@ -404,11 +387,12 @@ private fun ScheduleBillPage(
     billTypes: List<String>,
     paymentMethods: List<String>,
     repeatOptions: List<String>,
-    customerAccounts: List<AccountItem>,
+    accounts: List<AccountItem>,
+    selectedAccount: AccountItem?,
     isLoading: Boolean,
     errorText: String?,
+    onAccountSelected: (AccountItem) -> Unit,
     onPayeeNameChange: (String) -> Unit,
-    onAccountNumberChange: (String) -> Unit,
     onBillAmountChange: (String) -> Unit,
     onBillTypeChange: (String) -> Unit,
     onPaymentMethodChange: (String) -> Unit,
@@ -429,7 +413,6 @@ private fun ScheduleBillPage(
         ) {
             ScheduledBillPaymentForm(
                 payeeName = payeeName,
-                accountNumber = accountNumber,
                 billAmount = billAmount,
                 billType = billType,
                 paymentMethod = paymentMethod,
@@ -439,10 +422,11 @@ private fun ScheduleBillPage(
                 billTypes = billTypes,
                 paymentMethods = paymentMethods,
                 repeatOptions = repeatOptions,
-                customerAccounts = customerAccounts,
+                accounts = accounts,
+                selectedAccount = selectedAccount,
                 isLoading = isLoading,
+                onAccountSelected = onAccountSelected,
                 onPayeeNameChange = onPayeeNameChange,
-                onAccountNumberChange = onAccountNumberChange,
                 onBillAmountChange = onBillAmountChange,
                 onBillTypeChange = onBillTypeChange,
                 onPaymentMethodChange = onPaymentMethodChange,
@@ -634,17 +618,17 @@ private fun BillSectionCard(
 @Composable
 private fun ManualBillPaymentForm(
     payeeName: String,
-    accountNumber: String,
     billAmount: String,
     billType: String,
     paymentMethod: String,
     note: String,
     billTypes: List<String>,
     paymentMethods: List<String>,
-    customerAccounts: List<AccountItem>,
+    accounts: List<AccountItem>,
+    selectedAccount: AccountItem?,
     isLoading: Boolean,
+    onAccountSelected: (AccountItem) -> Unit,
     onPayeeNameChange: (String) -> Unit,
-    onAccountNumberChange: (String) -> Unit,
     onBillAmountChange: (String) -> Unit,
     onBillTypeChange: (String) -> Unit,
     onPaymentMethodChange: (String) -> Unit,
@@ -662,12 +646,12 @@ private fun ManualBillPaymentForm(
             keyboardType = KeyboardType.Text
         )
         BillAccountDropdown(
-            value = accountNumber,
+            selectedAccount = selectedAccount,
             label = "Account Number",
-            placeholder = if (customerAccounts.isEmpty()) "No accounts available" else "Choose your account number",
-            accounts = customerAccounts,
-            enabled = !isLoading && customerAccounts.isNotEmpty(),
-            onValueSelected = onAccountNumberChange
+            placeholder = if (accounts.isEmpty()) "No accounts available" else "Choose your account number",
+            accounts = accounts,
+            enabled = !isLoading && accounts.isNotEmpty(),
+            onAccountSelected = onAccountSelected
         )
         BillTextField(
             value = billAmount,
@@ -723,7 +707,6 @@ private fun ManualBillPaymentForm(
 @Composable
 private fun ScheduledBillPaymentForm(
     payeeName: String,
-    accountNumber: String,
     billAmount: String,
     billType: String,
     paymentMethod: String,
@@ -733,10 +716,11 @@ private fun ScheduledBillPaymentForm(
     billTypes: List<String>,
     paymentMethods: List<String>,
     repeatOptions: List<String>,
-    customerAccounts: List<AccountItem>,
+    accounts: List<AccountItem>,
+    selectedAccount: AccountItem?,
     isLoading: Boolean,
+    onAccountSelected: (AccountItem) -> Unit,
     onPayeeNameChange: (String) -> Unit,
-    onAccountNumberChange: (String) -> Unit,
     onBillAmountChange: (String) -> Unit,
     onBillTypeChange: (String) -> Unit,
     onPaymentMethodChange: (String) -> Unit,
@@ -757,12 +741,12 @@ private fun ScheduledBillPaymentForm(
             keyboardType = KeyboardType.Text
         )
         BillAccountDropdown(
-            value = accountNumber,
+            selectedAccount = selectedAccount,
             label = "Account Number",
-            placeholder = if (customerAccounts.isEmpty()) "No accounts available" else "Choose your account number",
-            accounts = customerAccounts,
-            enabled = !isLoading && customerAccounts.isNotEmpty(),
-            onValueSelected = onAccountNumberChange
+            placeholder = if (accounts.isEmpty()) "No accounts available" else "Choose your account number",
+            accounts = accounts,
+            enabled = !isLoading && accounts.isNotEmpty(),
+            onAccountSelected = onAccountSelected
         )
         BillTextField(
             value = billAmount,
@@ -863,21 +847,22 @@ private fun BillTextField(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun BillAccountDropdown(
-    value: String,
+    selectedAccount: AccountItem?,
     label: String,
     placeholder: String,
     accounts: List<AccountItem>,
     enabled: Boolean,
-    onValueSelected: (String) -> Unit
+    onAccountSelected: (AccountItem) -> Unit
 ) {
     var expanded by remember { mutableStateOf(false) }
+    val displayValue = selectedAccount?.let { "${it.accountNumber} • ${it.type}" }.orEmpty()
 
     ExposedDropdownMenuBox(
         expanded = expanded,
         onExpandedChange = { if (enabled) expanded = !expanded }
     ) {
         OutlinedTextField(
-            value = value,
+            value = displayValue,
             onValueChange = {},
             readOnly = true,
             enabled = enabled,
@@ -904,7 +889,7 @@ private fun BillAccountDropdown(
                 DropdownMenuItem(
                     text = { Text("${account.accountNumber} • ${account.type}") },
                     onClick = {
-                        onValueSelected(account.accountNumber)
+                        onAccountSelected(account)
                         expanded = false
                     }
                 )

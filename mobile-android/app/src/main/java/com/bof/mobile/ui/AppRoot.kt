@@ -28,7 +28,6 @@ import com.bof.mobile.data.repository.AuthRepository
 import com.bof.mobile.data.repository.DashboardRepository
 import com.bof.mobile.data.repository.FeatureRepository
 import com.bof.mobile.data.repository.TransferRepository
-import com.bof.mobile.model.DashboardAccount
 import com.bof.mobile.ui.accounts.AccountsScreen
 import com.bof.mobile.ui.accounts.CreateAccountScreen
 import com.bof.mobile.ui.admin.AdminDashboardScreen
@@ -47,9 +46,12 @@ import com.bof.mobile.ui.withdraw.WithdrawScreen
 import com.bof.mobile.viewmodel.AccountsViewModel
 import com.bof.mobile.viewmodel.AdminViewModel
 import com.bof.mobile.viewmodel.AuthViewModel
+import com.bof.mobile.viewmodel.CreateAccountViewModel
 import com.bof.mobile.viewmodel.DashboardViewModel
+import com.bof.mobile.viewmodel.DepositViewModel
 import com.bof.mobile.viewmodel.FeatureViewModel
 import com.bof.mobile.viewmodel.TransferViewModel
+import com.bof.mobile.viewmodel.WithdrawViewModel
 
 private enum class MainTab {
     DASHBOARD,
@@ -71,17 +73,22 @@ fun AppRoot() {
     val authViewModel = remember { AuthViewModel(AuthRepository(NetworkModule.createApiService { null })) }
     val authState by authViewModel.uiState.collectAsState()
     
-    // Create apiService with current token - recreate when token changes
-    val apiService = remember(authState.token) { 
-        NetworkModule.createApiService { authState.token } 
+    // Capture token as an immutable snapshot so OkHttp threads never read Compose state directly.
+    val apiService = remember(authState.token) {
+        val tokenSnapshot = authState.token
+        NetworkModule.createApiService { tokenSnapshot }
     }
 
     // Recreate ViewModels when apiService changes (token changes)
     val accountRepository = remember(apiService) { AccountRepository(apiService) }
+    val featureRepository = remember(apiService) { FeatureRepository(apiService) }
     val dashboardViewModel = remember(apiService) { DashboardViewModel(DashboardRepository(apiService)) }
     val accountsViewModel = remember(apiService) { AccountsViewModel(accountRepository) }
-    val transferViewModel = remember(apiService) { TransferViewModel(TransferRepository(apiService)) }
-    val featureViewModel = remember(apiService) { FeatureViewModel(FeatureRepository(apiService)) }
+    val createAccountViewModel = remember(apiService) { CreateAccountViewModel(accountRepository) }
+    val depositViewModel = remember(apiService) { DepositViewModel(accountRepository, featureRepository) }
+    val withdrawViewModel = remember(apiService) { WithdrawViewModel(accountRepository, featureRepository) }
+    val transferViewModel = remember(apiService) { TransferViewModel(TransferRepository(apiService), accountRepository) }
+    val featureViewModel = remember(apiService) { FeatureViewModel(featureRepository) }
     val adminViewModel = remember(apiService) { AdminViewModel(AdminRepository(apiService)) }
 
     var showRegister by remember { mutableStateOf(false) }
@@ -134,19 +141,6 @@ fun AppRoot() {
     }
 
     val customerId = authState.customerId ?: authState.userId ?: 0
-    val accountsState by accountsViewModel.uiState.collectAsState()
-    val accountsFromRoute = accountsState.accounts.map {
-        DashboardAccount(
-            id = it.id,
-            accountNumber = it.accountNumber,
-            accountHolder = it.accountHolder,
-            accountType = it.type,
-            balance = it.balance,
-            status = it.status
-        )
-    }
-    val moneyAccounts = accountsFromRoute
-
     if (authState.isAdmin) {
         AdminDashboardScreen(
             viewModel = adminViewModel,
@@ -176,7 +170,7 @@ fun AppRoot() {
             onNavigateToActivity = { navigateTo(MainTab.ACTIVITY) }
         )
         MainTab.CREATE_ACCOUNT -> CreateAccountScreen(
-            accountRepository = accountRepository,
+            viewModel = createAccountViewModel,
             customerId = customerId,
             canGoBack = navigationHistory.isNotEmpty(),
             onBack = { goBack() },
@@ -184,6 +178,10 @@ fun AppRoot() {
                 accountsViewModel.upsertAccount(createdAccount)
                 dashboardViewModel.loadDashboard(customerId)
                 accountsViewModel.loadAccounts()
+                depositViewModel.loadAccounts()
+                withdrawViewModel.loadAccounts()
+                transferViewModel.loadAccounts()
+                featureViewModel.loadAccounts()
                 navigateTo(MainTab.ACCOUNTS)
             }
         )
@@ -195,12 +193,12 @@ fun AppRoot() {
         )
         MainTab.TRANSFERS -> TransferScreen(
             viewModel = transferViewModel,
-            accountsList = moneyAccounts,
             canGoBack = navigationHistory.isNotEmpty(),
             onBack = { goBack() },
             onTransferCompleted = {
                 dashboardViewModel.loadDashboard(customerId)
                 accountsViewModel.loadAccounts()
+                transferViewModel.loadAccounts()
             }
         )
         MainTab.FEATURES -> FeatureHubScreen(
@@ -234,8 +232,7 @@ fun AppRoot() {
             onBack = { goBack() }
         )
         MainTab.DEPOSIT -> DepositScreen(
-            featureViewModel = featureViewModel,
-            accountsList = moneyAccounts,
+            viewModel = depositViewModel,
             canGoBack = navigationHistory.isNotEmpty(),
             onBack = { goBack() },
             onDepositCompleted = {
@@ -244,13 +241,13 @@ fun AppRoot() {
             }
         )
         MainTab.WITHDRAW -> WithdrawScreen(
-            featureViewModel = featureViewModel,
-            accountsList = moneyAccounts,
+            viewModel = withdrawViewModel,
             canGoBack = navigationHistory.isNotEmpty(),
             onBack = { goBack() },
             onWithdrawCompleted = {
                 dashboardViewModel.loadDashboard(customerId)
                 accountsViewModel.loadAccounts()
+                withdrawViewModel.loadAccounts()
             }
         )
         MainTab.BILL_PAYMENT -> BillPaymentScreen(
@@ -265,15 +262,16 @@ fun AppRoot() {
         if (authState.isLoggedIn && !authState.isAdmin) {
             dashboardViewModel.loadDashboard(customerId.takeIf { it > 0 })
             accountsViewModel.loadAccounts()
-            featureViewModel.loadCustomerAccounts()
+            featureViewModel.loadInitialData(customerId)
+            featureViewModel.loadAccounts()
+            depositViewModel.loadAccounts()
+            withdrawViewModel.loadAccounts()
+            transferViewModel.loadAccounts()
         }
     }
 
     LaunchedEffect(activeTab, customerId) {
         if (activeTab == MainTab.ACCOUNTS && authState.isLoggedIn && !authState.isAdmin) {
-            accountsViewModel.loadAccounts()
-        }
-        if ((activeTab == MainTab.TRANSFERS || activeTab == MainTab.DEPOSIT || activeTab == MainTab.WITHDRAW) && accountsState.accounts.isEmpty() && authState.isLoggedIn && !authState.isAdmin) {
             accountsViewModel.loadAccounts()
         }
     }

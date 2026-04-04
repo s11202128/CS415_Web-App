@@ -49,30 +49,33 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.bof.mobile.model.DashboardAccount
 import com.bof.mobile.ui.components.ScreenHeader
-import com.bof.mobile.viewmodel.FeatureViewModel
+import com.bof.mobile.viewmodel.WithdrawViewModel
 import java.text.NumberFormat
 import java.util.Currency
 import java.util.Locale
 
 @Composable
 fun WithdrawScreen(
-    featureViewModel: FeatureViewModel,
-    accountsList: List<DashboardAccount>,
+    viewModel: WithdrawViewModel,
     canGoBack: Boolean,
     onBack: () -> Unit,
     onWithdrawCompleted: () -> Unit = {}
 ) {
-    val uiState by featureViewModel.uiState.collectAsState()
+    val uiState by viewModel.uiState.collectAsState()
+    val accountsList = uiState.customerAccounts.map {
+        DashboardAccount(
+            id = it.id,
+            accountNumber = it.accountNumber,
+            accountHolder = it.accountHolder,
+            accountType = it.type,
+            balance = it.balance,
+            status = it.status
+        )
+    }
     var accountMenuExpanded by remember { mutableStateOf(false) }
 
-    LaunchedEffect(accountsList, uiState.withdrawAccountId) {
-        if (uiState.withdrawAccountId.isBlank() && accountsList.isNotEmpty()) {
-            featureViewModel.onWithdrawAccountIdChanged(accountsList.first().id.toString())
-        }
-    }
-
     LaunchedEffect(Unit) {
-        featureViewModel.clearMessages()
+        viewModel.clearMessages()
     }
 
     LaunchedEffect(uiState.successMessage, uiState.showWithdrawOtpField) {
@@ -97,7 +100,7 @@ fun WithdrawScreen(
 
     LaunchedEffect(effectiveAccount?.id, uiState.withdrawAccountId) {
         if (uiState.withdrawAccountId.isBlank() && effectiveAccount != null) {
-            featureViewModel.onWithdrawAccountIdChanged(effectiveAccount.id.toString())
+            viewModel.onWithdrawAccountIdChanged(effectiveAccount.id.toString())
         }
     }
 
@@ -125,7 +128,7 @@ fun WithdrawScreen(
                     containerColor = MaterialTheme.colorScheme.errorContainer,
                     textColor = MaterialTheme.colorScheme.onErrorContainer,
                     actionLabel = "Dismiss",
-                    onAction = featureViewModel::clearMessages
+                    onAction = viewModel::clearMessages
                 )
             }
 
@@ -135,7 +138,7 @@ fun WithdrawScreen(
                     containerColor = MaterialTheme.colorScheme.secondaryContainer,
                     textColor = MaterialTheme.colorScheme.onSecondaryContainer,
                     actionLabel = "OK",
-                    onAction = featureViewModel::clearMessages
+                    onAction = viewModel::clearMessages
                 )
             }
 
@@ -202,7 +205,7 @@ fun WithdrawScreen(
                                 }
                             },
                             onClick = {
-                                featureViewModel.onWithdrawAccountIdChanged(account.id.toString())
+                                viewModel.onWithdrawAccountIdChanged(account.id.toString())
                                 accountMenuExpanded = false
                             }
                         )
@@ -220,7 +223,7 @@ fun WithdrawScreen(
             ) {
                 OutlinedTextField(
                     value = uiState.withdrawAmount,
-                    onValueChange = { featureViewModel.onWithdrawAmountChanged(sanitizeCurrencyInput(it)) },
+                    onValueChange = { viewModel.onWithdrawAmountChanged(sanitizeCurrencyInput(it)) },
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(16.dp),
@@ -255,7 +258,7 @@ fun WithdrawScreen(
             ) {
                 OutlinedTextField(
                     value = uiState.withdrawNote,
-                    onValueChange = featureViewModel::onWithdrawNoteChanged,
+                    onValueChange = viewModel::onWithdrawNoteChanged,
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(16.dp),
@@ -314,12 +317,10 @@ fun WithdrawScreen(
 
             Button(
                 onClick = {
-                    if (enteredAmount > 1000 && !uiState.showWithdrawOtpField) {
-                        featureViewModel.withdraw()
-                    } else if (uiState.showWithdrawOtpField) {
-                        featureViewModel.verifyWithdrawalOtp()
+                    if (uiState.showWithdrawOtpField) {
+                        viewModel.verifyWithdrawalOtp()
                     } else {
-                        featureViewModel.withdraw()
+                        viewModel.withdraw()
                     }
                 },
                 modifier = Modifier
@@ -385,7 +386,7 @@ fun WithdrawScreen(
                         )
                         OutlinedTextField(
                             value = uiState.withdrawOtp,
-                            onValueChange = { featureViewModel.onWithdrawOtpChanged(sanitizeCurrencyInput(it)) },
+                            onValueChange = { viewModel.onWithdrawOtpChanged(sanitizeCurrencyInput(it)) },
                             modifier = Modifier.fillMaxWidth(),
                             placeholder = { Text("Enter OTP") },
                             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
@@ -394,8 +395,8 @@ fun WithdrawScreen(
                         )
                         OutlinedButton(
                             onClick = {
-                                featureViewModel.onWithdrawOtpChanged("")
-                                featureViewModel.clearMessages()
+                                viewModel.onWithdrawOtpChanged("")
+                                viewModel.clearMessages()
                             },
                             modifier = Modifier.fillMaxWidth(),
                             enabled = !uiState.isLoading

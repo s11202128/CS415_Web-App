@@ -2,7 +2,9 @@ package com.bof.mobile.viewmodel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.bof.mobile.data.repository.AccountRepository
 import com.bof.mobile.data.repository.TransferRepository
+import com.bof.mobile.model.AccountItem
 import com.bof.mobile.model.ApiResult
 import com.bof.mobile.model.TransferMoneyRequest
 import com.bof.mobile.model.TransferMode
@@ -14,6 +16,9 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 data class TransferUiState(
+    val accounts: List<AccountItem> = emptyList(),
+    val accountsLoading: Boolean = false,
+    val accountsLoaded: Boolean = false,
     val transferMode: TransferMode = TransferMode.INTERNAL,
     val fromAccountId: String = "",
     val internalDestinationAccountId: String = "",
@@ -33,9 +38,45 @@ data class TransferUiState(
     val lastUpdatedAtEpochMs: Long? = null
 )
 
-class TransferViewModel(private val transferRepository: TransferRepository) : ViewModel() {
+class TransferViewModel(
+    private val transferRepository: TransferRepository,
+    private val accountRepository: AccountRepository
+) : ViewModel() {
     private val _uiState = MutableStateFlow(TransferUiState())
     val uiState: StateFlow<TransferUiState> = _uiState
+
+    init {
+        loadAccounts()
+    }
+
+    fun loadAccounts() {
+        viewModelScope.launch {
+            _uiState.update { it.copy(accountsLoading = true, accountsLoaded = false) }
+            when (val result = accountRepository.getAccounts()) {
+                is ApiResult.Success -> {
+                    val firstActive = result.data.firstOrNull { it.status.equals("active", ignoreCase = true) }
+                    _uiState.update {
+                        it.copy(
+                            accounts = result.data,
+                            fromAccountId = it.fromAccountId.ifBlank { firstActive?.id?.toString().orEmpty() },
+                            accountsLoading = false,
+                            accountsLoaded = true,
+                            errorMessage = null
+                        )
+                    }
+                }
+                is ApiResult.Error -> {
+                    _uiState.update {
+                        it.copy(
+                            accountsLoading = false,
+                            accountsLoaded = true,
+                            errorMessage = result.message
+                        )
+                    }
+                }
+            }
+        }
+    }
 
     fun clearMessages() = _uiState.update { it.copy(errorMessage = null, successMessage = null) }
 

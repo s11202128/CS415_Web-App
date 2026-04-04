@@ -1470,6 +1470,22 @@ router.post("/bills/manual", requireAuth, asyncHandler(async (req, res) => {
   res.status(201).json({ ...payment, accountNumber: account.accountNumber });
 }));
 
+router.post("/bill-payment", requireAuth, asyncHandler(async (req, res) => {
+  const payload = req.body || {};
+  const account = await resolveBillAccountFromPayload(payload);
+  if (!isAdmin(req) && account.customerId !== getAuthenticatedCustomerId(req)) {
+    return res.status(403).json({ error: "Forbidden" });
+  }
+  const payment = await postBillPayment({
+    accountId: account.id,
+    payee: payload.payee,
+    amount: Number(payload.amount),
+    mode: payload.mode || "manual",
+    scheduledDate: payload.scheduledDate || null,
+  });
+  res.status(201).json({ ...payment, accountNumber: account.accountNumber });
+}));
+
 router.post("/pay-bill", requireAuth, asyncHandler(async (req, res) => {
   const payload = req.body || {};
   const account = await resolveBillAccountFromPayload(payload);

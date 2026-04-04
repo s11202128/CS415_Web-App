@@ -151,8 +151,11 @@ interface ApiService {
     @GET("billers")
     suspend fun getBillers(): List<BillerItem>
 
+    @POST("bill-payment")
+    suspend fun payBill(@Body request: BillPaymentRequest): BillHistoryItem
+
     @POST("pay-bill")
-    suspend fun payBillManual(@Body request: BillPaymentRequest): BillHistoryItem
+    suspend fun payBillManual(@Body request: BillPaymentRequest): BillHistoryItem = payBill(request)
 
     @POST("bills/scheduled")
     suspend fun scheduleBill(@Body request: BillPaymentRequest): ScheduledBillItem

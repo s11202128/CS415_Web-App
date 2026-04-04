@@ -60,18 +60,28 @@ import java.util.Locale
 @Composable
 fun TransferScreen(
     viewModel: TransferViewModel,
-    accountsList: List<DashboardAccount>,
     canGoBack: Boolean,
     onBack: () -> Unit,
     onTransferCompleted: () -> Unit = {}
 ) {
     val uiState by viewModel.uiState.collectAsState()
+    val accountsList = uiState.accounts.map {
+        DashboardAccount(
+            id = it.id,
+            accountNumber = it.accountNumber,
+            accountHolder = it.accountHolder,
+            accountType = it.type,
+            balance = it.balance,
+            status = it.status
+        )
+    }
     val eligibleAccounts = accountsList.filter { it.status.equals("active", ignoreCase = true) }
     var fromAccountMenuExpanded by remember { mutableStateOf(false) }
     var destinationAccountMenuExpanded by remember { mutableStateOf(false) }
     var handledSuccessMessage by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(Unit) {
+        viewModel.loadAccounts()
         viewModel.clearMessages()
     }
 

@@ -54,7 +54,7 @@ import androidx.compose.ui.unit.dp
 import com.bof.mobile.model.AccountItem
 import com.bof.mobile.model.DashboardAccount
 import com.bof.mobile.ui.components.ScreenHeader
-import com.bof.mobile.viewmodel.FeatureViewModel
+import com.bof.mobile.viewmodel.DepositViewModel
 import java.text.NumberFormat
 import java.util.Currency
 import java.util.Locale
@@ -62,13 +62,12 @@ import java.util.Locale
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DepositScreen(
-    featureViewModel: FeatureViewModel,
-    accountsList: List<DashboardAccount>,
+    viewModel: DepositViewModel,
     canGoBack: Boolean,
     onBack: () -> Unit,
     onDepositCompleted: () -> Unit = {}
 ) {
-    val uiState by featureViewModel.uiState.collectAsState()
+    val uiState by viewModel.uiState.collectAsState()
     var fromAccountMenuExpanded by remember { mutableStateOf(false) }
     var destinationAccountMenuExpanded by remember { mutableStateOf(false) }
     val serverAccounts = uiState.customerAccounts.map {
@@ -81,27 +80,21 @@ fun DepositScreen(
             status = it.status
         )
     }
-    val availableAccounts = if (serverAccounts.isNotEmpty()) serverAccounts else accountsList
-
     LaunchedEffect(Unit) {
-        featureViewModel.clearMessages()
+        viewModel.clearMessages()
     }
 
-    LaunchedEffect(availableAccounts, uiState.depositFromAccountId, uiState.depositDestinationAccountId) {
-        if (availableAccounts.isEmpty()) return@LaunchedEffect
+    LaunchedEffect(serverAccounts, uiState.depositFromAccountId, uiState.depositDestinationAccountId) {
+        if (serverAccounts.isEmpty()) return@LaunchedEffect
 
         if (uiState.depositFromAccountId.isBlank()) {
-            featureViewModel.onDepositFromAccountIdChanged(availableAccounts.first().id.toString())
+            viewModel.onDepositFromAccountIdChanged(serverAccounts.first().id.toString())
         }
 
         if (uiState.depositDestinationAccountId.isBlank()) {
-            val defaultDestination = if (availableAccounts.size > 1) availableAccounts[1] else availableAccounts.first()
-            featureViewModel.onDepositDestinationAccountIdChanged(defaultDestination.id.toString())
+            val defaultDestination = if (serverAccounts.size > 1) serverAccounts[1] else serverAccounts.first()
+            viewModel.onDepositDestinationAccountIdChanged(defaultDestination.id.toString())
         }
-    }
-
-    LaunchedEffect(Unit) {
-        featureViewModel.clearMessages()
     }
 
     LaunchedEffect(uiState.successMessage) {
@@ -110,8 +103,8 @@ fun DepositScreen(
         }
     }
 
-    val selectedFromAccount = availableAccounts.firstOrNull { it.id.toString() == uiState.depositFromAccountId }
-    val selectedDestinationAccount = availableAccounts.firstOrNull { it.id.toString() == uiState.depositDestinationAccountId }
+    val selectedFromAccount = serverAccounts.firstOrNull { it.id.toString() == uiState.depositFromAccountId }
+    val selectedDestinationAccount = serverAccounts.firstOrNull { it.id.toString() == uiState.depositDestinationAccountId }
     val fromAccountValid = selectedFromAccount != null
     val destinationAccountValid = selectedDestinationAccount != null
     val accountsDifferent =
@@ -153,7 +146,7 @@ fun DepositScreen(
                     containerColor = MaterialTheme.colorScheme.errorContainer,
                     textColor = MaterialTheme.colorScheme.onErrorContainer,
                     actionLabel = "Dismiss",
-                    onAction = featureViewModel::clearMessages
+                    onAction = viewModel::clearMessages
                 )
             }
 
@@ -163,7 +156,7 @@ fun DepositScreen(
                     containerColor = MaterialTheme.colorScheme.secondaryContainer,
                     textColor = MaterialTheme.colorScheme.onSecondaryContainer,
                     actionLabel = "OK",
-                    onAction = featureViewModel::clearMessages
+                    onAction = viewModel::clearMessages
                 )
             }
 
@@ -193,10 +186,10 @@ fun DepositScreen(
                 expanded = fromAccountMenuExpanded,
                 onExpandedChange = { fromAccountMenuExpanded = it },
                 onAccountSelected = {
-                    featureViewModel.onDepositFromAccountIdChanged(it.id.toString())
+                    viewModel.onDepositFromAccountIdChanged(it.id.toString())
                     fromAccountMenuExpanded = false
                 },
-                accountsList = availableAccounts
+                accountsList = serverAccounts
             )
 
             AccountSelectorCard(
@@ -205,10 +198,10 @@ fun DepositScreen(
                 expanded = destinationAccountMenuExpanded,
                 onExpandedChange = { destinationAccountMenuExpanded = it },
                 onAccountSelected = {
-                    featureViewModel.onDepositDestinationAccountIdChanged(it.id.toString())
+                    viewModel.onDepositDestinationAccountIdChanged(it.id.toString())
                     destinationAccountMenuExpanded = false
                 },
-                accountsList = availableAccounts
+                accountsList = serverAccounts
             )
 
             if (selectedFromAccount != null && selectedDestinationAccount != null && selectedFromAccount.id == selectedDestinationAccount.id) {
@@ -217,17 +210,17 @@ fun DepositScreen(
                     containerColor = MaterialTheme.colorScheme.errorContainer,
                     textColor = MaterialTheme.colorScheme.onErrorContainer,
                     actionLabel = "OK",
-                    onAction = featureViewModel::clearMessages
+                    onAction = viewModel::clearMessages
                 )
             }
 
-            if (uiState.customerAccountsLoaded && availableAccounts.isEmpty()) {
+            if (uiState.customerAccountsLoaded && serverAccounts.isEmpty()) {
                 MessageBanner(
                     text = "No account found for this customer. Create an account first to deposit.",
                     containerColor = MaterialTheme.colorScheme.errorContainer,
                     textColor = MaterialTheme.colorScheme.onErrorContainer,
                     actionLabel = "OK",
-                    onAction = featureViewModel::clearMessages
+                    onAction = viewModel::clearMessages
                 )
             }
 
@@ -241,7 +234,7 @@ fun DepositScreen(
             ) {
                 OutlinedTextField(
                     value = uiState.depositAmount,
-                    onValueChange = { featureViewModel.onDepositAmountChanged(sanitizeCurrencyInput(it)) },
+                    onValueChange = { viewModel.onDepositAmountChanged(sanitizeCurrencyInput(it)) },
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(16.dp),
@@ -269,7 +262,7 @@ fun DepositScreen(
             ) {
                 OutlinedTextField(
                     value = uiState.depositNote,
-                    onValueChange = featureViewModel::onDepositNoteChanged,
+                    onValueChange = viewModel::onDepositNoteChanged,
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(16.dp),
@@ -340,7 +333,7 @@ fun DepositScreen(
                         )
                         OutlinedTextField(
                             value = uiState.depositOtp,
-                            onValueChange = { featureViewModel.onDepositOtpChanged(sanitizeCurrencyInput(it)) },
+                            onValueChange = { viewModel.onDepositOtpChanged(sanitizeCurrencyInput(it)) },
                             modifier = Modifier.fillMaxWidth(),
                             label = { Text("OTP") },
                             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
@@ -354,9 +347,9 @@ fun DepositScreen(
             Button(
                 onClick = {
                     if (uiState.showDepositOtpField) {
-                        featureViewModel.verifyDepositOtp()
+                        viewModel.verifyDepositOtp()
                     } else {
-                        featureViewModel.deposit()
+                        viewModel.deposit()
                     }
                 },
                 modifier = Modifier
