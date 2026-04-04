@@ -4,8 +4,11 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.bof.mobile.data.repository.FeatureRepository
 import com.bof.mobile.model.ApiResult
+import com.bof.mobile.model.BankStatementResponse
+import com.bof.mobile.model.BankStatementTransaction
 import com.bof.mobile.model.BillHistoryItem
 import com.bof.mobile.model.BillPaymentRequest
+import com.bof.mobile.model.ActivityLogItem
 import com.bof.mobile.model.InterestSummaryItem
 import com.bof.mobile.model.InvestmentRequest
 import com.bof.mobile.model.InvestmentItem
@@ -14,6 +17,8 @@ import com.bof.mobile.model.LoanApplicationRequest
 import com.bof.mobile.model.LoanProductItem
 import com.bof.mobile.model.NotificationItem
 import com.bof.mobile.model.ProfileResponse
+import com.bof.mobile.model.AccountOverviewReport
+import com.bof.mobile.model.ReportPoint
 import com.bof.mobile.model.ResetPasswordRequest
 import com.bof.mobile.model.ScheduledBillItem
 import com.bof.mobile.model.StatementRequestItem
@@ -24,6 +29,7 @@ import com.bof.mobile.model.VerifyTransferOtpRequest
 import com.bof.mobile.model.VerifyWithdrawalRequest
 import com.bof.mobile.model.WithdrawRequest
 import java.time.LocalDate
+import java.time.format.DateTimeFormatter
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
@@ -53,8 +59,21 @@ data class FeatureUiState(
     val statementAccountNumber: String = "",
     val statementFromDate: String = "",
     val statementToDate: String = "",
+    val statementFilter: String = StatementFilter.MONTHS.name,
+    val statementSelectedYear: Int = LocalDate.now().year,
+    val statementSelectedMonth: Int = LocalDate.now().monthValue,
+    val statementSelectedDay: Int = LocalDate.now().dayOfMonth,
+    val statementBankName: String = "",
+    val statementCustomerName: String = "",
+    val statementTransactions: List<BankStatementTransaction> = emptyList(),
     val statementRequests: List<StatementRequestItem> = emptyList(),
     val statementRows: List<StatementRowItem> = emptyList(),
+    val reportOverview: AccountOverviewReport? = null,
+    val reportPoints: List<ReportPoint> = emptyList(),
+    val activityLogs: List<ActivityLogItem> = emptyList(),
+    val activityFilterType: String = "",
+    val activityFromDate: String = "",
+    val activityToDate: String = "",
 
     val notifications: List<NotificationItem> = emptyList(),
 
@@ -96,6 +115,13 @@ data class FeatureUiState(
     val withdrawalId: String? = null
 )
 
+enum class StatementFilter {
+    YEARS,
+    MONTHS,
+    WEEKS,
+    DAYS
+}
+
 class FeatureViewModel(private val featureRepository: FeatureRepository) : ViewModel() {
     private val _uiState = MutableStateFlow(FeatureUiState())
     val uiState: StateFlow<FeatureUiState> = _uiState
@@ -125,8 +151,74 @@ class FeatureViewModel(private val featureRepository: FeatureRepository) : ViewM
     fun onStatementAccountNumberChanged(value: String) = _uiState.update { it.copy(statementAccountNumber = value) }
     fun onStatementFromDateChanged(value: String) = _uiState.update { it.copy(statementFromDate = value) }
     fun onStatementToDateChanged(value: String) = _uiState.update { it.copy(statementToDate = value) }
+    fun onStatementFilterChanged(value: StatementFilter) {
+        _uiState.update { current ->
+            val normalizedDay = normalizeDayForMonth(
+                year = current.statementSelectedYear,
+                month = current.statementSelectedMonth,
+                day = current.statementSelectedDay
+            )
+            val next = current.copy(
+                statementFilter = value.name,
+                statementSelectedDay = normalizedDay
+            )
+            val (fromDate, toDate) = resolveStatementRange(value, next)
+            next.copy(statementFromDate = fromDate, statementToDate = toDate)
+        }
+    }
+
+    fun onStatementYearChanged(value: Int) {
+        _uiState.update { current ->
+            val normalizedDay = normalizeDayForMonth(
+                year = value,
+                month = current.statementSelectedMonth,
+                day = current.statementSelectedDay
+            )
+            val filter = runCatching { StatementFilter.valueOf(current.statementFilter) }.getOrDefault(StatementFilter.MONTHS)
+            val next = current.copy(
+                statementSelectedYear = value,
+                statementSelectedDay = normalizedDay
+            )
+            val (fromDate, toDate) = resolveStatementRange(filter, next)
+            next.copy(statementFromDate = fromDate, statementToDate = toDate)
+        }
+    }
+
+    fun onStatementMonthChanged(value: Int) {
+        _uiState.update { current ->
+            val normalizedDay = normalizeDayForMonth(
+                year = current.statementSelectedYear,
+                month = value,
+                day = current.statementSelectedDay
+            )
+            val filter = runCatching { StatementFilter.valueOf(current.statementFilter) }.getOrDefault(StatementFilter.MONTHS)
+            val next = current.copy(
+                statementSelectedMonth = value,
+                statementSelectedDay = normalizedDay
+            )
+            val (fromDate, toDate) = resolveStatementRange(filter, next)
+            next.copy(statementFromDate = fromDate, statementToDate = toDate)
+        }
+    }
+
+    fun onStatementDayChanged(value: Int) {
+        _uiState.update { current ->
+            val normalizedDay = normalizeDayForMonth(
+                year = current.statementSelectedYear,
+                month = current.statementSelectedMonth,
+                day = value
+            )
+            val filter = runCatching { StatementFilter.valueOf(current.statementFilter) }.getOrDefault(StatementFilter.MONTHS)
+            val next = current.copy(statementSelectedDay = normalizedDay)
+            val (fromDate, toDate) = resolveStatementRange(filter, next)
+            next.copy(statementFromDate = fromDate, statementToDate = toDate)
+        }
+    }
 
     fun onResetEmailChanged(value: String) = _uiState.update { it.copy(resetEmail = value) }
+    fun onActivityFilterTypeChanged(value: String) = _uiState.update { it.copy(activityFilterType = value) }
+    fun onActivityFromDateChanged(value: String) = _uiState.update { it.copy(activityFromDate = value) }
+    fun onActivityToDateChanged(value: String) = _uiState.update { it.copy(activityToDate = value) }
     fun onResetIdChanged(value: String) = _uiState.update { it.copy(resetId = value) }
     fun onResetOtpChanged(value: String) = _uiState.update { it.copy(resetOtp = value) }
     fun onNewPasswordChanged(value: String) = _uiState.update { it.copy(newPassword = value) }
@@ -163,6 +255,117 @@ class FeatureViewModel(private val featureRepository: FeatureRepository) : ViewM
         loadLoanApplications()
         loadInterestSummaries()
         loadInvestments()
+    }
+
+    fun initializeStatementDateDefaults() {
+        val state = _uiState.value
+        if (state.statementFromDate.isNotBlank() && state.statementToDate.isNotBlank()) {
+            return
+        }
+
+        val (defaultFrom, defaultTo) = defaultStatementRange()
+        _uiState.update {
+            it.copy(
+                statementFromDate = defaultFrom,
+                statementToDate = defaultTo
+            )
+        }
+    }
+
+    fun loadBankStatement() {
+        val state = _uiState.value
+        if (state.statementFromDate.isBlank() || state.statementToDate.isBlank()) {
+            val (fromDate, toDate) = defaultStatementRange()
+            _uiState.update { it.copy(statementFromDate = fromDate, statementToDate = toDate) }
+        }
+
+        val fromDate = _uiState.value.statementFromDate
+        val toDate = _uiState.value.statementToDate
+
+        viewModelScope.launch {
+            setLoading(true)
+            when (val result = featureRepository.getBankStatement(fromDate, toDate)) {
+                is ApiResult.Success -> updateStatementFromResponse(result.data)
+                is ApiResult.Error -> setError(result.message)
+            }
+            setLoading(false)
+        }
+    }
+
+    fun loadReport() {
+        viewModelScope.launch {
+            setLoading(true)
+            when (val result = featureRepository.getReport()) {
+                is ApiResult.Success -> {
+                    _uiState.update {
+                        it.copy(
+                            reportOverview = result.data.accountOverview,
+                            reportPoints = result.data.points,
+                            errorMessage = null
+                        )
+                    }
+                }
+                is ApiResult.Error -> setError(result.message)
+            }
+            setLoading(false)
+        }
+    }
+
+    fun loadActivityLogs() {
+        val state = _uiState.value
+        viewModelScope.launch {
+            setLoading(true)
+            when (
+                val result = featureRepository.getActivityLogs(
+                    fromDate = state.activityFromDate.ifBlank { null },
+                    toDate = state.activityToDate.ifBlank { null },
+                    activityType = state.activityFilterType.ifBlank { null }
+                )
+            ) {
+                is ApiResult.Success -> {
+                    _uiState.update {
+                        it.copy(
+                            activityLogs = result.data,
+                            errorMessage = null
+                        )
+                    }
+                }
+                is ApiResult.Error -> setError(result.message)
+            }
+            setLoading(false)
+        }
+    }
+
+    fun logClientActivity(activityType: String, description: String, status: String = "success") {
+        viewModelScope.launch {
+            featureRepository.createActivityLog(
+                activityType = activityType,
+                description = description,
+                status = status
+            )
+        }
+    }
+
+    fun downloadBankStatementPdf(onSuccess: (ByteArray, String) -> Unit) {
+        val state = _uiState.value
+        val fromDate = state.statementFromDate
+        val toDate = state.statementToDate
+        if (fromDate.isBlank() || toDate.isBlank()) {
+            return setError("Select a filter first")
+        }
+
+        viewModelScope.launch {
+            setLoading(true)
+            when (val result = featureRepository.downloadBankStatementPdf(fromDate, toDate)) {
+                is ApiResult.Success -> {
+                    val fileName = "bank-statement-${LocalDate.now()}.pdf"
+                    onSuccess(result.data, fileName)
+                    _uiState.update { it.copy(successMessage = "PDF generated successfully", errorMessage = null) }
+                }
+                is ApiResult.Error -> setError(result.message)
+            }
+            setLoading(false)
+        }
     }
 
     fun loadProfile(customerId: Int? = _uiState.value.customerId) {
@@ -380,6 +583,65 @@ class FeatureViewModel(private val featureRepository: FeatureRepository) : ViewM
         }
     }
 
+    private fun updateStatementFromResponse(response: BankStatementResponse) {
+        _uiState.update {
+            it.copy(
+                statementBankName = response.bankName,
+                statementCustomerName = response.customerName,
+                statementAccountNumber = response.accountNumber,
+                statementFromDate = response.dateRange.fromDate.take(10),
+                statementToDate = response.dateRange.toDate.take(10),
+                statementTransactions = response.transactions,
+                successMessage = "Statement loaded",
+                errorMessage = null
+            )
+        }
+    }
+
+    private fun resolveStatementRange(filter: StatementFilter, state: FeatureUiState): Pair<String, String> {
+        val year = state.statementSelectedYear
+        val month = state.statementSelectedMonth
+        val day = normalizeDayForMonth(year, month, state.statementSelectedDay)
+
+        val (fromDate, toDate) = when (filter) {
+            StatementFilter.DAYS -> {
+                val selected = LocalDate.of(year, month, day)
+                Pair(selected, selected)
+            }
+            StatementFilter.WEEKS -> {
+                val selected = LocalDate.of(year, month, day)
+                val from = selected.minusDays(selected.dayOfWeek.value.toLong() - 1L)
+                val to = from.plusDays(6)
+                Pair(from, to)
+            }
+            StatementFilter.MONTHS -> {
+                val from = LocalDate.of(year, month, 1)
+                val to = from.withDayOfMonth(from.lengthOfMonth())
+                Pair(from, to)
+            }
+            StatementFilter.YEARS -> {
+                val from = LocalDate.of(year, 1, 1)
+                val to = LocalDate.of(year, 12, 31)
+                Pair(from, to)
+            }
+        }
+
+        val formatter = DateTimeFormatter.ISO_LOCAL_DATE
+        return Pair(fromDate.format(formatter), toDate.format(formatter))
+    }
+
+    private fun normalizeDayForMonth(year: Int, month: Int, day: Int): Int {
+        val maxDay = LocalDate.of(year, month, 1).lengthOfMonth()
+        return day.coerceIn(1, maxDay)
+    }
+
+    private fun defaultStatementRange(): Pair<String, String> {
+        val toDate = LocalDate.now()
+        val fromDate = toDate.minusMonths(1)
+        val formatter = DateTimeFormatter.ISO_LOCAL_DATE
+        return Pair(fromDate.format(formatter), toDate.format(formatter))
+    }
+
     fun loadNotifications(customerId: Int? = _uiState.value.customerId) {
         val resolvedCustomerId = customerId ?: return
         viewModelScope.launch {
@@ -565,6 +827,100 @@ class FeatureViewModel(private val featureRepository: FeatureRepository) : ViewM
                             investmentAmount = "",
                             investmentExpectedReturn = "",
                             investmentMaturityDate = ""
+                        )
+                    }
+                }
+                is ApiResult.Error -> setError(result.message)
+            }
+            setLoading(false)
+        }
+    }
+
+    fun submitFundingInvestment() {
+        val state = _uiState.value
+        val amount = state.investmentAmount.toDoubleOrNull()
+        val durationMonths = state.investmentMaturityDate.toIntOrNull()
+        val investmentType = state.investmentType.trim()
+        val notes = state.investmentExpectedReturn.trim().ifBlank { null }
+
+        if (investmentType.isBlank()) {
+            return setError("Investment type is required")
+        }
+        if (amount == null || amount <= 0) {
+            return setError("Investment amount must be greater than 0")
+        }
+        if (durationMonths == null || durationMonths <= 0) {
+            return setError("Duration (months) must be greater than 0")
+        }
+
+        viewModelScope.launch {
+            setLoading(true)
+            when (
+                val result = featureRepository.submitFundingInvestment(
+                    amount = amount,
+                    investmentType = investmentType,
+                    durationMonths = durationMonths,
+                    notes = notes
+                )
+            ) {
+                is ApiResult.Success -> {
+                    _uiState.update {
+                        it.copy(
+                            successMessage = "Investment request submitted (${result.data.status})",
+                            errorMessage = null,
+                            investmentAmount = "",
+                            investmentExpectedReturn = "",
+                            investmentMaturityDate = ""
+                        )
+                    }
+                }
+                is ApiResult.Error -> setError(result.message)
+            }
+            setLoading(false)
+        }
+    }
+
+    fun submitFundingLoan() {
+        val state = _uiState.value
+        val loanAmount = state.loanRequestedAmount.toDoubleOrNull()
+        val repaymentPeriod = state.loanTermMonths.toIntOrNull()
+        val loanType = state.loanProductId.trim()
+        val purpose = state.loanPurpose.trim()
+        val details = state.loanOccupation.trim().ifBlank { null }
+
+        if (loanType.isBlank()) {
+            return setError("Loan type is required")
+        }
+        if (loanAmount == null || loanAmount <= 0) {
+            return setError("Loan amount must be greater than 0")
+        }
+        if (repaymentPeriod == null || repaymentPeriod <= 0) {
+            return setError("Repayment period must be greater than 0")
+        }
+        if (purpose.isBlank()) {
+            return setError("Loan purpose is required")
+        }
+
+        viewModelScope.launch {
+            setLoading(true)
+            when (
+                val result = featureRepository.submitFundingLoan(
+                    loanAmount = loanAmount,
+                    loanType = loanType,
+                    repaymentPeriodMonths = repaymentPeriod,
+                    purpose = purpose,
+                    details = details
+                )
+            ) {
+                is ApiResult.Success -> {
+                    _uiState.update {
+                        it.copy(
+                            successMessage = "Loan request submitted (${result.data.status})",
+                            errorMessage = null,
+                            loanRequestedAmount = "",
+                            loanTermMonths = "",
+                            loanPurpose = "",
+                            loanOccupation = ""
                         )
                     }
                 }

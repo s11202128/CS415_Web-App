@@ -32,12 +32,16 @@ import com.bof.mobile.model.DashboardAccount
 import com.bof.mobile.ui.accounts.AccountsScreen
 import com.bof.mobile.ui.accounts.CreateAccountScreen
 import com.bof.mobile.ui.admin.AdminDashboardScreen
+import com.bof.mobile.ui.activity.ActivityLogScreen
 import com.bof.mobile.ui.auth.LoginScreen
 import com.bof.mobile.ui.auth.RegisterScreen
 import com.bof.mobile.ui.billpayment.BillPaymentScreen
 import com.bof.mobile.ui.dashboard.DashboardScreen
 import com.bof.mobile.ui.deposit.DepositScreen
 import com.bof.mobile.ui.features.FeatureHubScreen
+import com.bof.mobile.ui.funding.FundingScreen
+import com.bof.mobile.ui.report.AccountOverviewReportScreen
+import com.bof.mobile.ui.statement.StatementScreen
 import com.bof.mobile.ui.transfers.TransferScreen
 import com.bof.mobile.ui.withdraw.WithdrawScreen
 import com.bof.mobile.viewmodel.AccountsViewModel
@@ -52,7 +56,11 @@ private enum class MainTab {
     CREATE_ACCOUNT,
     ACCOUNTS,
     TRANSFERS,
+    STATEMENT,
+    REPORT,
+    ACTIVITY,
     FEATURES,
+    FUNDING,
     DEPOSIT,
     WITHDRAW,
     BILL_PAYMENT
@@ -84,6 +92,11 @@ fun AppRoot() {
         if (activeTab != tab) {
             navigationHistory.add(activeTab)
             activeTab = tab
+            featureViewModel.logClientActivity(
+                activityType = "NAVIGATION",
+                description = "Opened ${tab.name} screen",
+                status = "success"
+            )
         }
     }
 
@@ -94,6 +107,11 @@ fun AppRoot() {
     }
 
     fun logout() {
+        featureViewModel.logClientActivity(
+            activityType = "LOGOUT",
+            description = "Customer logout",
+            status = "success"
+        )
         authViewModel.logout()
         showRegister = false
         activeTab = MainTab.DASHBOARD
@@ -151,8 +169,11 @@ fun AppRoot() {
             onNavigateToFeatures = { navigateTo(MainTab.FEATURES) },
             onNavigateToDeposit = { navigateTo(MainTab.DEPOSIT) },
             onNavigateToWithdraw = { navigateTo(MainTab.WITHDRAW) },
-            onNavigateToFunding = { navigateTo(MainTab.FEATURES) },
-            onNavigateToBillPayment = { navigateTo(MainTab.BILL_PAYMENT) }
+            onNavigateToFunding = { navigateTo(MainTab.FUNDING) },
+            onNavigateToBillPayment = { navigateTo(MainTab.BILL_PAYMENT) },
+            onNavigateToStatement = { navigateTo(MainTab.STATEMENT) },
+            onNavigateToReport = { navigateTo(MainTab.REPORT) },
+            onNavigateToActivity = { navigateTo(MainTab.ACTIVITY) }
         )
         MainTab.CREATE_ACCOUNT -> CreateAccountScreen(
             accountRepository = accountRepository,
@@ -183,6 +204,30 @@ fun AppRoot() {
             }
         )
         MainTab.FEATURES -> FeatureHubScreen(
+            viewModel = featureViewModel,
+            customerId = customerId,
+            canGoBack = navigationHistory.isNotEmpty(),
+            onBack = { goBack() }
+        )
+        MainTab.FUNDING -> FundingScreen(
+            viewModel = featureViewModel,
+            customerId = customerId,
+            canGoBack = navigationHistory.isNotEmpty(),
+            onBack = { goBack() }
+        )
+        MainTab.STATEMENT -> StatementScreen(
+            viewModel = featureViewModel,
+            customerId = customerId,
+            canGoBack = navigationHistory.isNotEmpty(),
+            onBack = { goBack() }
+        )
+        MainTab.REPORT -> AccountOverviewReportScreen(
+            viewModel = featureViewModel,
+            customerId = customerId,
+            canGoBack = navigationHistory.isNotEmpty(),
+            onBack = { goBack() }
+        )
+        MainTab.ACTIVITY -> ActivityLogScreen(
             viewModel = featureViewModel,
             customerId = customerId,
             canGoBack = navigationHistory.isNotEmpty(),

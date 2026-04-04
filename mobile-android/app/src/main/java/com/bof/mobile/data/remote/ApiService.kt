@@ -19,13 +19,21 @@ import com.bof.mobile.model.AdminTransferLimitResponse
 import com.bof.mobile.model.AdminUpdateLoanRequest
 import com.bof.mobile.model.AdminUpdateTransferLimitRequest
 import com.bof.mobile.model.BillHistoryItem
+import com.bof.mobile.model.ActivityLogItem
+import com.bof.mobile.model.ActivityLogRequest
 import com.bof.mobile.model.BillPaymentRequest
+import com.bof.mobile.model.BankStatementRequest
+import com.bof.mobile.model.BankStatementResponse
 import com.bof.mobile.model.BillerItem
 import com.bof.mobile.model.DashboardResponse
 import com.bof.mobile.model.DepositRequest
 import com.bof.mobile.model.DepositResponse
 import com.bof.mobile.model.ForgotPasswordRequest
 import com.bof.mobile.model.ForgotPasswordResponse
+import com.bof.mobile.model.FundingInvestmentRequest
+import com.bof.mobile.model.FundingInvestmentResponse
+import com.bof.mobile.model.FundingLoanRequest
+import com.bof.mobile.model.FundingLoanResponse
 import com.bof.mobile.model.InitiateTransferRequest
 import com.bof.mobile.model.InitiateTransferResponse
 import com.bof.mobile.model.InterestSummaryItem
@@ -42,6 +50,7 @@ import com.bof.mobile.model.ProfileResponse
 import com.bof.mobile.model.RecipientItem
 import com.bof.mobile.model.RegisterRequest
 import com.bof.mobile.model.RegisterResponse
+import com.bof.mobile.model.ReportResponse
 import com.bof.mobile.model.ResetPasswordRequest
 import com.bof.mobile.model.ResetPasswordResponse
 import com.bof.mobile.model.ScheduledBillItem
@@ -67,6 +76,8 @@ import retrofit2.http.POST
 import retrofit2.http.PUT
 import retrofit2.http.Query
 import retrofit2.http.Path
+import retrofit2.http.Streaming
+import okhttp3.ResponseBody
 
 interface ApiService {
     @POST("auth/login")
@@ -95,6 +106,20 @@ interface ApiService {
 
     @GET("transactions")
     suspend fun getTransactions(@Query("accountId") accountId: Int): List<TransactionItem>
+
+    @GET("report")
+    suspend fun getReport(): ReportResponse
+
+    @GET("activity")
+    suspend fun getActivityLogs(
+        @Query("fromDate") fromDate: String?,
+        @Query("toDate") toDate: String?,
+        @Query("activityType") activityType: String?,
+        @Query("limit") limit: Int = 200
+    ): List<ActivityLogItem>
+
+    @POST("activity")
+    suspend fun createActivityLog(@Body request: ActivityLogRequest): ActivityLogItem
 
     @GET("transactions")
     suspend fun getTransactionsPaginated(
@@ -150,6 +175,13 @@ interface ApiService {
     @GET("statements/request/{requestId}")
     suspend fun getStatementByRequest(@Path("requestId") requestId: Int): List<StatementRowItem>
 
+    @POST("statement")
+    suspend fun getBankStatement(@Body request: BankStatementRequest): BankStatementResponse
+
+    @Streaming
+    @POST("statement/download")
+    suspend fun downloadBankStatement(@Body request: BankStatementRequest): ResponseBody
+
     @GET("notifications/history")
     suspend fun getNotificationsHistory(
         @Query("limit") limit: Int,
@@ -185,6 +217,12 @@ interface ApiService {
 
     @POST("investments")
     suspend fun createInvestment(@Body request: InvestmentRequest): InvestmentItem
+
+    @POST("investment")
+    suspend fun submitFundingInvestment(@Body request: FundingInvestmentRequest): FundingInvestmentResponse
+
+    @POST("loan")
+    suspend fun submitFundingLoan(@Body request: FundingLoanRequest): FundingLoanResponse
 
     @GET("admin/customers")
     suspend fun getAdminCustomers(@Query("q") query: String?): List<ProfileResponse>

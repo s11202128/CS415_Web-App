@@ -140,6 +140,7 @@ const initializeDatabase = async () => {
     const hasAdminsTable = normalizedTables.includes("admins");
     const hasLoginLogsTable = normalizedTables.includes("login_logs");
     const hasNotificationLogsTable = normalizedTables.includes("notification_logs");
+    const hasActivityLogsTable = normalizedTables.includes("activity_logs");
     const hasDocumentsTable = normalizedTables.includes("documents");
 
     if (hasDocumentsTable) {
@@ -205,6 +206,34 @@ const initializeDatabase = async () => {
     if (hasNotificationLogsTable) {
       const notificationLogColumns = await queryInterface.describeTable("notification_logs");
       requiresNotificationLogIdMigration = isLegacyRegistrationIdType(notificationLogColumns?.id?.type);
+    }
+
+    if (hasActivityLogsTable) {
+      const activityLogColumns = await queryInterface.describeTable("activity_logs");
+      if (!activityLogColumns.user_id) {
+        await safeAddColumn(queryInterface, "activity_logs", "user_id", {
+          type: DataTypes.BIGINT.UNSIGNED,
+          allowNull: true,
+        });
+      }
+      if (!activityLogColumns.activity_type) {
+        await safeAddColumn(queryInterface, "activity_logs", "activity_type", {
+          type: DataTypes.STRING,
+          allowNull: true,
+        });
+      }
+      if (!activityLogColumns.timestamp) {
+        await safeAddColumn(queryInterface, "activity_logs", "timestamp", {
+          type: DataTypes.DATE,
+          allowNull: true,
+        });
+      }
+      if (!activityLogColumns.status) {
+        await safeAddColumn(queryInterface, "activity_logs", "status", {
+          type: DataTypes.STRING,
+          allowNull: true,
+        });
+      }
     }
 
     if (requiresCustomerIdMigration || requiresAccountIdMigration || requiresLoanIdMigration || 
@@ -393,6 +422,78 @@ const initializeDatabase = async () => {
       onUpdate: "CASCADE",
       onDelete: "RESTRICT",
     });
+
+    if (!transactionColumns.user_id) {
+      await safeAddColumn(queryInterface, "transactions", "user_id", {
+        type: DataTypes.BIGINT.UNSIGNED,
+        allowNull: true,
+      });
+    }
+    if (!transactionColumns.date) {
+      await safeAddColumn(queryInterface, "transactions", "date", {
+        type: DataTypes.DATE,
+        allowNull: true,
+      });
+    }
+    if (!transactionColumns.transaction_type) {
+      await safeAddColumn(queryInterface, "transactions", "transaction_type", {
+        type: DataTypes.STRING,
+        allowNull: true,
+      });
+    }
+    if (!transactionColumns.balance) {
+      await safeAddColumn(queryInterface, "transactions", "balance", {
+        type: DataTypes.DECIMAL(12, 2),
+        allowNull: true,
+      });
+    }
+
+    await sequelize.query(`
+      UPDATE transactions t
+      INNER JOIN accounts a ON a.id = t.accountId
+      SET t.user_id = a.customerId
+      WHERE t.user_id IS NULL
+    `);
+
+    await sequelize.query(`
+      UPDATE transactions
+      SET date = createdAt
+      WHERE date IS NULL
+    `);
+
+    await sequelize.query(`
+      UPDATE transactions
+      SET transaction_type = type
+      WHERE transaction_type IS NULL OR TRIM(transaction_type) = ''
+    `);
+
+    await sequelize.query(`
+      UPDATE transactions
+      SET balance = balanceAfter
+      WHERE balance IS NULL
+    `);
+
+    const investmentColumns = await queryInterface.describeTable("investments");
+    if (!investmentColumns.notes) {
+      await safeAddColumn(queryInterface, "investments", "notes", {
+        type: DataTypes.STRING,
+        allowNull: true,
+      });
+    }
+
+    const loanColumns = await queryInterface.describeTable("loans");
+    if (!loanColumns.purpose) {
+      await safeAddColumn(queryInterface, "loans", "purpose", {
+        type: DataTypes.STRING,
+        allowNull: true,
+      });
+    }
+    if (!loanColumns.details) {
+      await safeAddColumn(queryInterface, "loans", "details", {
+        type: DataTypes.STRING,
+        allowNull: true,
+      });
+    }
 
     const statementRequestColumns = await queryInterface.describeTable("statement_requests");
     if (!statementRequestColumns.accountId) {
@@ -622,15 +723,15 @@ const initializeDatabase = async () => {
 
     await cleanupDuplicateForeignKeys();
 
-    const loanColumns = await queryInterface.describeTable("loans");
-    if (!loanColumns.loanProductId) {
+    const loanColumnsV2 = await queryInterface.describeTable("loans");
+    if (!loanColumnsV2.loanProductId) {
       await safeAddColumn(queryInterface, "loans", "loanProductId", {
         type: DataTypes.STRING,
         allowNull: true,
         defaultValue: "",
       });
     }
-    if (!loanColumns.termMonths) {
+    if (!loanColumnsV2.termMonths) {
       await safeAddColumn(queryInterface, "loans", "termMonths", {
         type: DataTypes.INTEGER,
         allowNull: true,

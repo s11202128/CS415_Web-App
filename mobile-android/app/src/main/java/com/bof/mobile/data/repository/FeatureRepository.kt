@@ -4,10 +4,18 @@ import com.bof.mobile.data.remote.ApiService
 import com.bof.mobile.model.ApiResult
 import com.bof.mobile.model.BillHistoryItem
 import com.bof.mobile.model.BillPaymentRequest
+import com.bof.mobile.model.ActivityLogItem
+import com.bof.mobile.model.ActivityLogRequest
+import com.bof.mobile.model.BankStatementRequest
+import com.bof.mobile.model.BankStatementResponse
 import com.bof.mobile.model.DepositRequest
 import com.bof.mobile.model.DepositResponse
 import com.bof.mobile.model.ForgotPasswordRequest
 import com.bof.mobile.model.ForgotPasswordResponse
+import com.bof.mobile.model.FundingInvestmentRequest
+import com.bof.mobile.model.FundingInvestmentResponse
+import com.bof.mobile.model.FundingLoanRequest
+import com.bof.mobile.model.FundingLoanResponse
 import com.bof.mobile.model.InterestSummaryItem
 import com.bof.mobile.model.InvestmentItem
 import com.bof.mobile.model.InvestmentRequest
@@ -16,6 +24,7 @@ import com.bof.mobile.model.LoanApplicationRequest
 import com.bof.mobile.model.LoanProductItem
 import com.bof.mobile.model.NotificationItem
 import com.bof.mobile.model.ProfileResponse
+import com.bof.mobile.model.ReportResponse
 import com.bof.mobile.model.ResetPasswordRequest
 import com.bof.mobile.model.ResetPasswordResponse
 import com.bof.mobile.model.ScheduledBillItem
@@ -73,8 +82,37 @@ class FeatureRepository(private val apiService: ApiService) {
         apiService.getStatementByRequest(requestId)
     }
 
+    suspend fun getBankStatement(fromDate: String, toDate: String): ApiResult<BankStatementResponse> = safeCall {
+        apiService.getBankStatement(BankStatementRequest(fromDate = fromDate, toDate = toDate))
+    }
+
+    suspend fun downloadBankStatementPdf(fromDate: String, toDate: String): ApiResult<ByteArray> {
+        return try {
+            val bytes = apiService.downloadBankStatement(BankStatementRequest(fromDate = fromDate, toDate = toDate)).bytes()
+            ApiResult.Success(bytes)
+        } catch (e: HttpException) {
+            ApiResult.Error(message = parseHttpError(e, "Download failed"), code = e.code())
+        } catch (e: IOException) {
+            ApiResult.Error(message = "Network unavailable. Please try again.")
+        } catch (e: Exception) {
+            ApiResult.Error(message = e.message ?: "Unexpected error")
+        }
+    }
+
     suspend fun getNotifications(customerId: Int): ApiResult<List<NotificationItem>> = safeCall {
         apiService.getNotificationsHistory(limit = 200, customerId = customerId)
+    }
+
+    suspend fun getReport(): ApiResult<ReportResponse> = safeCall {
+        apiService.getReport()
+    }
+
+    suspend fun getActivityLogs(fromDate: String?, toDate: String?, activityType: String?): ApiResult<List<ActivityLogItem>> = safeCall {
+        apiService.getActivityLogs(fromDate = fromDate, toDate = toDate, activityType = activityType, limit = 500)
+    }
+
+    suspend fun createActivityLog(activityType: String, description: String, status: String = "success"): ApiResult<ActivityLogItem> = safeCall {
+        apiService.createActivityLog(ActivityLogRequest(activityType = activityType, description = description, status = status))
     }
 
     suspend fun forgotPassword(email: String): ApiResult<ForgotPasswordResponse> = safeCall {
@@ -107,6 +145,40 @@ class FeatureRepository(private val apiService: ApiService) {
 
     suspend fun createInvestment(request: InvestmentRequest): ApiResult<InvestmentItem> = safeCall {
         apiService.createInvestment(request)
+    }
+
+    suspend fun submitFundingInvestment(
+        amount: Double,
+        investmentType: String,
+        durationMonths: Int,
+        notes: String?
+    ): ApiResult<FundingInvestmentResponse> = safeCall {
+        apiService.submitFundingInvestment(
+            FundingInvestmentRequest(
+                amount = amount,
+                investmentType = investmentType,
+                durationMonths = durationMonths,
+                notes = notes
+            )
+        )
+    }
+
+    suspend fun submitFundingLoan(
+        loanAmount: Double,
+        loanType: String,
+        repaymentPeriodMonths: Int,
+        purpose: String,
+        details: String?
+    ): ApiResult<FundingLoanResponse> = safeCall {
+        apiService.submitFundingLoan(
+            FundingLoanRequest(
+                loanAmount = loanAmount,
+                loanType = loanType,
+                repaymentPeriodMonths = repaymentPeriodMonths,
+                purpose = purpose,
+                details = details
+            )
+        )
     }
 
     suspend fun deposit(request: DepositRequest): ApiResult<DepositResponse> = safeCall {

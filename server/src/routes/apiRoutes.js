@@ -1,7 +1,9 @@
 const express = require("express");
+const PDFDocument = require("pdfkit");
 const { Op } = require("sequelize");
 const requirementsData = require("../config/requirementsData");
 const { requireAuth, requireAdmin } = require("../middleware/auth");
+const { normalizeActivityType, logCustomerActivity } = require("../services/activityLogService");
 const {
   getAccountTransactions,
   initiateTransfer,
@@ -25,7 +27,7 @@ const {
   reverseTransaction,
   generateRandomAccountPin,
 } = require("../store-mysql");
-const { Customer, Account, Bill, Investment, Loan, Transaction, OtpVerification, StatementRequest } = require("../models");
+const { Customer, Account, Bill, Investment, Loan, Transaction, OtpVerification, StatementRequest, ActivityLog } = require("../models");
 
 const loanProducts = [
   { id: "LP-001", name: "Personal Loan", annualRate: 0.089, maxAmount: 30000, minTermMonths: 6, maxTermMonths: 60 },
@@ -55,6 +57,79 @@ function getAuthenticatedCustomerId(req) {
 
 function canAccessCustomer(req, customerId) {
   return isAdmin(req) || getAuthenticatedCustomerId(req) === Number(customerId);
+}
+
+function parseDateParam(value, fieldName) {
+  const raw = String(value || "").trim();
+  if (!raw) {
+    throw new Error(`${fieldName} is required`);
+  }
+
+  const parsed = new Date(raw);
+  if (Number.isNaN(parsed.getTime())) {
+    throw new Error(`${fieldName} must be a valid date`);
+  }
+
+  return parsed;
+}
+
+async function resolveStatementPayloadForUser(req) {
+  const payload = req.body || {};
+  const customerId = getAuthenticatedCustomerId(req);
+  if (!Number.isFinite(customerId) || customerId <= 0) {
+    throw new Error("Authenticated customer session required");
+  }
+
+  const fromDate = parseDateParam(payload.fromDate, "fromDate");
+  const toDate = parseDateParam(payload.toDate, "toDate");
+  if (fromDate.getTime() > toDate.getTime()) {
+    throw new Error("fromDate must be earlier than or equal to toDate");
+  }
+  toDate.setHours(23, 59, 59, 999);
+
+  const customer = await Customer.findByPk(customerId);
+  if (!customer) {
+    throw new Error("Customer not found");
+  }
+
+  const accounts = await Account.findAll({
+    where: { customerId },
+    attributes: ["id", "accountNumber"],
+    order: [["id", "ASC"]],
+  });
+
+  if (!accounts.length) {
+    throw new Error("No accounts found for this user");
+  }
+
+  const accountNumbers = accounts.map((row) => String(row.accountNumber));
+  const transactions = await Transaction.findAll({
+    where: {
+      accountNumber: { [Op.in]: accountNumbers },
+      createdAt: { [Op.between]: [fromDate, toDate] },
+    },
+    order: [["createdAt", "ASC"]],
+  });
+
+  const rows = transactions.map((tx) => ({
+    id: tx.id,
+    user_id: Number(tx.userId || customerId),
+    date: tx.date || tx.createdAt,
+    description: tx.description || "",
+    amount: Number(tx.amount),
+    balance: Number(tx.balance || tx.balanceAfter || 0),
+    transactionType: tx.transactionType || tx.type,
+    accountNumber: String(tx.accountNumber || ""),
+  }));
+
+  return {
+    customer,
+    accountNumber: accountNumbers[0],
+    accountNumbers,
+    fromDate,
+    toDate,
+    transactions: rows,
+  };
 }
 
 router.use("/admin", requireAuth, requireAdmin);
@@ -233,6 +308,248 @@ async function resolveBillAccountFromPayload(payload) {
 router.get("/health", (req, res) => {
   res.json({ status: "ok", service: "BoF Banking API", at: new Date().toISOString() });
 });
+
+router.post("/activity", requireAuth, asyncHandler(async (req, res) => {
+  const userId = getAuthenticatedCustomerId(req);
+  if (!Number.isFinite(userId) || userId <= 0) {
+    return res.status(401).json({ error: "Authenticated customer session required" });
+  }
+
+  const payload = req.body || {};
+  const activityType = normalizeActivityType(payload.activityType || "CLIENT_EVENT");
+  const description = String(payload.description || "User activity").trim();
+  const status = String(payload.status || "success").trim().toLowerCase();
+
+  if (!description) {
+    return res.status(400).json({ error: "description is required" });
+  }
+
+  const row = await ActivityLog.create({
+    userId,
+    activityType,
+    description,
+    status: status || "success",
+  });
+
+  res.status(201).json({
+    id: row.id,
+    user_id: row.userId,
+    activity_type: row.activityType,
+    description: row.description,
+    timestamp: row.timestamp,
+    status: row.status,
+  });
+}));
+
+router.get("/activity", requireAuth, asyncHandler(async (req, res) => {
+  const userId = getAuthenticatedCustomerId(req);
+  if (!Number.isFinite(userId) || userId <= 0) {
+    return res.status(401).json({ error: "Authenticated customer session required" });
+  }
+
+  const fromDate = String(req.query.fromDate || "").trim();
+  const toDate = String(req.query.toDate || "").trim();
+  const activityType = String(req.query.activityType || "").trim();
+  const limit = Math.min(Math.max(Number(req.query.limit || 200), 1), 1000);
+
+  const where = { userId };
+
+  if (activityType) {
+    where.activityType = normalizeActivityType(activityType);
+  }
+
+  if (fromDate || toDate) {
+    const range = {};
+    if (fromDate) {
+      const parsed = new Date(fromDate);
+      if (Number.isNaN(parsed.getTime())) {
+        return res.status(400).json({ error: "fromDate must be a valid date" });
+      }
+      range[Op.gte] = parsed;
+    }
+    if (toDate) {
+      const parsed = new Date(toDate);
+      if (Number.isNaN(parsed.getTime())) {
+        return res.status(400).json({ error: "toDate must be a valid date" });
+      }
+      parsed.setHours(23, 59, 59, 999);
+      range[Op.lte] = parsed;
+    }
+    where.timestamp = range;
+  }
+
+  const rows = await ActivityLog.findAll({
+    where,
+    order: [["timestamp", "DESC"]],
+    limit,
+  });
+
+  res.json(rows.map((row) => ({
+    id: row.id,
+    user_id: row.userId,
+    activity_type: row.activityType,
+    description: row.description,
+    timestamp: row.timestamp,
+    status: row.status,
+  })));
+}));
+
+router.get("/report", requireAuth, asyncHandler(async (req, res) => {
+  const customerId = getAuthenticatedCustomerId(req);
+  if (!Number.isFinite(customerId) || customerId <= 0) {
+    return res.status(401).json({ error: "Authenticated customer session required" });
+  }
+
+  const customer = await Customer.findByPk(customerId);
+  if (!customer) {
+    return res.status(404).json({ error: "Customer not found" });
+  }
+
+  const accounts = await Account.findAll({
+    where: { customerId },
+    attributes: ["accountNumber", "balance"],
+    order: [["id", "ASC"]],
+  });
+
+  const accountNumbers = accounts.map((x) => String(x.accountNumber || "")).filter(Boolean);
+
+  const transactions = accountNumbers.length
+    ? await Transaction.findAll({
+        where: {
+          accountNumber: { [Op.in]: accountNumbers },
+        },
+        order: [["createdAt", "ASC"]],
+      })
+    : [];
+
+  const bucket = new Map();
+  transactions.forEach((tx) => {
+    const txDate = new Date(tx.date || tx.createdAt);
+    const period = Number.isNaN(txDate.getTime())
+      ? "unknown"
+      : `${txDate.getFullYear()}-${String(txDate.getMonth() + 1).padStart(2, "0")}`;
+
+    if (!bucket.has(period)) {
+      bucket.set(period, { period, credit: 0, debit: 0, total: 0 });
+    }
+
+    const row = bucket.get(period);
+    const amount = Math.abs(Number(tx.amount || 0));
+    const type = String(tx.transactionType || tx.type || "").toLowerCase();
+    const isCredit = type.includes("credit") || type.includes("deposit") || type.includes("receive") || type.includes("income");
+
+    if (isCredit) {
+      row.credit += amount;
+      row.total += amount;
+    } else {
+      row.debit += amount;
+      row.total -= amount;
+    }
+  });
+
+  const points = Array.from(bucket.values())
+    .sort((a, b) => String(a.period).localeCompare(String(b.period)))
+    .map((x) => ({
+      period: x.period,
+      credit: Number(x.credit.toFixed(2)),
+      debit: Number(x.debit.toFixed(2)),
+      total: Number(x.total.toFixed(2)),
+    }));
+
+  const totalBalance = accounts.reduce((sum, acc) => sum + Number(acc.balance || 0), 0);
+
+  res.json({
+    accountOverview: {
+      customerName: customer.fullName,
+      accountNumber: accountNumbers[0] || "N/A",
+      currentBalance: Number(totalBalance.toFixed(2)),
+      totalTransactions: transactions.length,
+    },
+    points,
+  });
+}));
+
+router.post("/statement", requireAuth, asyncHandler(async (req, res) => {
+  const statement = await resolveStatementPayloadForUser(req);
+  res.json({
+    bankName: "Bank of Fiji",
+    customerName: statement.customer.fullName,
+    accountNumber: statement.accountNumber,
+    dateRange: {
+      fromDate: statement.fromDate.toISOString(),
+      toDate: statement.toDate.toISOString(),
+    },
+    transactions: statement.transactions,
+  });
+}));
+
+router.post("/statement/download", requireAuth, asyncHandler(async (req, res) => {
+  const statement = await resolveStatementPayloadForUser(req);
+
+  const doc = new PDFDocument({ margin: 40, size: "A4" });
+  const filenameDate = new Date().toISOString().slice(0, 10);
+  res.setHeader("Content-Type", "application/pdf");
+  res.setHeader(
+    "Content-Disposition",
+    `attachment; filename=bank-statement-${filenameDate}.pdf`
+  );
+
+  doc.pipe(res);
+
+  doc.fontSize(18).text("Bank of Fiji", { align: "center" });
+  doc.moveDown(0.6);
+  doc.fontSize(14).text("Bank Statement", { align: "center" });
+  doc.moveDown(1.2);
+
+  doc.fontSize(11).text(`Customer Name: ${statement.customer.fullName}`);
+  doc.text(`Primary Account Number: ${statement.accountNumber}`);
+  doc.text(`Accounts Included: ${statement.accountNumbers.join(", ")}`);
+  doc.text(`Date Range: ${statement.fromDate.toISOString().slice(0, 10)} to ${statement.toDate.toISOString().slice(0, 10)}`);
+  doc.moveDown(1);
+
+  if (!statement.transactions.length) {
+    doc
+      .fontSize(12)
+      .fillColor("#555555")
+      .text("No transactions found for the selected period", { align: "left" });
+    doc.moveDown(0.6);
+    doc.fillColor("#000000");
+  } else {
+    const columns = {
+      date: 40,
+      description: 140,
+      amount: 360,
+      balance: 455,
+    };
+
+    doc.fontSize(10).text("Date", columns.date, doc.y);
+    doc.text("Description", columns.description, doc.y);
+    doc.text("Amount", columns.amount, doc.y, { width: 80, align: "right" });
+    doc.text("Balance", columns.balance, doc.y, { width: 90, align: "right" });
+    doc.moveDown(0.3);
+    doc.moveTo(40, doc.y).lineTo(555, doc.y).stroke();
+    doc.moveDown(0.4);
+
+    statement.transactions.forEach((row) => {
+      if (doc.y > 760) {
+        doc.addPage();
+      }
+
+      const txDate = new Date(row.date).toISOString().slice(0, 10);
+      const amountText = Number(row.amount).toFixed(2);
+      const balanceText = Number(row.balance).toFixed(2);
+      const descriptionText = `${row.transactionType || "transaction"}: ${row.description || "-"}`;
+
+      doc.text(txDate, columns.date, doc.y, { width: 90 });
+      doc.text(descriptionText, columns.description, doc.y, { width: 205 });
+      doc.text(amountText, columns.amount, doc.y, { width: 80, align: "right" });
+      doc.text(balanceText, columns.balance, doc.y, { width: 90, align: "right" });
+      doc.moveDown(0.4);
+    });
+  }
+
+  doc.end();
+}));
 
 router.get("/requirements", (req, res) => {
   res.json(requirementsData);
@@ -1239,6 +1556,110 @@ router.post("/investments", requireAuth, asyncHandler(async (req, res) => {
     annualRate: Number(payload.annualRate),
   });
   res.status(201).json(row);
+}));
+
+router.post("/investment", requireAuth, asyncHandler(async (req, res) => {
+  const payload = req.body || {};
+  const customerId = getAuthenticatedCustomerId(req);
+  if (!Number.isFinite(customerId) || customerId <= 0) {
+    return res.status(401).json({ error: "Authenticated customer session required" });
+  }
+
+  const amount = Number(payload.amount);
+  const investmentType = String(payload.investmentType || "").trim();
+  const durationMonths = Number(payload.durationMonths || 0);
+  const notes = String(payload.notes || "").trim();
+
+  if (!investmentType) {
+    return res.status(400).json({ error: "investmentType is required" });
+  }
+  if (!Number.isFinite(amount) || amount <= 0) {
+    return res.status(400).json({ error: "amount must be greater than 0" });
+  }
+  if (!Number.isFinite(durationMonths) || durationMonths <= 0) {
+    return res.status(400).json({ error: "durationMonths must be greater than 0" });
+  }
+
+  const maturityDate = new Date();
+  maturityDate.setMonth(maturityDate.getMonth() + durationMonths);
+
+  const row = await Investment.create({
+    customerId,
+    investmentType,
+    amount,
+    expectedReturn: null,
+    maturityDate,
+    notes: notes || null,
+    status: "pending",
+  });
+
+  res.status(201).json({
+    id: row.id,
+    customerId: row.customerId,
+    investmentType: row.investmentType,
+    amount: Number(row.amount),
+    durationMonths,
+    notes: row.notes,
+    status: row.status,
+    createdAt: row.createdAt,
+  });
+}));
+
+router.post("/loan", requireAuth, asyncHandler(async (req, res) => {
+  const payload = req.body || {};
+  const customerId = getAuthenticatedCustomerId(req);
+  if (!Number.isFinite(customerId) || customerId <= 0) {
+    return res.status(401).json({ error: "Authenticated customer session required" });
+  }
+
+  const loanAmount = Number(payload.loanAmount);
+  const loanType = String(payload.loanType || "").trim();
+  const repaymentPeriodMonths = Number(payload.repaymentPeriodMonths || 0);
+  const purpose = String(payload.purpose || "").trim();
+  const details = String(payload.details || "").trim();
+
+  if (!loanType) {
+    return res.status(400).json({ error: "loanType is required" });
+  }
+  if (!Number.isFinite(loanAmount) || loanAmount <= 0) {
+    return res.status(400).json({ error: "loanAmount must be greater than 0" });
+  }
+  if (!Number.isFinite(repaymentPeriodMonths) || repaymentPeriodMonths <= 0) {
+    return res.status(400).json({ error: "repaymentPeriodMonths must be greater than 0" });
+  }
+  if (!purpose) {
+    return res.status(400).json({ error: "purpose is required" });
+  }
+
+  const maturityDate = new Date();
+  maturityDate.setMonth(maturityDate.getMonth() + repaymentPeriodMonths);
+
+  const sanitizedLoanType = loanType.toUpperCase().replace(/[^A-Z0-9]+/g, "_").replace(/^_+|_+$/g, "");
+  const row = await Loan.create({
+    customerId,
+    loanProductId: `CUSTOM_${sanitizedLoanType || "LOAN"}`,
+    termMonths: repaymentPeriodMonths,
+    loanType,
+    principal: loanAmount,
+    interestRate: 0,
+    disbursedAmount: 0,
+    maturityDate,
+    purpose,
+    details: details || null,
+    status: "pending",
+  });
+
+  res.status(201).json({
+    id: row.id,
+    customerId: row.customerId,
+    loanType: row.loanType,
+    loanAmount: Number(row.principal),
+    repaymentPeriodMonths: Number(row.termMonths),
+    purpose: row.purpose,
+    details: row.details,
+    status: row.status,
+    createdAt: row.createdAt,
+  });
 }));
 
 router.post("/statements/request", requireAuth, asyncHandler(async (req, res) => {

@@ -342,11 +342,15 @@ async function createTransaction({ accountId, accountNumber, kind, amount, descr
   const tx = await Transaction.create({
     accountId: account.id,
     accountNumber: account.accountNumber,
+    userId: Number(account.customerId) || null,
+    date: new Date(),
     type: kind,
+    transactionType: kind,
     amount: Math.abs(amount),
     description,
     status: "completed",
     balanceAfter: newBalance,
+    balance: newBalance,
   });
 
   return {

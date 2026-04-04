@@ -10,6 +10,7 @@ const Registration = require('./Registration');
 const Admin = require('./Admin');
 const LoginLog = require('./LoginLog');
 const NotificationLog = require('./NotificationLog');
+const ActivityLog = require('./ActivityLog');
 const StatementRequest = require('./StatementRequest');
 
 // Define associations
@@ -33,6 +34,9 @@ OtpVerification.belongsTo(Customer, { foreignKey: 'customerId' });
 
 Customer.hasMany(NotificationLog, { foreignKey: 'userId' });
 NotificationLog.belongsTo(Customer, { foreignKey: 'userId' });
+
+Customer.hasMany(ActivityLog, { foreignKey: 'userId' });
+ActivityLog.belongsTo(Customer, { foreignKey: 'userId' });
 
 Customer.hasMany(StatementRequest, { foreignKey: 'customerId' });
 StatementRequest.belongsTo(Customer, { foreignKey: 'customerId' });
@@ -65,5 +69,6 @@ module.exports = {
   Admin,
   LoginLog,
   NotificationLog,
+  ActivityLog,
   StatementRequest,
 };

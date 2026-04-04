@@ -1,41 +1,36 @@
 const { DataTypes } = require('sequelize');
 const sequelize = require('../config/database');
 
-const Investment = sequelize.define('Investment', {
+const ActivityLog = sequelize.define('ActivityLog', {
   id: {
     type: DataTypes.BIGINT.UNSIGNED,
     autoIncrement: true,
     primaryKey: true,
   },
-  customerId: {
+  userId: {
     type: DataTypes.BIGINT.UNSIGNED,
     allowNull: false,
+    field: 'user_id',
   },
-  investmentType: {
+  activityType: {
     type: DataTypes.STRING,
     allowNull: false,
+    field: 'activity_type',
   },
-  amount: {
-    type: DataTypes.DECIMAL(12, 2),
-    allowNull: false,
-  },
-  expectedReturn: {
-    type: DataTypes.DECIMAL(8, 2),
-  },
-  maturityDate: {
-    type: DataTypes.DATE,
-  },
-  notes: {
+  description: {
     type: DataTypes.STRING,
-    allowNull: true,
+    allowNull: false,
   },
   status: {
     type: DataTypes.STRING,
-    defaultValue: 'active',
+    allowNull: false,
+    defaultValue: 'success',
   },
 }, {
-  tableName: 'investments',
+  tableName: 'activity_logs',
   timestamps: true,
+  createdAt: 'timestamp',
+  updatedAt: false,
 });
 
-module.exports = Investment;
+module.exports = ActivityLog;

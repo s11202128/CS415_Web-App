@@ -1,5 +1,6 @@
 const jwt = require("jsonwebtoken");
 const authService = require("../services/authService");
+const { logCustomerActivity } = require("../services/activityLogService");
 
 const JWT_SECRET = process.env.JWT_SECRET || "bof-dev-secret-2026";
 
@@ -60,6 +61,14 @@ const authController = {
       ipAddress: req.ip,
       userAgent: req.get("user-agent") || "",
     });
+    if (!user.isAdmin) {
+      await logCustomerActivity({
+        userId: user.customerId || user.userId,
+        activityType: "LOGIN",
+        description: "Customer login successful",
+        status: "success",
+      });
+    }
     res.json(buildAuthResponse(user));
   },
 

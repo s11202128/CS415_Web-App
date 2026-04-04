@@ -21,9 +21,23 @@ const Transaction = sequelize.define('Transaction', {
       },
     },
   },
+  userId: {
+    type: DataTypes.BIGINT.UNSIGNED,
+    allowNull: true,
+    field: 'user_id',
+  },
+  date: {
+    type: DataTypes.DATE,
+    allowNull: true,
+  },
   type: {
     type: DataTypes.STRING,
     allowNull: false,
+  },
+  transactionType: {
+    type: DataTypes.STRING,
+    allowNull: true,
+    field: 'transaction_type',
   },
   amount: {
     type: DataTypes.DECIMAL(12, 2),
@@ -38,6 +52,10 @@ const Transaction = sequelize.define('Transaction', {
   },
   balanceAfter: {
     type: DataTypes.DECIMAL(12, 2),
+  },
+  balance: {
+    type: DataTypes.DECIMAL(12, 2),
+    allowNull: true,
   },
 }, {
   tableName: 'transactions',

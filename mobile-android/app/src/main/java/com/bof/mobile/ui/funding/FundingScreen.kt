@@ -16,6 +16,10 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExposedDropdownMenuBox
+import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -36,12 +40,16 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.bof.mobile.ui.components.ScreenHeader
+import com.bof.mobile.viewmodel.FeatureUiState
 import com.bof.mobile.viewmodel.FeatureViewModel
 
 private enum class FundingTab {
     INVESTMENT,
     LOAN
 }
+
+private val investmentTypes = listOf("Fixed Deposit", "Mutual Fund", "Retirement Plan")
+private val loanTypes = listOf("Personal Loan", "Home Loan", "Car Loan")
 
 @Composable
 fun FundingScreen(
@@ -55,9 +63,6 @@ fun FundingScreen(
 
     LaunchedEffect(customerId) {
         viewModel.initialize(customerId)
-        viewModel.loadLoanProducts()
-        viewModel.loadLoanApplications()
-        viewModel.loadInvestments(customerId)
     }
 
     Box(
@@ -73,8 +78,8 @@ fun FundingScreen(
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             ScreenHeader(
-                title = "Funding",
-                subtitle = "Manage your investments and loans in one place.",
+                title = "Funding Services",
+                subtitle = "Submit investment and loan requests securely.",
                 onBack = onBack,
                 enabled = canGoBack
             )
@@ -97,7 +102,7 @@ fun FundingScreen(
                         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                             Text("Funding Dashboard", color = Color.White, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
                             Text(
-                                "Switch between Investment and Loan tabs.",
+                                "Choose a service and submit your request.",
                                 color = Color.White.copy(alpha = 0.92f),
                                 style = MaterialTheme.typography.bodyMedium
                             )
@@ -152,22 +157,18 @@ fun FundingScreen(
                                 uiState = uiState,
                                 onInvestmentTypeChanged = viewModel::onInvestmentTypeChanged,
                                 onInvestmentAmountChanged = viewModel::onInvestmentAmountChanged,
-                                onInvestmentExpectedReturnChanged = viewModel::onInvestmentExpectedReturnChanged,
+                                onInvestmentNotesChanged = viewModel::onInvestmentExpectedReturnChanged,
                                 onInvestmentMaturityDateChanged = viewModel::onInvestmentMaturityDateChanged,
-                                onCreateInvestment = viewModel::createInvestment,
-                                onLoadInvestments = { viewModel.loadInvestments(customerId) }
+                                onSubmitInvestment = viewModel::submitFundingInvestment
                             )
                             FundingTab.LOAN -> LoanTab(
                                 uiState = uiState,
-                                onLoanProductIdChanged = viewModel::onLoanProductIdChanged,
+                                onLoanTypeChanged = viewModel::onLoanProductIdChanged,
                                 onLoanRequestedAmountChanged = viewModel::onLoanRequestedAmountChanged,
-                                onLoanTermMonthsChanged = viewModel::onLoanTermMonthsChanged,
+                                onRepaymentPeriodChanged = viewModel::onLoanTermMonthsChanged,
                                 onLoanPurposeChanged = viewModel::onLoanPurposeChanged,
-                                onLoanMonthlyIncomeChanged = viewModel::onLoanMonthlyIncomeChanged,
-                                onLoanOccupationChanged = viewModel::onLoanOccupationChanged,
-                                onLoadLoanProducts = viewModel::loadLoanProducts,
-                                onSubmitLoan = viewModel::submitLoanApplication,
-                                onLoadLoanApplications = viewModel::loadLoanApplications
+                                onLoanDetailsChanged = viewModel::onLoanOccupationChanged,
+                                onSubmitLoan = viewModel::submitFundingLoan
                             )
                         }
                     }
@@ -179,20 +180,20 @@ fun FundingScreen(
 
 @Composable
 private fun InvestmentTab(
-    uiState: com.bof.mobile.viewmodel.FeatureUiState,
+    uiState: FeatureUiState,
     onInvestmentTypeChanged: (String) -> Unit,
     onInvestmentAmountChanged: (String) -> Unit,
-    onInvestmentExpectedReturnChanged: (String) -> Unit,
+    onInvestmentNotesChanged: (String) -> Unit,
     onInvestmentMaturityDateChanged: (String) -> Unit,
-    onCreateInvestment: () -> Unit,
-    onLoadInvestments: () -> Unit
+    onSubmitInvestment: () -> Unit
 ) {
-    Text("Investment", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-    OutlinedTextField(
+    Text("Investment Service", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+    FundingTypeDropdown(
+        label = "Type",
         value = uiState.investmentType,
-        onValueChange = onInvestmentTypeChanged,
-        label = { Text("Investment type") },
-        modifier = Modifier.fillMaxWidth()
+        options = investmentTypes,
+        onSelected = onInvestmentTypeChanged,
+        placeholder = "Select investment type"
     )
     OutlinedTextField(
         value = uiState.investmentAmount,
@@ -202,68 +203,50 @@ private fun InvestmentTab(
     )
     OutlinedTextField(
         value = uiState.investmentExpectedReturn,
-        onValueChange = onInvestmentExpectedReturnChanged,
-        label = { Text("Expected return % (optional)") },
+        onValueChange = onInvestmentNotesChanged,
+        label = { Text("Notes (optional)") },
         modifier = Modifier.fillMaxWidth()
     )
     OutlinedTextField(
         value = uiState.investmentMaturityDate,
         onValueChange = onInvestmentMaturityDateChanged,
-        label = { Text("Maturity date (YYYY-MM-DD, optional)") },
+        label = { Text("Duration (months)") },
         modifier = Modifier.fillMaxWidth()
     )
-    Button(onClick = onCreateInvestment, modifier = Modifier.fillMaxWidth()) {
-        Text("Create investment")
-    }
-    OutlinedButton(onClick = onLoadInvestments, modifier = Modifier.fillMaxWidth()) {
-        Text("Refresh investments")
-    }
-
-    uiState.investments.take(6).forEach { investment ->
-        Text(
-            "#${investment.id} ${investment.investmentType} FJD ${"%.2f".format(investment.amount)} ${investment.status}"
-        )
+    Button(onClick = onSubmitInvestment, modifier = Modifier.fillMaxWidth()) {
+        Text("Submit investment request")
     }
 }
 
 @Composable
 private fun LoanTab(
-    uiState: com.bof.mobile.viewmodel.FeatureUiState,
-    onLoanProductIdChanged: (String) -> Unit,
+    uiState: FeatureUiState,
+    onLoanTypeChanged: (String) -> Unit,
     onLoanRequestedAmountChanged: (String) -> Unit,
-    onLoanTermMonthsChanged: (String) -> Unit,
+    onRepaymentPeriodChanged: (String) -> Unit,
     onLoanPurposeChanged: (String) -> Unit,
-    onLoanMonthlyIncomeChanged: (String) -> Unit,
-    onLoanOccupationChanged: (String) -> Unit,
-    onLoadLoanProducts: () -> Unit,
+    onLoanDetailsChanged: (String) -> Unit,
     onSubmitLoan: () -> Unit,
-    onLoadLoanApplications: () -> Unit
 ) {
-    Text("Loan", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-    OutlinedButton(onClick = onLoadLoanProducts, modifier = Modifier.fillMaxWidth()) {
-        Text("Refresh loan products")
-    }
+    Text("Loan Service", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
 
-    uiState.loanProducts.take(3).forEach { product ->
-        Text("${product.id} ${product.name} ${(product.annualRate * 100).toInt()}%")
-    }
-
-    OutlinedTextField(
+    FundingTypeDropdown(
+        label = "Type",
         value = uiState.loanProductId,
-        onValueChange = onLoanProductIdChanged,
-        label = { Text("Loan product id") },
-        modifier = Modifier.fillMaxWidth()
+        options = loanTypes,
+        onSelected = onLoanTypeChanged,
+        placeholder = "Select loan type"
     )
     OutlinedTextField(
         value = uiState.loanRequestedAmount,
         onValueChange = onLoanRequestedAmountChanged,
-        label = { Text("Requested amount") },
+        label = { Text("Amount") },
         modifier = Modifier.fillMaxWidth()
     )
     OutlinedTextField(
         value = uiState.loanTermMonths,
-        onValueChange = onLoanTermMonthsChanged,
-        label = { Text("Term months") },
+        onValueChange = onRepaymentPeriodChanged,
+        label = { Text("Repayment period (months)") },
         modifier = Modifier.fillMaxWidth()
     )
     OutlinedTextField(
@@ -273,26 +256,56 @@ private fun LoanTab(
         modifier = Modifier.fillMaxWidth()
     )
     OutlinedTextField(
-        value = uiState.loanMonthlyIncome,
-        onValueChange = onLoanMonthlyIncomeChanged,
-        label = { Text("Monthly income") },
-        modifier = Modifier.fillMaxWidth()
-    )
-    OutlinedTextField(
         value = uiState.loanOccupation,
-        onValueChange = onLoanOccupationChanged,
-        label = { Text("Occupation") },
+        onValueChange = onLoanDetailsChanged,
+        label = { Text("Details (optional)") },
         modifier = Modifier.fillMaxWidth()
     )
     Button(onClick = onSubmitLoan, modifier = Modifier.fillMaxWidth()) {
-        Text("Submit loan application")
+        Text("Submit loan request")
     }
-    OutlinedButton(onClick = onLoadLoanApplications, modifier = Modifier.fillMaxWidth()) {
-        Text("Refresh loan applications")
-    }
+}
 
-    uiState.loanApplications.take(6).forEach { application ->
-        Text("Loan #${application.id} ${application.status} FJD ${"%.2f".format(application.requestedAmount)}")
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun FundingTypeDropdown(
+    label: String,
+    value: String,
+    options: List<String>,
+    onSelected: (String) -> Unit,
+    placeholder: String
+) {
+    var expanded by remember { mutableStateOf(false) }
+
+    ExposedDropdownMenuBox(
+        expanded = expanded,
+        onExpandedChange = { expanded = !expanded }
+    ) {
+        OutlinedTextField(
+            value = value,
+            onValueChange = {},
+            readOnly = true,
+            label = { Text(label) },
+            placeholder = { Text(placeholder) },
+            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
+            modifier = Modifier
+                .menuAnchor()
+                .fillMaxWidth()
+        )
+        ExposedDropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false }
+        ) {
+            options.forEach { option ->
+                DropdownMenuItem(
+                    text = { Text(option) },
+                    onClick = {
+                        onSelected(option)
+                        expanded = false
+                    }
+                )
+            }
+        }
     }
 }
 

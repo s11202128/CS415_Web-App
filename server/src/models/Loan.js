@@ -36,6 +36,14 @@ const Loan = sequelize.define('Loan', {
   maturityDate: {
     type: DataTypes.DATE,
   },
+  purpose: {
+    type: DataTypes.STRING,
+    allowNull: true,
+  },
+  details: {
+    type: DataTypes.STRING,
+    allowNull: true,
+  },
   status: {
     type: DataTypes.STRING,
     defaultValue: 'active',

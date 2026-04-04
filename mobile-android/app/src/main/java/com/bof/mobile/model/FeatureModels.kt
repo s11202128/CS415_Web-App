@@ -68,6 +68,107 @@ data class StatementRowItem(
     val createdAt: String
 )
 
+data class BankStatementRequest(
+    val fromDate: String,
+    val toDate: String
+)
+
+data class BankStatementDateRange(
+    val fromDate: String,
+    val toDate: String
+)
+
+data class BankStatementTransaction(
+    val id: Int,
+    val user_id: Int,
+    val date: String,
+    val description: String,
+    val amount: Double,
+    val balance: Double,
+    val transactionType: String,
+    val accountNumber: String
+)
+
+data class BankStatementResponse(
+    val bankName: String,
+    val customerName: String,
+    val accountNumber: String,
+    val dateRange: BankStatementDateRange,
+    val transactions: List<BankStatementTransaction>
+)
+
+data class AccountOverviewReport(
+    val customerName: String,
+    val accountNumber: String,
+    val currentBalance: Double,
+    val totalTransactions: Int
+)
+
+data class ReportPoint(
+    val period: String,
+    val credit: Double,
+    val debit: Double,
+    val total: Double
+)
+
+data class ReportResponse(
+    val accountOverview: AccountOverviewReport,
+    val points: List<ReportPoint>
+)
+
+data class ActivityLogRequest(
+    val activityType: String,
+    val description: String,
+    val status: String = "success"
+)
+
+data class ActivityLogItem(
+    val id: Int,
+    val user_id: Int,
+    val activity_type: String,
+    val description: String,
+    val timestamp: String,
+    val status: String
+)
+
+data class FundingInvestmentRequest(
+    val amount: Double,
+    val investmentType: String,
+    val durationMonths: Int,
+    val notes: String? = null
+)
+
+data class FundingInvestmentResponse(
+    val id: Int,
+    val customerId: Int,
+    val investmentType: String,
+    val amount: Double,
+    val durationMonths: Int,
+    val notes: String?,
+    val status: String,
+    val createdAt: String
+)
+
+data class FundingLoanRequest(
+    val loanAmount: Double,
+    val loanType: String,
+    val repaymentPeriodMonths: Int,
+    val purpose: String,
+    val details: String? = null
+)
+
+data class FundingLoanResponse(
+    val id: Int,
+    val customerId: Int,
+    val loanType: String,
+    val loanAmount: Double,
+    val repaymentPeriodMonths: Int,
+    val purpose: String,
+    val details: String?,
+    val status: String,
+    val createdAt: String
+)
+
 data class NotificationItem(
     val id: Int,
     val userId: Int,

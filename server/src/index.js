@@ -37,6 +37,7 @@ const apiRoutes = require("./routes/apiRoutes");
 const transactionRoutes = require("./routes/transactionRoutes");
 const initializeDatabase = require("./database");
 const errorHandler = require("./middleware/errorHandler");
+const { logCustomerActivity, normalizeActivityType } = require("./services/activityLogService");
 
 const app = express();
 const PORT = process.env.PORT || 4000;
@@ -76,15 +77,35 @@ app.get("/api/health", (req, res) => {
 
 app.use((req, res, next) => {
   res.on("finish", () => {
-    if (!ioRef || !shouldBroadcastActivity(req, res)) {
+    if (ioRef && shouldBroadcastActivity(req, res)) {
+      ioRef.emit("activity:changed", {
+        method: req.method,
+        path: req.path,
+        at: new Date().toISOString(),
+      });
+    }
+
+    const customerId = Number(req.auth?.customerId || req.auth?.userId || 0);
+    const path = String(req.path || "");
+    if (!Number.isFinite(customerId) || customerId <= 0) {
+      return;
+    }
+    if (!path.startsWith("/api") || path.startsWith("/api/activity")) {
       return;
     }
 
-    ioRef.emit("activity:changed", {
-      method: req.method,
-      path: req.path,
-      at: new Date().toISOString(),
-    });
+    const isRead = String(req.method || "").toUpperCase() === "GET";
+    const status = res.statusCode >= 400 ? "failed" : "success";
+    const typePrefix = isRead ? "VIEW" : "ACTION";
+    const activityType = normalizeActivityType(`${typePrefix}_${req.method}_${path}`);
+    const description = `${req.method} ${path}`;
+
+    logCustomerActivity({
+      userId: customerId,
+      activityType,
+      description,
+      status,
+    }).catch(() => {});
   });
 
   next();

@@ -79,7 +79,9 @@ fun DashboardScreen(
     onNavigateToWithdraw: () -> Unit = {},
     onNavigateToFunding: () -> Unit = {},
     onNavigateToBillPayment: () -> Unit = {},
-    onNavigateToStatement: () -> Unit = {}
+    onNavigateToStatement: () -> Unit = {},
+    onNavigateToReport: () -> Unit = {},
+    onNavigateToActivity: () -> Unit = {}
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val featureUiState by featureViewModel.uiState.collectAsState()
@@ -290,8 +292,8 @@ fun DashboardScreen(
                 .align(Alignment.BottomCenter)
                 .fillMaxWidth(),
             onStatement = onNavigateToStatement,
-            onReport = onNavigateToFeatures,
-            onActivity = onNavigateToAccounts
+            onReport = onNavigateToReport,
+            onActivity = onNavigateToActivity
         )
 
         if (showNotifications) {

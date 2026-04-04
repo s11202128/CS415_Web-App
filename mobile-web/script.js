@@ -24,7 +24,15 @@ const state = {
   currentScreen: localStorage.getItem('token') ? 'home' : 'login',
   sidebarOpen: false,
   token: localStorage.getItem('token') || '',
-  user: JSON.parse(localStorage.getItem('user') || 'null')
+  user: JSON.parse(localStorage.getItem('user') || 'null'),
+  statementForm: {
+    fromDate: '',
+    toDate: ''
+  },
+  statementLoading: false,
+  statementError: '',
+  statementResult: null,
+  statementDownloadLoading: false
 };
 
 // --- Screens ---
@@ -32,6 +40,7 @@ const screens = {
   login: renderLoginScreen,
   home: renderHomeScreen,
   accounts: renderAccountsScreen,
+  transfers: renderTransfersScreen,
   bill: renderBillScreen,
   statements: renderStatementsScreen,
   notifications: renderNotificationsScreen,
@@ -86,6 +95,9 @@ function renderBottomNav() {
       <button class="nav-btn${state.currentScreen==='accounts' ? ' active' : ''}" onclick="switchScreen('accounts')">
         <span>💳</span><span>Accounts</span>
       </button>
+      <button class="nav-btn${state.currentScreen==='statements' ? ' active' : ''}" onclick="switchScreen('statements')">
+        <span>📄</span><span>Statement</span>
+      </button>
     </div>
   `;
 }
@@ -135,6 +147,11 @@ document.addEventListener('submit', async (e) => {
       errorDiv.textContent = err.message;
     }
   }
+
+  if (e.target && e.target.id === 'statementForm') {
+    e.preventDefault();
+    await generateStatement();
+  }
 });
 
 // --- Sidebar ---
@@ -172,6 +189,7 @@ function switchScreen(screen) {
 window.switchScreen = switchScreen;
 window.openSidebar = openSidebar;
 window.closeSidebar = closeSidebar;
+window.downloadStatementPdf = downloadStatementPdf;
 window.signOut = function() { alert('Sign out clicked!'); };
 
 // --- Home Screen ---
@@ -297,32 +315,177 @@ function renderBillScreen() {
   `;
 }
 function renderStatementsScreen() {
-  if (!state.accounts) {
-    fetchAccounts();
-    return `<div class="card">Loading accounts...</div>`;
-  }
-  if (!state.transactions) {
-    fetchTransactions();
-    return `<div class="card">Loading transactions...</div>`;
-  }
+  const fromDate = state.statementForm.fromDate;
+  const toDate = state.statementForm.toDate;
+  const generateBtnLabel = state.statementLoading ? 'Generating...' : 'Generate Statement';
+  const showDownload = Boolean(state.statementResult) && !state.statementLoading;
+
   return `
-    <div class="card">
-      <h2>Recent Transactions</h2>
-      <table class="transactions-table">
-        <thead><tr><th>Date</th><th>Description</th><th>Amount</th></tr></thead>
-        <tbody>
-          ${state.transactions.map(tx => `
-            <tr>
-              <td>${tx.createdAt ? tx.createdAt.slice(0,10) : ''}</td>
-              <td>${tx.description || tx.kind || ''}</td>
-              <td>${formatCurrency(tx.amount)}</td>
-            </tr>
-          `).join('')}
-        </tbody>
-      </table>
+    <div class="card statement-card">
+      <h2>Bank Statement</h2>
+      <form id="statementForm" class="statement-form">
+        <label>Start Date
+          <input type="date" id="statementFromDate" value="${fromDate}" max="${toDate || ''}" required ${state.statementLoading ? 'disabled' : ''} />
+        </label>
+        <label>End Date
+          <input type="date" id="statementToDate" value="${toDate}" min="${fromDate || ''}" required ${state.statementLoading ? 'disabled' : ''} />
+        </label>
+        <button type="submit" ${state.statementLoading ? 'disabled' : ''}>${generateBtnLabel}</button>
+      </form>
+      ${state.statementLoading ? '<div class="statement-loading">Loading statement data...</div>' : ''}
+      ${state.statementError ? `<div class="statement-error">${escapeHtml(state.statementError)}</div>` : ''}
+      ${renderStatementResultTable()}
+      ${showDownload ? `
+        <button class="statement-download-btn" onclick="downloadStatementPdf()" ${state.statementDownloadLoading ? 'disabled' : ''}>
+          ${state.statementDownloadLoading ? 'Preparing PDF...' : 'Download PDF'}
+        </button>
+      ` : ''}
     </div>
   `;
 }
+
+function renderStatementResultTable() {
+  if (!state.statementResult?.transactions?.length) {
+    return '';
+  }
+
+  return `
+    <div class="statement-result-summary">
+      <div><b>Customer:</b> ${escapeHtml(state.statementResult.customerName || '')}</div>
+      <div><b>Account:</b> ${escapeHtml(state.statementResult.accountNumber || '')}</div>
+    </div>
+    <table class="transactions-table">
+      <thead>
+        <tr>
+          <th>Date</th>
+          <th>Description</th>
+          <th>Amount</th>
+          <th>Balance</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${state.statementResult.transactions.map(tx => `
+          <tr>
+            <td>${tx.date ? String(tx.date).slice(0, 10) : ''}</td>
+            <td>${escapeHtml(tx.description || tx.transactionType || '')}</td>
+            <td>${formatCurrency(tx.amount)}</td>
+            <td>${formatCurrency(tx.balance)}</td>
+          </tr>
+        `).join('')}
+      </tbody>
+    </table>
+  `;
+}
+
+async function generateStatement() {
+  const fromInput = document.getElementById('statementFromDate');
+  const toInput = document.getElementById('statementToDate');
+  const fromDate = fromInput ? fromInput.value : '';
+  const toDate = toInput ? toInput.value : '';
+
+  state.statementForm.fromDate = fromDate;
+  state.statementForm.toDate = toDate;
+  state.statementError = '';
+  state.statementResult = null;
+
+  if (!fromDate || !toDate) {
+    state.statementError = 'Please select both start and end dates.';
+    renderApp();
+    return;
+  }
+
+  if (new Date(fromDate).getTime() > new Date(toDate).getTime()) {
+    state.statementError = 'Start date must be before or equal to end date.';
+    renderApp();
+    return;
+  }
+
+  state.statementLoading = true;
+  renderApp();
+
+  try {
+    const res = await fetch('http://localhost:4000/api/statement', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer ' + state.token
+      },
+      body: JSON.stringify({ fromDate, toDate })
+    });
+
+    const data = await res.json();
+    if (!res.ok) {
+      throw new Error(data.error || 'Failed to generate statement');
+    }
+
+    state.statementResult = data;
+  } catch (error) {
+    state.statementError = error.message || 'Failed to generate statement';
+  } finally {
+    state.statementLoading = false;
+    renderApp();
+  }
+}
+
+async function downloadStatementPdf() {
+  if (!state.statementForm.fromDate || !state.statementForm.toDate) {
+    return;
+  }
+
+  state.statementDownloadLoading = true;
+  state.statementError = '';
+  renderApp();
+
+  try {
+    const res = await fetch('http://localhost:4000/api/statement/download', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer ' + state.token
+      },
+      body: JSON.stringify({
+        fromDate: state.statementForm.fromDate,
+        toDate: state.statementForm.toDate
+      })
+    });
+
+    if (!res.ok) {
+      let message = 'Failed to download PDF';
+      try {
+        const data = await res.json();
+        message = data.error || message;
+      } catch (_ignored) {
+        // Keep default message if body is not JSON.
+      }
+      throw new Error(message);
+    }
+
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'bank-statement.pdf';
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+  } catch (error) {
+    state.statementError = error.message || 'Failed to download PDF';
+  } finally {
+    state.statementDownloadLoading = false;
+    renderApp();
+  }
+}
+
+function escapeHtml(value) {
+  return String(value || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/\"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 function renderNotificationsScreen() {
   if (!state.notifications) {
     fetchNotifications();
