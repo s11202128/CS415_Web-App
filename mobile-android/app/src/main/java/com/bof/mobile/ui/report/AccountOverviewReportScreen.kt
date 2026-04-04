@@ -13,7 +13,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
@@ -21,9 +20,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.CornerRadius
@@ -36,11 +32,6 @@ import com.bof.mobile.ui.components.ScreenHeader
 import com.bof.mobile.viewmodel.FeatureViewModel
 import kotlin.math.max
 
-private enum class ReportChartMode {
-    CREDIT_DEBIT,
-    NET_TOTAL
-}
-
 @Composable
 fun AccountOverviewReportScreen(
     viewModel: FeatureViewModel,
@@ -49,7 +40,6 @@ fun AccountOverviewReportScreen(
     onBack: () -> Unit
 ) {
     val uiState by viewModel.uiState.collectAsState()
-    var chartMode by remember { mutableStateOf(ReportChartMode.CREDIT_DEBIT) }
 
     LaunchedEffect(customerId) {
         viewModel.initialize(customerId)
@@ -112,60 +102,39 @@ fun AccountOverviewReportScreen(
                         Text("No transaction data available", color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 } else {
-                    ChartModeToggle(
-                        selectedMode = chartMode,
-                        onModeChange = { chartMode = it }
+                    Text(
+                        "Monthly credits vs debits",
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Text(
+                        "Compares incoming and outgoing amounts for each period so you can quickly see spending pressure.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    ReportBarChart(
+                        valuesA = uiState.reportPoints.map { it.credit },
+                        valuesB = uiState.reportPoints.map { it.debit },
+                        colorA = Color(0xFF1B8F47),
+                        colorB = Color(0xFFC73737)
                     )
 
-                    if (chartMode == ReportChartMode.CREDIT_DEBIT) {
-                        Text(
-                            "Monthly credits vs debits",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        ReportBarChart(
-                            valuesA = uiState.reportPoints.map { it.credit },
-                            valuesB = uiState.reportPoints.map { it.debit },
-                            colorA = Color(0xFF1B8F47),
-                            colorB = Color(0xFFC73737)
-                        )
-                    } else {
-                        Text(
-                            "Monthly net total",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        ReportSingleSeriesChart(
-                            values = uiState.reportPoints.map { it.total }
-                        )
-                    }
+                    Text(
+                        "Monthly net total",
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Text(
+                        "Shows the net movement per period after credits and debits, making trends and volatile months easier to spot.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    ReportSingleSeriesChart(
+                        values = uiState.reportPoints.map { it.total }
+                    )
                 }
             }
         }
-    }
-}
-
-@Composable
-private fun ChartModeToggle(
-    selectedMode: ReportChartMode,
-    onModeChange: (ReportChartMode) -> Unit
-) {
-    androidx.compose.foundation.layout.Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(8.dp)
-    ) {
-        FilterChip(
-            selected = selectedMode == ReportChartMode.CREDIT_DEBIT,
-            onClick = { onModeChange(ReportChartMode.CREDIT_DEBIT) },
-            label = { Text("Credits vs Debits") },
-            modifier = Modifier.weight(1f)
-        )
-        FilterChip(
-            selected = selectedMode == ReportChartMode.NET_TOTAL,
-            onClick = { onModeChange(ReportChartMode.NET_TOTAL) },
-            label = { Text("Net Total") },
-            modifier = Modifier.weight(1f)
-        )
     }
 }
 
