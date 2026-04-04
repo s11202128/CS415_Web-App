@@ -33,7 +33,7 @@ class AccountRepository(private val apiService: ApiService) {
             )
             ApiResult.Success(Unit)
         } catch (e: HttpException) {
-            ApiResult.Error(message = "Failed to sync profile: ${e.message()}", code = e.code())
+            ApiResult.Error(message = parseHttpError(e, "Failed to sync profile"), code = e.code())
         } catch (e: IOException) {
             ApiResult.Error(message = "Network unavailable. Please try again.")
         } catch (e: Exception) {
@@ -45,7 +45,7 @@ class AccountRepository(private val apiService: ApiService) {
         return try {
             ApiResult.Success(apiService.requestAccount(request))
         } catch (e: HttpException) {
-            ApiResult.Error(message = "Failed to create account: ${e.message()}", code = e.code())
+            ApiResult.Error(message = parseHttpError(e, "Failed to create account"), code = e.code())
         } catch (e: IOException) {
             ApiResult.Error(message = "Network unavailable. Please try again.")
         } catch (e: Exception) {
@@ -55,9 +55,40 @@ class AccountRepository(private val apiService: ApiService) {
 
     suspend fun getAccounts(): ApiResult<List<AccountItem>> {
         return try {
-            ApiResult.Success(apiService.getAccounts())
+            val accounts = apiService.getAccounts()
+            if (accounts.isNotEmpty()) {
+                return ApiResult.Success(accounts)
+            }
+
+            // Fallback for legacy identity fragmentation: use server-side matched accounts.
+            val debug = apiService.getDebugMyAccounts()
+            if (debug.matchedAccountCount > 0) {
+                val mapped = debug.matchedAccounts.map { row ->
+                    AccountItem(
+                        id = row.id,
+                        accountNumber = row.accountNumber,
+                        accountPin = null,
+                        customerId = row.customerId,
+                        accountHolder = row.accountHolder,
+                        type = row.accountType,
+                        balance = row.balance,
+                        requestedOpeningBalance = null,
+                        approvedOpeningBalance = null,
+                        approvedByAdminId = null,
+                        approvedAt = null,
+                        rejectionReason = null,
+                        maintenanceFee = if (row.accountType.equals("Simple Access", ignoreCase = true)) 2.5 else 0.0,
+                        currency = "FJD",
+                        status = row.status,
+                        createdAt = row.createdAt ?: ""
+                    )
+                }
+                return ApiResult.Success(mapped)
+            }
+
+            ApiResult.Success(accounts)
         } catch (e: HttpException) {
-            ApiResult.Error(message = "Failed to load accounts: ${e.message()}", code = e.code())
+            ApiResult.Error(message = parseHttpError(e, "Failed to load accounts"), code = e.code())
         } catch (e: IOException) {
             ApiResult.Error(message = "Network unavailable. Please try again.")
         } catch (e: Exception) {
@@ -69,7 +100,7 @@ class AccountRepository(private val apiService: ApiService) {
         return try {
             ApiResult.Success(apiService.getAccountDetails(accountId, 20))
         } catch (e: HttpException) {
-            ApiResult.Error(message = "Failed to load account details: ${e.message()}", code = e.code())
+            ApiResult.Error(message = parseHttpError(e, "Failed to load account details"), code = e.code())
         } catch (e: IOException) {
             ApiResult.Error(message = "Network unavailable. Please try again.")
         } catch (e: Exception) {
@@ -114,7 +145,7 @@ class AccountRepository(private val apiService: ApiService) {
                     )
                 )
             } catch (inner: Exception) {
-                ApiResult.Error(message = "Failed to load transactions: ${e.message()}", code = e.code())
+                ApiResult.Error(message = parseHttpError(e, "Failed to load transactions"), code = e.code())
             }
         } catch (e: IOException) {
             ApiResult.Error(message = "Network unavailable. Please try again.")

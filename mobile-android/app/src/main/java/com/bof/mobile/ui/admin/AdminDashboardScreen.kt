@@ -20,6 +20,8 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -37,7 +39,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.VisibilityOff
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.foundation.clickable
 import com.bof.mobile.ui.components.ScreenHeader
 import com.bof.mobile.viewmodel.AdminMenuGroup
 import com.bof.mobile.viewmodel.AdminTab
@@ -410,34 +419,115 @@ private fun AccountsTab(uiState: AdminUiState, viewModel: AdminViewModel) {
 
         Text("Create account", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
         Text(
-            "Customer must already exist. Use exact existing customer name from the Customers tab.",
+            "Customer must already exist. Use Customer ID from the Customers tab.",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+
+        var createAccountTypeExpanded by remember { mutableStateOf(false) }
+        var showCreateAccountPassword by remember { mutableStateOf(false) }
+
+        OutlinedTextField(
+            value = uiState.createAccountCustomerId,
+            onValueChange = viewModel::onCreateAccountCustomerIdChanged,
+            label = { Text("Existing customer ID") },
+            modifier = Modifier.fillMaxWidth()
         )
         OutlinedTextField(
             value = uiState.createAccountCustomerName,
             onValueChange = viewModel::onCreateAccountCustomerNameChanged,
-            label = { Text("Existing customer name") },
+            label = { Text("Existing customer name (optional)") },
             modifier = Modifier.fillMaxWidth()
         )
+
+        Text("Account Name", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold)
         OutlinedTextField(
-            value = uiState.createAccountType,
-            onValueChange = viewModel::onCreateAccountTypeChanged,
-            label = { Text("Type") },
-            modifier = Modifier.fillMaxWidth()
+            value = uiState.createAccountName,
+            onValueChange = viewModel::onCreateAccountNameChanged,
+            modifier = Modifier.fillMaxWidth(),
+            label = { Text("Account name") },
+            placeholder = { Text("e.g. Admin Operating Account") },
+            singleLine = true
         )
+
+        Text("Type of Account", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold)
+        Box {
+            OutlinedTextField(
+                value = uiState.createAccountType,
+                onValueChange = {},
+                readOnly = true,
+                label = { Text("Select account type") },
+                trailingIcon = {
+                    Icon(
+                        imageVector = androidx.compose.material.icons.Icons.Filled.KeyboardArrowDown,
+                        contentDescription = null,
+                        modifier = Modifier.clickable { createAccountTypeExpanded = true }
+                    )
+                },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { createAccountTypeExpanded = true }
+            )
+
+            DropdownMenu(
+                expanded = createAccountTypeExpanded,
+                onDismissRequest = { createAccountTypeExpanded = false }
+            ) {
+                listOf("Simple Access", "Savings", "Current").forEach { type ->
+                    DropdownMenuItem(
+                        text = { Text(type) },
+                        onClick = {
+                            viewModel.onCreateAccountTypeChanged(type)
+                            createAccountTypeExpanded = false
+                        }
+                    )
+                }
+            }
+        }
+
         OutlinedTextField(
-            value = uiState.createAccountOpeningBalance,
-            onValueChange = viewModel::onCreateAccountOpeningBalanceChanged,
-            label = { Text("Opening balance") },
-            modifier = Modifier.fillMaxWidth()
+            value = uiState.createAccountPassword,
+            onValueChange = viewModel::onCreateAccountPasswordChanged,
+            modifier = Modifier.fillMaxWidth(),
+            label = { Text("Password") },
+            singleLine = true,
+            visualTransformation = if (showCreateAccountPassword) VisualTransformation.None else PasswordVisualTransformation(),
+            trailingIcon = {
+                IconButton(onClick = { showCreateAccountPassword = !showCreateAccountPassword }) {
+                    Icon(
+                        imageVector = if (showCreateAccountPassword) Icons.Filled.VisibilityOff else Icons.Filled.Visibility,
+                        contentDescription = null
+                    )
+                }
+            }
         )
+
+        OutlinedTextField(
+            value = uiState.createAccountPin,
+            onValueChange = {},
+            modifier = Modifier.fillMaxWidth(),
+            label = { Text("PIN Number") },
+            readOnly = true,
+            enabled = false
+        )
+
         OutlinedTextField(
             value = uiState.createAccountNumber,
-            onValueChange = viewModel::onCreateAccountNumberChanged,
-            label = { Text("Custom account number (optional)") },
-            modifier = Modifier.fillMaxWidth()
+            onValueChange = {},
+            modifier = Modifier.fillMaxWidth(),
+            label = { Text("Account Number") },
+            readOnly = true,
+            enabled = false
         )
+
+        if (!uiState.successMessage.isNullOrBlank()) {
+            Text(
+                text = uiState.successMessage.orEmpty(),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.primary
+            )
+        }
+
         Button(onClick = viewModel::createAccount, modifier = Modifier.fillMaxWidth()) {
             Text("Create account")
         }
@@ -457,6 +547,7 @@ private fun AccountsTab(uiState: AdminUiState, viewModel: AdminViewModel) {
             ) {
                 Text("ID", modifier = Modifier.width(70.dp), fontWeight = FontWeight.Bold)
                 Text("Account Number", modifier = Modifier.width(170.dp), fontWeight = FontWeight.Bold)
+                Text("Account Holder", modifier = Modifier.width(150.dp), fontWeight = FontWeight.Bold)
                 Text("PIN", modifier = Modifier.width(80.dp), fontWeight = FontWeight.Bold)
                 Text("Type", modifier = Modifier.width(140.dp), fontWeight = FontWeight.Bold)
                 Text("Status", modifier = Modifier.width(130.dp), fontWeight = FontWeight.Bold)
@@ -490,6 +581,7 @@ private fun AccountsTab(uiState: AdminUiState, viewModel: AdminViewModel) {
                     ) {
                         Text(account.id.toString(), modifier = Modifier.width(70.dp), style = MaterialTheme.typography.bodyMedium)
                         Text(account.accountNumber, modifier = Modifier.width(170.dp), style = MaterialTheme.typography.bodyMedium)
+                        Text(account.accountHolder, modifier = Modifier.width(150.dp), style = MaterialTheme.typography.bodyMedium)
                         Text(account.accountPin ?: "----", modifier = Modifier.width(80.dp), style = MaterialTheme.typography.bodyMedium)
                         Text(account.type, modifier = Modifier.width(140.dp), style = MaterialTheme.typography.bodyMedium)
                         Text(account.status, modifier = Modifier.width(130.dp), style = MaterialTheme.typography.bodyMedium)

@@ -3,6 +3,7 @@ package com.bof.mobile.data.remote
 import com.bof.mobile.model.AccountDetailsResponse
 import com.bof.mobile.model.AccountItem
 import com.bof.mobile.model.CreateAccountRequest
+import com.bof.mobile.model.DebugAccountsResponse
 import com.bof.mobile.model.AdminCreateAccountRequest
 import com.bof.mobile.model.AdminCreateDepositRequest
 import com.bof.mobile.model.AdminCreateDepositResponse
@@ -75,10 +76,13 @@ interface ApiService {
     suspend fun register(@Body request: RegisterRequest): RegisterResponse
 
     @GET("dashboard")
-    suspend fun getDashboard(@Query("customerId") customerId: Int): DashboardResponse
+    suspend fun getDashboard(@Query("customerId") customerId: Int? = null): DashboardResponse
 
     @GET("accounts")
     suspend fun getAccounts(): List<AccountItem>
+
+    @GET("debug/my-accounts")
+    suspend fun getDebugMyAccounts(): DebugAccountsResponse
 
     @POST("accounts")
     suspend fun createAccount(@Body request: CreateAccountRequest): AccountItem

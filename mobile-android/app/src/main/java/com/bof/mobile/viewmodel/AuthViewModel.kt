@@ -55,13 +55,19 @@ class AuthViewModel(private val authRepository: AuthRepository) : ViewModel() {
 
             when (val result = authRepository.login(identifier, current.password)) {
                 is ApiResult.Success -> {
+                    val resolvedCustomerId = if (result.data.isAdmin) {
+                        result.data.customerId
+                    } else {
+                        result.data.customerId ?: result.data.userId
+                    }
+
                     _uiState.update {
                         it.copy(
                             isLoading = false,
                             isLoggedIn = true,
                             token = result.data.token,
                             userId = result.data.userId,
-                            customerId = result.data.customerId,
+                            customerId = resolvedCustomerId,
                             fullName = result.data.fullName,
                             email = result.data.email,
                             mobile = result.data.mobile ?: it.mobile,

@@ -25,7 +25,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -42,7 +41,7 @@ import com.bof.mobile.viewmodel.AccountsViewModel
 
 private enum class AccountsTab {
     OVERVIEW,
-    CREATE
+    REQUEST
 }
 
 @Composable
@@ -54,10 +53,6 @@ fun AccountsScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
     var selectedTab by remember { mutableStateOf(AccountsTab.OVERVIEW) }
-
-    LaunchedEffect(Unit) {
-        viewModel.loadAccounts()
-    }
 
     Box(
         modifier = Modifier
@@ -88,11 +83,28 @@ fun AccountsScreen(
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            if (uiState.isLoadingAccounts) {
+            if (uiState.isLoadingAccounts && uiState.accounts.isEmpty()) {
                 Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     CircularProgressIndicator()
                 }
                 return@Column
+            }
+
+            if (uiState.isLoadingAccounts) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.Center,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    CircularProgressIndicator(modifier = Modifier.height(20.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = "Refreshing accounts...",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                Spacer(modifier = Modifier.height(8.dp))
             }
 
             if (!uiState.errorMessage.isNullOrBlank()) {
@@ -114,13 +126,18 @@ fun AccountsScreen(
                     )
                 )
                 FilterChip(
-                    selected = selectedTab == AccountsTab.CREATE,
-                    onClick = { selectedTab = AccountsTab.CREATE },
-                    label = { Text("Create New Account") },
+                    selected = selectedTab == AccountsTab.REQUEST,
+                    onClick = { selectedTab = AccountsTab.REQUEST },
+                    label = { Text("Request New Account") },
                     colors = FilterChipDefaults.filterChipColors(
                         selectedContainerColor = MaterialTheme.colorScheme.primaryContainer
                     )
                 )
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+            OutlinedButton(onClick = { viewModel.loadAccounts() }) {
+                Text("Refresh accounts")
             }
 
             Spacer(modifier = Modifier.height(10.dp))
@@ -143,9 +160,11 @@ fun AccountsScreen(
 
 @Composable
 private fun OverviewTab(accounts: List<AccountItem>) {
-    val totalBalance = accounts.sumOf { it.balance }
-    val simpleCount = accounts.count { it.type.equals("Simple Access", ignoreCase = true) }
-    val savingsCount = accounts.count { it.type.equals("Savings", ignoreCase = true) }
+    val allAccounts = accounts.sortedByDescending { it.createdAt }
+    val totalBalance = allAccounts.sumOf { it.balance }
+    val simpleCount = allAccounts.count { it.type.equals("Simple Access", ignoreCase = true) }
+    val savingsCount = allAccounts.count { it.type.equals("Savings", ignoreCase = true) }
+    val currentCount = allAccounts.count { it.type.equals("Current", ignoreCase = true) }
 
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -157,9 +176,10 @@ private fun OverviewTab(accounts: List<AccountItem>) {
             verticalArrangement = Arrangement.spacedBy(6.dp)
         ) {
             Text("Account Overview", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-            Text("Total Accounts: ${accounts.size}", style = MaterialTheme.typography.bodyMedium)
+            Text("Total Accounts: ${allAccounts.size}", style = MaterialTheme.typography.bodyMedium)
             Text("Simple Access: $simpleCount", style = MaterialTheme.typography.bodyMedium)
             Text("Savings: $savingsCount", style = MaterialTheme.typography.bodyMedium)
+            Text("Current: $currentCount", style = MaterialTheme.typography.bodyMedium)
             Text(
                 "Total Balance: FJD ${"%.2f".format(totalBalance)}",
                 style = MaterialTheme.typography.bodyMedium,
@@ -181,13 +201,28 @@ private fun OverviewTab(accounts: List<AccountItem>) {
         ) {
             Text("Account Summaries", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
 
-            if (accounts.isEmpty()) {
+            if (allAccounts.isEmpty()) {
                 Text(
-                    text = "No account summaries available yet.",
+                    text = "No accounts found yet. If you just submitted an account request, tap Refresh accounts.",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             } else {
+                val pendingCount = allAccounts.count { it.status.equals("pending_approval", ignoreCase = true) }
+                if (pendingCount > 0) {
+                    Text(
+                        text = "$pendingCount account request(s) pending admin approval.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                }
+                Text(
+                    text = "Showing all created accounts for this logged-in customer.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(modifier = Modifier.height(8.dp))
                 val scrollState = rememberScrollState()
                 Column(
                     modifier = Modifier
@@ -201,12 +236,15 @@ private fun OverviewTab(accounts: List<AccountItem>) {
                     ) {
                         Text("ID", modifier = Modifier.width(70.dp), fontWeight = FontWeight.Bold)
                         Text("Account Number", modifier = Modifier.width(170.dp), fontWeight = FontWeight.Bold)
+                        Text("Account Holder", modifier = Modifier.width(170.dp), fontWeight = FontWeight.Bold)
                         Text("PIN", modifier = Modifier.width(80.dp), fontWeight = FontWeight.Bold)
                         Text("Type", modifier = Modifier.width(140.dp), fontWeight = FontWeight.Bold)
+                        Text("Status", modifier = Modifier.width(130.dp), fontWeight = FontWeight.Bold)
+                        Text("Balance", modifier = Modifier.width(120.dp), fontWeight = FontWeight.Bold)
                         Text("Charge", modifier = Modifier.width(120.dp), fontWeight = FontWeight.Bold)
                     }
 
-                    accounts.forEach { account ->
+                    allAccounts.forEach { account ->
                         Row(
                             modifier = Modifier
                                 .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f))
@@ -214,8 +252,11 @@ private fun OverviewTab(accounts: List<AccountItem>) {
                         ) {
                             Text(account.id.toString(), modifier = Modifier.width(70.dp), style = MaterialTheme.typography.bodyMedium)
                             Text(account.accountNumber, modifier = Modifier.width(170.dp), style = MaterialTheme.typography.bodyMedium)
+                            Text(account.accountHolder, modifier = Modifier.width(170.dp), style = MaterialTheme.typography.bodyMedium)
                             Text(account.accountPin ?: "----", modifier = Modifier.width(80.dp), style = MaterialTheme.typography.bodyMedium)
                             Text(account.type, modifier = Modifier.width(140.dp), style = MaterialTheme.typography.bodyMedium)
+                            Text(account.status, modifier = Modifier.width(130.dp), style = MaterialTheme.typography.bodyMedium)
+                            Text("FJD ${"%.2f".format(account.balance)}", modifier = Modifier.width(120.dp), style = MaterialTheme.typography.bodyMedium)
                             Text("FJD ${"%.2f".format(account.maintenanceFee)}", modifier = Modifier.width(120.dp), style = MaterialTheme.typography.bodyMedium)
                         }
                     }
@@ -238,7 +279,7 @@ private fun CreateTab(
         modifier = Modifier.fillMaxWidth(),
         colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
     ) {
-        Text("Open Create Account Form")
+        Text("Open Request Account Form")
     }
 
     Spacer(modifier = Modifier.height(10.dp))
