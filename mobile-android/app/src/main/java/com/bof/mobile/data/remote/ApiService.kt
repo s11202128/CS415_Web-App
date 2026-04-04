@@ -78,6 +78,7 @@ import retrofit2.http.Query
 import retrofit2.http.Path
 import retrofit2.http.Streaming
 import okhttp3.ResponseBody
+import retrofit2.Response
 
 interface ApiService {
     @POST("auth/login")
@@ -183,7 +184,7 @@ interface ApiService {
 
     @Streaming
     @POST("statement/download")
-    suspend fun downloadBankStatement(@Body request: BankStatementRequest): ResponseBody
+    suspend fun downloadBankStatement(@Body request: BankStatementRequest): Response<ResponseBody>
 
     @GET("notifications/history")
     suspend fun getNotificationsHistory(

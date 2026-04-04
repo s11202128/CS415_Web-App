@@ -111,7 +111,7 @@ class AccountsViewModel(private val accountRepository: AccountRepository) : View
                         it.copy(
                             isLoadingAccounts = false,
                             accounts = it.accounts,
-                            errorMessage = result.message
+                            errorMessage = sanitizeUiError(result.message)
                         )
                     }
                 }
@@ -137,7 +137,7 @@ class AccountsViewModel(private val accountRepository: AccountRepository) : View
                     _uiState.update {
                         it.copy(
                             isLoadingDetails = false,
-                            errorMessage = result.message
+                            errorMessage = sanitizeUiError(result.message)
                         )
                     }
                 }
@@ -166,12 +166,30 @@ class AccountsViewModel(private val accountRepository: AccountRepository) : View
                     _uiState.update {
                         it.copy(
                             isLoadingTransactions = false,
-                            errorMessage = result.message
+                            errorMessage = sanitizeUiError(result.message)
                         )
                     }
                 }
             }
         }
+    }
+
+    private fun sanitizeUiError(message: String): String {
+        val normalized = message.trim()
+        if (normalized.isBlank()) return "Request failed. Please try again."
+
+        val technicalPrefixes = listOf("java.", "kotlin.", "retrofit2.", "okhttp3.")
+        if (technicalPrefixes.any { normalized.startsWith(it, ignoreCase = true) }) {
+            return "Unable to load account data right now. Please try again."
+        }
+
+        if (normalized.contains("IllegalStateException", ignoreCase = true) ||
+            normalized.contains("snapshot", ignoreCase = true)
+        ) {
+            return "Unable to load account data right now. Please try again."
+        }
+
+        return normalized
     }
 
     fun loadNextPage() {

@@ -1,8 +1,15 @@
 package com.bof.mobile.ui.statement
 
 import android.app.DatePickerDialog
+import android.content.ContentValues
+import android.content.Context
+import android.content.Intent
+import android.net.Uri
+import android.os.Build
 import android.os.Environment
+import android.provider.MediaStore
 import android.widget.Toast
+import androidx.core.content.FileProvider
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -39,7 +46,9 @@ import androidx.compose.ui.unit.dp
 import com.bof.mobile.ui.components.ScreenHeader
 import com.bof.mobile.viewmodel.FeatureViewModel
 import java.io.File
+import java.io.IOException
 import java.time.LocalDate
+import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 
 @Composable
@@ -201,14 +210,7 @@ fun StatementScreen(
                         enabled = !uiState.isLoading,
                         onClick = {
                             viewModel.downloadBankStatementPdf { bytes, fileName ->
-                                val downloadDir = context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS) ?: context.filesDir
-                                val output = File(downloadDir, fileName)
-                                output.writeBytes(bytes)
-                                Toast.makeText(
-                                    context,
-                                    "PDF saved: ${output.absolutePath}",
-                                    Toast.LENGTH_LONG
-                                ).show()
+                                saveStatementPdfAndOpen(context, bytes, fileName)
                             }
                         },
                         modifier = Modifier.fillMaxWidth()
@@ -249,6 +251,81 @@ fun StatementScreen(
                 }
             }
         }
+    }
+}
+
+private fun saveStatementPdfAndOpen(context: Context, bytes: ByteArray, fileName: String) {
+    val stampedFileName = buildDownloadFileName(fileName)
+    val pdfUri = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+        saveToPublicDownloadsWithMediaStore(context, bytes, stampedFileName)
+    } else {
+        saveToPublicDownloadsLegacy(context, bytes, stampedFileName)
+    }
+
+    Toast.makeText(context, "Saved to Downloads/BankOfFiji/$stampedFileName", Toast.LENGTH_LONG).show()
+    openPdfFile(context, pdfUri)
+}
+
+private fun buildDownloadFileName(baseName: String): String {
+    val cleanBase = baseName.removeSuffix(".pdf")
+    val stamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss"))
+    return "$cleanBase-$stamp.pdf"
+}
+
+private fun saveToPublicDownloadsWithMediaStore(context: Context, bytes: ByteArray, fileName: String): Uri {
+    val resolver = context.contentResolver
+    val relativePath = "${Environment.DIRECTORY_DOWNLOADS}/BankOfFiji"
+    val values = ContentValues().apply {
+        put(MediaStore.MediaColumns.DISPLAY_NAME, fileName)
+        put(MediaStore.MediaColumns.MIME_TYPE, "application/pdf")
+        put(MediaStore.MediaColumns.RELATIVE_PATH, relativePath)
+        put(MediaStore.MediaColumns.IS_PENDING, 1)
+    }
+
+    val uri = resolver.insert(MediaStore.Files.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY), values)
+        ?: throw IOException("Failed to create Downloads entry")
+
+    resolver.openOutputStream(uri)?.use { stream ->
+        stream.write(bytes)
+        stream.flush()
+    } ?: throw IOException("Failed to open output stream")
+
+    val finalizeValues = ContentValues().apply {
+        put(MediaStore.MediaColumns.IS_PENDING, 0)
+    }
+    resolver.update(uri, finalizeValues, null, null)
+    return uri
+}
+
+private fun saveToPublicDownloadsLegacy(context: Context, bytes: ByteArray, fileName: String): Uri {
+    val downloadsDir = File(
+        Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS),
+        "BankOfFiji"
+    )
+    if (!downloadsDir.exists()) {
+        downloadsDir.mkdirs()
+    }
+    val outputFile = File(downloadsDir, fileName)
+    outputFile.writeBytes(bytes)
+
+    return FileProvider.getUriForFile(
+        context,
+        "${context.packageName}.fileprovider",
+        outputFile
+    )
+}
+
+private fun openPdfFile(context: Context, fileUri: Uri) {
+    val openIntent = Intent(Intent.ACTION_VIEW).apply {
+        setDataAndType(fileUri, "application/pdf")
+        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+    }
+
+    if (openIntent.resolveActivity(context.packageManager) != null) {
+        context.startActivity(openIntent)
+    } else {
+        Toast.makeText(context, "No PDF app found to open file", Toast.LENGTH_LONG).show()
     }
 }
 

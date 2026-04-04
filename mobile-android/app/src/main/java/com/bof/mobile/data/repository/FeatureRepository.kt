@@ -41,6 +41,9 @@ import com.bof.mobile.model.WithdrawRequest
 import com.bof.mobile.model.WithdrawResponse
 import retrofit2.HttpException
 import java.io.IOException
+import org.json.JSONObject
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 class FeatureRepository(private val apiService: ApiService) {
 
@@ -94,15 +97,44 @@ class FeatureRepository(private val apiService: ApiService) {
     }
 
     suspend fun downloadBankStatementPdf(fromDate: String, toDate: String): ApiResult<ByteArray> {
+        return withContext(Dispatchers.IO) {
+            try {
+                val response = apiService.downloadBankStatement(BankStatementRequest(fromDate = fromDate, toDate = toDate))
+                if (!response.isSuccessful) {
+                    val errorMessage = parseResponseError(
+                        response.errorBody()?.string().orEmpty(),
+                        "Download failed"
+                    )
+                    return@withContext ApiResult.Error(message = errorMessage, code = response.code())
+                }
+
+                val body = response.body() ?: return@withContext ApiResult.Error(message = "Downloaded file was empty", code = response.code())
+                val bytes = body.bytes()
+                if (bytes.isEmpty()) {
+                    return@withContext ApiResult.Error(message = "Downloaded file was empty", code = response.code())
+                }
+                ApiResult.Success(bytes)
+            } catch (e: HttpException) {
+                ApiResult.Error(message = parseHttpError(e, "Download failed"), code = e.code())
+            } catch (e: IOException) {
+                ApiResult.Error(message = "Network unavailable. Please try again.")
+            } catch (e: Exception) {
+                val details = e.message?.takeIf { it.isNotBlank() } ?: e.javaClass.simpleName
+                ApiResult.Error(message = "Statement download failed: $details")
+            }
+        }
+    }
+
+    private fun parseResponseError(errorBody: String, fallback: String): String {
+        if (errorBody.isBlank()) return fallback
         return try {
-            val bytes = apiService.downloadBankStatement(BankStatementRequest(fromDate = fromDate, toDate = toDate)).bytes()
-            ApiResult.Success(bytes)
-        } catch (e: HttpException) {
-            ApiResult.Error(message = parseHttpError(e, "Download failed"), code = e.code())
-        } catch (e: IOException) {
-            ApiResult.Error(message = "Network unavailable. Please try again.")
-        } catch (e: Exception) {
-            ApiResult.Error(message = e.message ?: "Unexpected error")
+            val json = JSONObject(errorBody)
+            val message = json.optString("message")
+            val directError = json.optString("error")
+            val nestedErrorMessage = json.optJSONObject("error")?.optString("message").orEmpty()
+            listOf(message, directError, nestedErrorMessage).firstOrNull { it.isNotBlank() } ?: fallback
+        } catch (_: Exception) {
+            fallback
         }
     }
 

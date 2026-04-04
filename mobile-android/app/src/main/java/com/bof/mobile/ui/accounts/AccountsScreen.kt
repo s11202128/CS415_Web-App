@@ -107,15 +107,6 @@ fun AccountsScreen(
                 Spacer(modifier = Modifier.height(8.dp))
             }
 
-            if (!uiState.errorMessage.isNullOrBlank()) {
-                AccountsMessageBanner(
-                    text = uiState.errorMessage ?: "",
-                    isError = true,
-                    onDismiss = { viewModel.loadAccounts() },
-                    actionLabel = "Retry"
-                )
-            }
-
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 FilterChip(
                     selected = selectedTab == AccountsTab.OVERVIEW,

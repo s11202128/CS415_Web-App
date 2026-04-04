@@ -381,8 +381,13 @@ class FeatureViewModel(private val featureRepository: FeatureRepository) : ViewM
             when (val result = featureRepository.downloadBankStatementPdf(fromDate, toDate)) {
                 is ApiResult.Success -> {
                     val fileName = "bank-statement-${LocalDate.now()}.pdf"
-                    onSuccess(result.data, fileName)
-                    _uiState.update { it.copy(successMessage = "PDF generated successfully", errorMessage = null) }
+                    try {
+                        onSuccess(result.data, fileName)
+                        _uiState.update { it.copy(successMessage = "PDF generated successfully", errorMessage = null) }
+                    } catch (e: Exception) {
+                        val details = e.message?.takeIf { it.isNotBlank() } ?: e.javaClass.simpleName
+                        setError("Could not save PDF on device: $details")
+                    }
                 }
                 is ApiResult.Error -> setError(result.message)
             }
