@@ -68,8 +68,7 @@ fun DepositScreen(
     onDepositCompleted: () -> Unit = {}
 ) {
     val uiState by viewModel.uiState.collectAsState()
-    var fromAccountMenuExpanded by remember { mutableStateOf(false) }
-    var destinationAccountMenuExpanded by remember { mutableStateOf(false) }
+    var accountMenuExpanded by remember { mutableStateOf(false) }
     val serverAccounts = uiState.customerAccounts.map {
         DashboardAccount(
             id = it.id,
@@ -84,16 +83,11 @@ fun DepositScreen(
         viewModel.clearMessages()
     }
 
-    LaunchedEffect(serverAccounts, uiState.depositFromAccountId, uiState.depositDestinationAccountId) {
+    LaunchedEffect(serverAccounts, uiState.depositAccountId) {
         if (serverAccounts.isEmpty()) return@LaunchedEffect
 
-        if (uiState.depositFromAccountId.isBlank()) {
-            viewModel.onDepositFromAccountIdChanged(serverAccounts.first().id.toString())
-        }
-
-        if (uiState.depositDestinationAccountId.isBlank()) {
-            val defaultDestination = if (serverAccounts.size > 1) serverAccounts[1] else serverAccounts.first()
-            viewModel.onDepositDestinationAccountIdChanged(defaultDestination.id.toString())
+        if (uiState.depositAccountId.isBlank()) {
+            viewModel.onDepositAccountIdChanged(serverAccounts.first().id.toString())
         }
     }
 
@@ -103,13 +97,8 @@ fun DepositScreen(
         }
     }
 
-    val selectedFromAccount = serverAccounts.firstOrNull { it.id.toString() == uiState.depositFromAccountId }
-    val selectedDestinationAccount = serverAccounts.firstOrNull { it.id.toString() == uiState.depositDestinationAccountId }
-    val fromAccountValid = selectedFromAccount != null
-    val destinationAccountValid = selectedDestinationAccount != null
-    val accountsDifferent =
-        selectedFromAccount != null && selectedDestinationAccount != null && selectedFromAccount.id != selectedDestinationAccount.id
-    val accountSelectionValid = fromAccountValid && destinationAccountValid && accountsDifferent
+    val selectedAccount = serverAccounts.firstOrNull { it.id.toString() == uiState.depositAccountId }
+    val accountValid = selectedAccount != null
     val enteredAmount = uiState.depositAmount.toDoubleOrNull() ?: 0.0
     val amountValid = enteredAmount > 0.0
     val summaryAmount = if (amountValid) formatFjd(enteredAmount) else "FJD 0.00"
@@ -181,38 +170,16 @@ fun DepositScreen(
             }
 
             AccountSelectorCard(
-                label = "From Account Number",
-                selectedAccount = selectedFromAccount,
-                expanded = fromAccountMenuExpanded,
-                onExpandedChange = { fromAccountMenuExpanded = it },
+                label = "Account Number",
+                selectedAccount = selectedAccount,
+                expanded = accountMenuExpanded,
+                onExpandedChange = { accountMenuExpanded = it },
                 onAccountSelected = {
-                    viewModel.onDepositFromAccountIdChanged(it.id.toString())
-                    fromAccountMenuExpanded = false
+                    viewModel.onDepositAccountIdChanged(it.id.toString())
+                    accountMenuExpanded = false
                 },
                 accountsList = serverAccounts
             )
-
-            AccountSelectorCard(
-                label = "Destination Account Number",
-                selectedAccount = selectedDestinationAccount,
-                expanded = destinationAccountMenuExpanded,
-                onExpandedChange = { destinationAccountMenuExpanded = it },
-                onAccountSelected = {
-                    viewModel.onDepositDestinationAccountIdChanged(it.id.toString())
-                    destinationAccountMenuExpanded = false
-                },
-                accountsList = serverAccounts
-            )
-
-            if (selectedFromAccount != null && selectedDestinationAccount != null && selectedFromAccount.id == selectedDestinationAccount.id) {
-                MessageBanner(
-                    text = "Choose different accounts for From and Destination.",
-                    containerColor = MaterialTheme.colorScheme.errorContainer,
-                    textColor = MaterialTheme.colorScheme.onErrorContainer,
-                    actionLabel = "OK",
-                    onAction = viewModel::clearMessages
-                )
-            }
 
             if (uiState.customerAccountsLoaded && serverAccounts.isEmpty()) {
                 MessageBanner(
@@ -289,13 +256,8 @@ fun DepositScreen(
                     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                     Spacer(modifier = Modifier.height(12.dp))
                     SummaryRow(
-                        label = "From",
-                        value = selectedFromAccount?.accountNumber?.let { "•••• ${it.takeLast(4)}" } ?: "Not selected"
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    SummaryRow(
-                        label = "Destination",
-                        value = selectedDestinationAccount?.accountNumber?.let { "•••• ${it.takeLast(4)}" } ?: "Not selected"
+                        label = "Account",
+                        value = selectedAccount?.accountNumber?.let { "•••• ${it.takeLast(4)}" } ?: "Not selected"
                     )
                     Spacer(modifier = Modifier.height(8.dp))
                     SummaryRow(label = "Deposit Amount", value = summaryAmount)
@@ -355,7 +317,7 @@ fun DepositScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(54.dp),
-                enabled = !uiState.isLoading && uiState.customerAccountsLoaded && if (uiState.showDepositOtpField) uiState.depositOtp.isNotBlank() else (accountSelectionValid && amountValid),
+                enabled = !uiState.isLoading && uiState.customerAccountsLoaded && if (uiState.showDepositOtpField) uiState.depositOtp.isNotBlank() else (accountValid && amountValid),
                 shape = MaterialTheme.shapes.extraLarge,
                 colors = ButtonDefaults.buttonColors(
                     containerColor = MaterialTheme.colorScheme.primary,

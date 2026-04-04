@@ -471,6 +471,7 @@ class FeatureViewModel(private val featureRepository: FeatureRepository) : ViewM
     fun payBillManual() {
         val state = _uiState.value
         val accountId = state.selectedAccount?.id ?: state.billAccountId.toIntOrNull()
+        val accountNumber = state.selectedAccount?.accountNumber ?: ""
         val amount = state.billAmount.toDoubleOrNull()
         if (accountId == null || amount == null || state.billPayee.isBlank()) {
             return setError("Bill payment needs an account, payee and amount")
@@ -479,6 +480,7 @@ class FeatureViewModel(private val featureRepository: FeatureRepository) : ViewM
         payBillManual(
             BillPaymentRequest(
                 accountId = accountId,
+                accountNumber = accountNumber,
                 payee = state.billPayee,
                 amount = amount,
                 billType = null,
@@ -511,6 +513,7 @@ class FeatureViewModel(private val featureRepository: FeatureRepository) : ViewM
     fun scheduleBill() {
         val state = _uiState.value
         val accountId = state.selectedAccount?.id ?: state.billAccountId.toIntOrNull()
+        val accountNumber = state.selectedAccount?.accountNumber ?: ""
         val amount = state.billAmount.toDoubleOrNull()
         if (accountId == null || amount == null || state.billPayee.isBlank() || state.scheduledDate.isBlank()) {
             return setError("Scheduled bill needs an account, payee, amount and date")
@@ -519,6 +522,7 @@ class FeatureViewModel(private val featureRepository: FeatureRepository) : ViewM
         scheduleBill(
             BillPaymentRequest(
                 accountId = accountId,
+                accountNumber = accountNumber,
                 payee = state.billPayee,
                 amount = amount,
                 scheduledDate = state.scheduledDate
