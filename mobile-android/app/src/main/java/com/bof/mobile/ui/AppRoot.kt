@@ -38,8 +38,6 @@ import com.bof.mobile.ui.billpayment.BillPaymentScreen
 import com.bof.mobile.ui.dashboard.DashboardScreen
 import com.bof.mobile.ui.deposit.DepositScreen
 import com.bof.mobile.ui.features.FeatureHubScreen
-import com.bof.mobile.ui.funding.FundingScreen
-import com.bof.mobile.ui.statement.StatementScreen
 import com.bof.mobile.ui.transfers.TransferScreen
 import com.bof.mobile.ui.withdraw.WithdrawScreen
 import com.bof.mobile.viewmodel.AccountsViewModel
@@ -55,11 +53,9 @@ private enum class MainTab {
     ACCOUNTS,
     TRANSFERS,
     FEATURES,
-    FUNDING,
     DEPOSIT,
     WITHDRAW,
-    BILL_PAYMENT,
-    STATEMENT
+    BILL_PAYMENT
 }
 
 @Composable
@@ -119,10 +115,9 @@ fun AppRoot() {
         return
     }
 
-    val customerId = authState.customerId ?: 0
-    val dashboardState by dashboardViewModel.uiState.collectAsState()
+    val customerId = authState.customerId ?: authState.userId ?: 0
     val accountsState by accountsViewModel.uiState.collectAsState()
-    val transferAccounts = accountsState.accounts.map {
+    val accountsFromRoute = accountsState.accounts.map {
         DashboardAccount(
             id = it.id,
             accountNumber = it.accountNumber,
@@ -132,6 +127,7 @@ fun AppRoot() {
             status = it.status
         )
     }
+    val moneyAccounts = accountsFromRoute
 
     if (authState.isAdmin) {
         AdminDashboardScreen(
@@ -155,17 +151,18 @@ fun AppRoot() {
             onNavigateToFeatures = { navigateTo(MainTab.FEATURES) },
             onNavigateToDeposit = { navigateTo(MainTab.DEPOSIT) },
             onNavigateToWithdraw = { navigateTo(MainTab.WITHDRAW) },
-            onNavigateToFunding = { navigateTo(MainTab.FUNDING) },
-            onNavigateToBillPayment = { navigateTo(MainTab.BILL_PAYMENT) },
-            onNavigateToStatement = { navigateTo(MainTab.STATEMENT) }
+            onNavigateToFunding = { navigateTo(MainTab.FEATURES) },
+            onNavigateToBillPayment = { navigateTo(MainTab.BILL_PAYMENT) }
         )
         MainTab.CREATE_ACCOUNT -> CreateAccountScreen(
             accountRepository = accountRepository,
             customerId = customerId,
             canGoBack = navigationHistory.isNotEmpty(),
             onBack = { goBack() },
-            onAccountCreated = {
+            onAccountCreated = { createdAccount ->
+                accountsViewModel.upsertAccount(createdAccount)
                 dashboardViewModel.loadDashboard(customerId)
+                accountsViewModel.loadAccounts()
                 navigateTo(MainTab.ACCOUNTS)
             }
         )
@@ -177,10 +174,13 @@ fun AppRoot() {
         )
         MainTab.TRANSFERS -> TransferScreen(
             viewModel = transferViewModel,
-            accountsList = transferAccounts,
+            accountsList = moneyAccounts,
             canGoBack = navigationHistory.isNotEmpty(),
             onBack = { goBack() },
-            onTransferCompleted = { dashboardViewModel.loadDashboard(customerId) }
+            onTransferCompleted = {
+                dashboardViewModel.loadDashboard(customerId)
+                accountsViewModel.loadAccounts()
+            }
         )
         MainTab.FEATURES -> FeatureHubScreen(
             viewModel = featureViewModel,
@@ -188,25 +188,25 @@ fun AppRoot() {
             canGoBack = navigationHistory.isNotEmpty(),
             onBack = { goBack() }
         )
-        MainTab.FUNDING -> FundingScreen(
-            viewModel = featureViewModel,
-            customerId = customerId,
-            canGoBack = navigationHistory.isNotEmpty(),
-            onBack = { goBack() }
-        )
         MainTab.DEPOSIT -> DepositScreen(
             featureViewModel = featureViewModel,
-            accountsList = dashboardState.data?.accounts ?: emptyList(),
+            accountsList = moneyAccounts,
             canGoBack = navigationHistory.isNotEmpty(),
             onBack = { goBack() },
-            onDepositCompleted = { dashboardViewModel.loadDashboard(customerId) }
+            onDepositCompleted = {
+                dashboardViewModel.loadDashboard(customerId)
+                accountsViewModel.loadAccounts()
+            }
         )
         MainTab.WITHDRAW -> WithdrawScreen(
             featureViewModel = featureViewModel,
-            accountsList = dashboardState.data?.accounts ?: emptyList(),
+            accountsList = moneyAccounts,
             canGoBack = navigationHistory.isNotEmpty(),
             onBack = { goBack() },
-            onWithdrawCompleted = { dashboardViewModel.loadDashboard(customerId) }
+            onWithdrawCompleted = {
+                dashboardViewModel.loadDashboard(customerId)
+                accountsViewModel.loadAccounts()
+            }
         )
         MainTab.BILL_PAYMENT -> BillPaymentScreen(
             viewModel = featureViewModel,
@@ -214,20 +214,20 @@ fun AppRoot() {
             canGoBack = navigationHistory.isNotEmpty(),
             onBack = { goBack() }
         )
-        MainTab.STATEMENT -> StatementScreen(
-            viewModel = featureViewModel,
-            customerId = customerId,
-            canGoBack = navigationHistory.isNotEmpty(),
-            onBack = { goBack() }
-        )
+    }
+
+    LaunchedEffect(customerId, authState.isLoggedIn, authState.isAdmin) {
+        if (authState.isLoggedIn && !authState.isAdmin) {
+            dashboardViewModel.loadDashboard(customerId.takeIf { it > 0 })
+            accountsViewModel.loadAccounts()
+        }
     }
 
     LaunchedEffect(activeTab, customerId) {
-        if ((activeTab == MainTab.DEPOSIT || activeTab == MainTab.WITHDRAW) && dashboardState.data == null) {
-            dashboardViewModel.loadDashboard(customerId)
+        if (activeTab == MainTab.ACCOUNTS && authState.isLoggedIn && !authState.isAdmin) {
+            accountsViewModel.loadAccounts()
         }
-
-        if (activeTab == MainTab.TRANSFERS && accountsState.accounts.isEmpty()) {
+        if ((activeTab == MainTab.TRANSFERS || activeTab == MainTab.DEPOSIT || activeTab == MainTab.WITHDRAW) && accountsState.accounts.isEmpty() && authState.isLoggedIn && !authState.isAdmin) {
             accountsViewModel.loadAccounts()
         }
     }

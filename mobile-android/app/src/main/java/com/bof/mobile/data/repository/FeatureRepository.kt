@@ -146,7 +146,7 @@ class FeatureRepository(private val apiService: ApiService) {
         return try {
             ApiResult.Success(block())
         } catch (e: HttpException) {
-            ApiResult.Error(message = "Request failed: ${e.message()}", code = e.code())
+            ApiResult.Error(message = parseHttpError(e, "Request failed"), code = e.code())
         } catch (e: IOException) {
             ApiResult.Error(message = "Network unavailable. Please try again.")
         } catch (e: Exception) {

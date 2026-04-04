@@ -23,14 +23,33 @@ data class AccountsUiState(
     val page: Int = 1,
     val totalPages: Int = 1,
     val typeFilter: String? = null,
-    val errorMessage: String? = null
+    val errorMessage: String? = null,
+    val lastUpdatedAtEpochMs: Long? = null
 )
 
 class AccountsViewModel(private val accountRepository: AccountRepository) : ViewModel() {
     private val _uiState = MutableStateFlow(AccountsUiState())
     val uiState: StateFlow<AccountsUiState> = _uiState
+    private var lastLoadAccountsAtEpochMs: Long = 0L
 
     fun clearError() = _uiState.update { it.copy(errorMessage = null) }
+
+    fun upsertAccount(account: AccountItem) {
+        _uiState.update { state ->
+            val existingIndex = state.accounts.indexOfFirst { it.id == account.id }
+            val updatedAccounts = if (existingIndex >= 0) {
+                state.accounts.toMutableList().apply { this[existingIndex] = account }
+            } else {
+                listOf(account) + state.accounts
+            }
+
+            state.copy(
+                accounts = updatedAccounts,
+                selectedAccountId = state.selectedAccountId ?: account.id,
+                lastUpdatedAtEpochMs = System.currentTimeMillis()
+            )
+        }
+    }
 
     fun selectAccount(accountId: Int) {
         _uiState.update { it.copy(selectedAccountId = accountId) }
@@ -45,17 +64,41 @@ class AccountsViewModel(private val accountRepository: AccountRepository) : View
     }
 
     fun loadAccounts() {
+        if (_uiState.value.isLoadingAccounts) {
+            return
+        }
+
+        val now = System.currentTimeMillis()
+        if (now - lastLoadAccountsAtEpochMs < 700) {
+            return
+        }
+        lastLoadAccountsAtEpochMs = now
+
         viewModelScope.launch {
-            _uiState.update { it.copy(isLoadingAccounts = true, errorMessage = null) }
+            _uiState.update {
+                it.copy(
+                    isLoadingAccounts = true,
+                    // Preserve visible account data while refresh is in-flight.
+                    errorMessage = if (it.accounts.isNotEmpty()) it.errorMessage else null
+                )
+            }
             when (val result = accountRepository.getAccounts()) {
                 is ApiResult.Success -> {
-                    val selected = _uiState.value.selectedAccountId ?: result.data.firstOrNull()?.id
+                    val previousAccounts = _uiState.value.accounts
+                    val refreshedAccounts = result.data
+                    val stableAccounts = if (refreshedAccounts.isEmpty() && previousAccounts.isNotEmpty()) {
+                        previousAccounts
+                    } else {
+                        refreshedAccounts
+                    }
+                    val selected = _uiState.value.selectedAccountId ?: stableAccounts.firstOrNull()?.id
                     _uiState.update {
                         it.copy(
                             isLoadingAccounts = false,
-                            accounts = result.data,
+                            accounts = stableAccounts,
                             selectedAccountId = selected,
-                            errorMessage = null
+                            errorMessage = null,
+                            lastUpdatedAtEpochMs = System.currentTimeMillis()
                         )
                     }
                     selected?.let { id ->
@@ -67,6 +110,7 @@ class AccountsViewModel(private val accountRepository: AccountRepository) : View
                     _uiState.update {
                         it.copy(
                             isLoadingAccounts = false,
+                            accounts = it.accounts,
                             errorMessage = result.message
                         )
                     }
@@ -84,7 +128,8 @@ class AccountsViewModel(private val accountRepository: AccountRepository) : View
                         it.copy(
                             isLoadingDetails = false,
                             selectedAccountDetails = result.data,
-                            errorMessage = null
+                            errorMessage = null,
+                            lastUpdatedAtEpochMs = System.currentTimeMillis()
                         )
                     }
                 }
@@ -112,7 +157,8 @@ class AccountsViewModel(private val accountRepository: AccountRepository) : View
                             page = result.data.page,
                             totalPages = result.data.totalPages.coerceAtLeast(1),
                             typeFilter = typeFilter,
-                            errorMessage = null
+                            errorMessage = null,
+                            lastUpdatedAtEpochMs = System.currentTimeMillis()
                         )
                     }
                 }

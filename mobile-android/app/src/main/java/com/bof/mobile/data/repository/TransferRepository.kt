@@ -29,7 +29,7 @@ class TransferRepository(private val apiService: ApiService) {
                 )
             )
         } catch (e: HttpException) {
-            ApiResult.Error(message = "Destination validation failed: ${e.message()}", code = e.code())
+            ApiResult.Error(message = parseHttpError(e, "Destination validation failed"), code = e.code())
         } catch (e: IOException) {
             ApiResult.Error(message = "Network unavailable. Please try again.")
         } catch (e: Exception) {
@@ -55,7 +55,7 @@ class TransferRepository(private val apiService: ApiService) {
                 )
             )
         } catch (e: HttpException) {
-            ApiResult.Error(message = "Transfer initiation failed: ${e.message()}", code = e.code())
+            ApiResult.Error(message = parseHttpError(e, "Transfer initiation failed"), code = e.code())
         } catch (e: IOException) {
             ApiResult.Error(message = "Network unavailable. Please try again.")
         } catch (e: Exception) {
@@ -69,7 +69,7 @@ class TransferRepository(private val apiService: ApiService) {
                 apiService.verifyTransfer(VerifyTransferRequest(transferId = transferId, otp = otp))
             )
         } catch (e: HttpException) {
-            ApiResult.Error(message = "OTP verification failed: ${e.message()}", code = e.code())
+            ApiResult.Error(message = parseHttpError(e, "OTP verification failed"), code = e.code())
         } catch (e: IOException) {
             ApiResult.Error(message = "Network unavailable. Please try again.")
         } catch (e: Exception) {
@@ -81,7 +81,7 @@ class TransferRepository(private val apiService: ApiService) {
         return try {
             ApiResult.Success(apiService.transfer(request))
         } catch (e: HttpException) {
-            ApiResult.Error(message = "Transfer failed: ${e.message()}", code = e.code())
+            ApiResult.Error(message = parseHttpError(e, "Transfer failed"), code = e.code())
         } catch (e: IOException) {
             ApiResult.Error(message = "Network unavailable. Please try again.")
         } catch (e: Exception) {
@@ -93,7 +93,7 @@ class TransferRepository(private val apiService: ApiService) {
         return try {
             ApiResult.Success(apiService.verifyTransferOtp(request))
         } catch (e: HttpException) {
-            ApiResult.Error(message = "OTP verification failed: ${e.message()}", code = e.code())
+            ApiResult.Error(message = parseHttpError(e, "OTP verification failed"), code = e.code())
         } catch (e: IOException) {
             ApiResult.Error(message = "Network unavailable. Please try again.")
         } catch (e: Exception) {
@@ -105,7 +105,7 @@ class TransferRepository(private val apiService: ApiService) {
         return try {
             ApiResult.Success(apiService.searchRecipients(query))
         } catch (e: HttpException) {
-            ApiResult.Error(message = "Could not search recipients: ${e.message()}", code = e.code())
+            ApiResult.Error(message = parseHttpError(e, "Could not search recipients"), code = e.code())
         } catch (e: IOException) {
             ApiResult.Error(message = "Network unavailable. Please try again.")
         } catch (e: Exception) {
@@ -117,7 +117,7 @@ class TransferRepository(private val apiService: ApiService) {
         return try {
             ApiResult.Success(apiService.getBillers())
         } catch (e: HttpException) {
-            ApiResult.Error(message = "Failed to load billers: ${e.message()}", code = e.code())
+            ApiResult.Error(message = parseHttpError(e, "Failed to load billers"), code = e.code())
         } catch (e: IOException) {
             ApiResult.Error(message = "Network unavailable. Please try again.")
         } catch (e: Exception) {

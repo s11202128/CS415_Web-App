@@ -568,16 +568,34 @@ const initializeDatabase = async () => {
       });
     }
 
+    // Backfill FK columns only when referenced rows still exist.
     await sequelize.query(`
-      UPDATE login_logs
-      SET customerId = userId
-      WHERE userType = 'customer' AND userId IS NOT NULL AND customerId IS NULL
+      UPDATE login_logs ll
+      INNER JOIN customers c ON c.id = ll.userId
+      SET ll.customerId = ll.userId
+      WHERE ll.userType = 'customer' AND ll.userId IS NOT NULL AND ll.customerId IS NULL
     `);
 
     await sequelize.query(`
-      UPDATE login_logs
-      SET adminId = userId
-      WHERE userType = 'admin' AND userId IS NOT NULL AND adminId IS NULL
+      UPDATE login_logs ll
+      INNER JOIN admins a ON a.id = ll.userId
+      SET ll.adminId = ll.userId
+      WHERE ll.userType = 'admin' AND ll.userId IS NOT NULL AND ll.adminId IS NULL
+    `);
+
+    // Clean up legacy orphaned references before adding FK constraints.
+    await sequelize.query(`
+      UPDATE login_logs ll
+      LEFT JOIN customers c ON c.id = ll.customerId
+      SET ll.customerId = NULL
+      WHERE ll.customerId IS NOT NULL AND c.id IS NULL
+    `);
+
+    await sequelize.query(`
+      UPDATE login_logs ll
+      LEFT JOIN admins a ON a.id = ll.adminId
+      SET ll.adminId = NULL
+      WHERE ll.adminId IS NOT NULL AND a.id IS NULL
     `);
 
     await queryInterface.changeColumn("login_logs", "customerId", {

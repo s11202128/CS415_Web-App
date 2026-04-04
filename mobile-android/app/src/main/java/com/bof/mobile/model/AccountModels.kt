@@ -50,6 +50,22 @@ data class PaginatedTransactionsResponse(
     val totalPages: Int
 )
 
+data class DebugAccountsResponse(
+    val matchedAccountCount: Int,
+    val matchedAccounts: List<DebugAccountItem>
+)
+
+data class DebugAccountItem(
+    val id: Int,
+    val customerId: Int,
+    val accountNumber: String,
+    val accountHolder: String,
+    val accountType: String,
+    val status: String,
+    val balance: Double,
+    val createdAt: String? = null
+)
+
 data class RecipientItem(
     val accountId: Int,
     val accountNumber: String,

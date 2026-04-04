@@ -28,13 +28,21 @@ function safeParseMetadata(metadata) {
   return metadata;
 }
 
+function canAccessAccount(account, actor = {}) {
+  if (Boolean(actor?.isAdmin)) {
+    return true;
+  }
+  const actorCustomerId = Number(actor?.customerId || 0);
+  return actorCustomerId > 0 && actorCustomerId === Number(account?.customerId || 0);
+}
+
 /**
  * Deposit money into an account
  * @param {number} accountId - Account ID
  * @param {number} amount - Amount to deposit
  * @returns {Promise<Object>} Transaction result with new balance
  */
-async function deposit({ accountId, amount, note }) {
+async function deposit({ accountId, amount, note, actor }) {
   if (!accountId || accountId <= 0) {
     throw new Error("Invalid account ID");
   }
@@ -55,6 +63,10 @@ async function deposit({ accountId, amount, note }) {
 
     if (!account) {
       throw new Error("Account not found");
+    }
+
+    if (!canAccessAccount(account, actor)) {
+      throw new Error("Forbidden: cannot deposit into this account");
     }
 
     if (["frozen", "suspended", "closed"].includes(String(account.status || "").toLowerCase())) {
@@ -108,7 +120,7 @@ async function deposit({ accountId, amount, note }) {
  * @param {number} amount - Amount to withdraw
  * @returns {Promise<Object>} Status and transfer ID if OTP required
  */
-async function withdraw({ accountId, amount, note }) {
+async function withdraw({ accountId, amount, note, actor }) {
   if (!accountId || accountId <= 0) {
     throw new Error("Invalid account ID");
   }
@@ -121,6 +133,10 @@ async function withdraw({ accountId, amount, note }) {
   const account = await Account.findByPk(accountId);
   if (!account) {
     throw new Error("Account not found");
+  }
+
+  if (!canAccessAccount(account, actor)) {
+    throw new Error("Forbidden: cannot withdraw from this account");
   }
 
   if (["frozen", "suspended", "closed"].includes(String(account.status || "").toLowerCase())) {
@@ -230,7 +246,7 @@ async function completeWithdrawal({ accountId, amount, account, note }) {
 /**
  * Verify OTP and complete withdrawal
  */
-async function verifyWithdrawalOtp({ withdrawalId, otp }) {
+async function verifyWithdrawalOtp({ withdrawalId, otp, actor }) {
   const pending = await OtpVerification.findOne({
     where: {
       referenceCode: withdrawalId,
@@ -240,6 +256,10 @@ async function verifyWithdrawalOtp({ withdrawalId, otp }) {
 
   if (!pending) {
     throw new Error("Pending withdrawal not found");
+  }
+
+  if (!Boolean(actor?.isAdmin) && Number(pending.customerId) !== Number(actor?.customerId || 0)) {
+    throw new Error("Forbidden: cannot verify this withdrawal");
   }
 
   if (pending.verified) {
@@ -321,6 +341,7 @@ async function completeTransferNow({
   recipientName,
   bankName,
   accountNumber,
+  actor,
 }) {
   let sourceCustomerId = null;
   let destinationCustomerId = null;
@@ -336,6 +357,10 @@ async function completeTransferNow({
 
     if (!sourceAccount) {
       throw new Error("Source account not found");
+    }
+
+    if (!canAccessAccount(sourceAccount, actor)) {
+      throw new Error("Forbidden: source account is not owned by authenticated user");
     }
 
     if (["frozen", "suspended", "closed"].includes(String(sourceAccount.status || "").toLowerCase())) {
@@ -378,6 +403,10 @@ async function completeTransferNow({
 
       if (!destinationAccount) {
         throw new Error("Destination account not found");
+      }
+
+      if (!Boolean(actor?.isAdmin) && Number(destinationAccount.customerId) !== Number(sourceAccount.customerId)) {
+        throw new Error("Forbidden: internal transfers are only allowed between your own accounts");
       }
 
       if (destinationAccount.id === sourceAccount.id) {
@@ -434,7 +463,7 @@ async function completeTransferNow({
   };
 }
 
-async function initiateBankTransfer(payload) {
+async function initiateBankTransfer(payload, actor = {}) {
   const amount = Number(payload.amount || 0);
   const fromAccountId = Number(payload.fromAccount || payload.fromAccountId || 0);
   const transferMode = resolveTransferMode(payload);
@@ -463,10 +492,11 @@ async function initiateBankTransfer(payload) {
         toAccountId,
         amount,
         note,
+        actor,
       });
     }
 
-    return await completeTransferNow({ fromAccountId, toAccountId, transferMode, amount, note });
+    return await completeTransferNow({ fromAccountId, toAccountId, transferMode, amount, note, actor });
   }
 
   const recipientName = String(payload.recipientName || "").trim();
@@ -486,6 +516,7 @@ async function initiateBankTransfer(payload) {
       recipientName,
       bankName,
       accountNumber,
+      actor,
     });
   }
 
@@ -497,10 +528,11 @@ async function initiateBankTransfer(payload) {
     recipientName,
     bankName,
     accountNumber,
+    actor,
   });
 }
 
-async function createTransferOtp({ fromAccountId, transferMode, toAccountId, amount, note, recipientName, bankName, accountNumber }) {
+async function createTransferOtp({ fromAccountId, transferMode, toAccountId, amount, note, recipientName, bankName, accountNumber, actor }) {
   const transferId = `TRF-${Date.now()}-${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
   const otp = makeSixDigitCode();
   const hashedOtp = hashOtp(otp);
@@ -508,6 +540,20 @@ async function createTransferOtp({ fromAccountId, transferMode, toAccountId, amo
 
   if (!sourceAccount) {
     throw new Error("Source account not found");
+  }
+
+  if (!canAccessAccount(sourceAccount, actor)) {
+    throw new Error("Forbidden: source account is not owned by authenticated user");
+  }
+
+  if (transferMode === "internal") {
+    const destinationAccount = await Account.findByPk(toAccountId);
+    if (!destinationAccount) {
+      throw new Error("Destination account not found");
+    }
+    if (!Boolean(actor?.isAdmin) && Number(destinationAccount.customerId) !== Number(sourceAccount.customerId)) {
+      throw new Error("Forbidden: internal transfers are only allowed between your own accounts");
+    }
   }
 
   await OtpVerification.create({
@@ -542,12 +588,11 @@ async function createTransferOtp({ fromAccountId, transferMode, toAccountId, amo
     message: "OTP verification required",
     requiresOtp: true,
     transferId,
-    otp,
     attemptsRemaining: OTP_MAX_ATTEMPTS,
   };
 }
 
-async function verifyBankTransferOtp({ transferId, otp }) {
+async function verifyBankTransferOtp({ transferId, otp, actor }) {
   const pending = await OtpVerification.findOne({
     where: {
       referenceCode: transferId,
@@ -557,6 +602,9 @@ async function verifyBankTransferOtp({ transferId, otp }) {
 
   if (!pending) {
     throw new Error("Pending transfer not found");
+  }
+  if (!Boolean(actor?.isAdmin) && Number(pending.customerId) !== Number(actor?.customerId || 0)) {
+    throw new Error("Forbidden: cannot verify this transfer");
   }
   if (pending.verified) {
     throw new Error("Transfer already verified");
@@ -589,6 +637,7 @@ async function verifyBankTransferOtp({ transferId, otp }) {
     recipientName: metadata.recipientName,
     bankName: metadata.bankName,
     accountNumber: metadata.accountNumber,
+    actor,
   });
 
   await pending.update({ verified: true, attempts: Number(pending.attempts || 0) + 1, lastAttemptAt: new Date() });

@@ -66,25 +66,44 @@ fun TransferScreen(
     onTransferCompleted: () -> Unit = {}
 ) {
     val uiState by viewModel.uiState.collectAsState()
+    val eligibleAccounts = accountsList.filter { it.status.equals("active", ignoreCase = true) }
     var fromAccountMenuExpanded by remember { mutableStateOf(false) }
-    var destinationMenuExpanded by remember { mutableStateOf(false) }
+    var destinationAccountMenuExpanded by remember { mutableStateOf(false) }
     var handledSuccessMessage by remember { mutableStateOf<String?>(null) }
-
-    LaunchedEffect(accountsList, uiState.fromAccountId) {
-        if (uiState.fromAccountId.isBlank() && accountsList.isNotEmpty()) {
-            viewModel.onFromAccountIdChanged(accountsList.first().id.toString())
-        }
-    }
-
-    LaunchedEffect(accountsList, uiState.internalDestinationAccountId, uiState.fromAccountId, uiState.transferMode) {
-        if (uiState.transferMode == TransferMode.INTERNAL && uiState.internalDestinationAccountId.isBlank()) {
-            val preferredDestination = accountsList.firstOrNull { it.id.toString() != uiState.fromAccountId }
-            preferredDestination?.let { viewModel.onInternalDestinationAccountIdChanged(it.id.toString()) }
-        }
-    }
 
     LaunchedEffect(Unit) {
         viewModel.clearMessages()
+    }
+
+    LaunchedEffect(eligibleAccounts, uiState.fromAccountId) {
+        if (eligibleAccounts.isNotEmpty() && uiState.fromAccountId.isBlank()) {
+            viewModel.onFromAccountIdChanged(eligibleAccounts.first().id.toString())
+            return@LaunchedEffect
+        }
+
+        if (uiState.fromAccountId.isNotBlank() && eligibleAccounts.none { it.id.toString() == uiState.fromAccountId }) {
+            viewModel.onFromAccountIdChanged(eligibleAccounts.firstOrNull()?.id?.toString() ?: "")
+        }
+    }
+
+    LaunchedEffect(uiState.transferMode, uiState.fromAccountId, eligibleAccounts) {
+        if (uiState.transferMode == TransferMode.INTERNAL) {
+            val selectedDestination = eligibleAccounts.firstOrNull { it.id.toString() == uiState.internalDestinationAccountId }
+            val sourceId = uiState.fromAccountId
+            if (selectedDestination == null || selectedDestination.id.toString() == sourceId) {
+                val fallback = eligibleAccounts.firstOrNull { it.id.toString() != sourceId }
+                viewModel.onInternalDestinationAccountIdChanged(fallback?.id?.toString() ?: "")
+            }
+        }
+    }
+
+    LaunchedEffect(uiState.successMessage, uiState.requiresOtp) {
+        if (!uiState.requiresOtp && !uiState.successMessage.isNullOrBlank()) {
+            if (eligibleAccounts.isNotEmpty()) {
+                viewModel.onFromAccountIdChanged(eligibleAccounts.first().id.toString())
+            }
+            viewModel.onInternalDestinationAccountIdChanged("")
+        }
     }
 
     LaunchedEffect(uiState.successMessage, uiState.requiresOtp) {
@@ -97,12 +116,24 @@ fun TransferScreen(
         }
     }
 
-    val selectedFromAccount = accountsList.firstOrNull { it.id.toString() == uiState.fromAccountId }
-    val effectiveFromAccount = selectedFromAccount ?: accountsList.firstOrNull()
-    val selectedDestinationAccount = accountsList.firstOrNull { it.id.toString() == uiState.internalDestinationAccountId }
+    val selectedFromAccount = eligibleAccounts.firstOrNull { it.id.toString() == uiState.fromAccountId }
+    val effectiveFromAccount = selectedFromAccount
+    val selectedDestinationAccount = eligibleAccounts.firstOrNull { it.id.toString() == uiState.internalDestinationAccountId }
+    val effectiveDestinationAccount = selectedDestinationAccount
+    val canResolveDestination = uiState.transferMode == TransferMode.INTERNAL
+    val sourceIdResolved = effectiveFromAccount != null
+    val destinationIdResolved = if (canResolveDestination) {
+        effectiveDestinationAccount != null &&
+            effectiveDestinationAccount.id.toString() != uiState.fromAccountId
+    } else {
+        true
+    }
     val enteredAmount = uiState.amount.toDoubleOrNull() ?: 0.0
     val transferReady = viewModel.validateTransferReady()
     val amountWithinLimit = enteredAmount in 0.01..uiState.dailyLimit
+    val sourceBalance = effectiveFromAccount?.balance ?: 0.0
+    val balanceSufficient = enteredAmount <= sourceBalance
+    val submitEnabled = !uiState.isLoading && transferReady && amountWithinLimit && sourceIdResolved && destinationIdResolved && balanceSufficient
     val amountShown = if (enteredAmount > 0.0) formatFjd(enteredAmount) else "FJD 0.00"
 
     Box(
@@ -193,32 +224,30 @@ fun TransferScreen(
             }
 
             AccountSelectorCard(
-                title = "From account",
+                label = "From account",
+                accounts = eligibleAccounts,
                 selectedAccount = effectiveFromAccount,
                 expanded = fromAccountMenuExpanded,
-                enabled = accountsList.isNotEmpty(),
+                enabled = eligibleAccounts.isNotEmpty(),
                 onExpandedChange = { fromAccountMenuExpanded = it },
                 onAccountSelected = {
                     viewModel.onFromAccountIdChanged(it.id.toString())
                     fromAccountMenuExpanded = false
-                },
-                accountsList = accountsList,
-                excludeAccountId = null
+                }
             )
 
-            if (uiState.transferMode == TransferMode.INTERNAL) {
+            if (canResolveDestination) {
                 AccountSelectorCard(
-                    title = "Destination account",
-                    selectedAccount = selectedDestinationAccount,
-                    expanded = destinationMenuExpanded,
-                    enabled = accountsList.count { it.id.toString() != uiState.fromAccountId } > 0,
-                    onExpandedChange = { destinationMenuExpanded = it },
+                    label = "Destination account",
+                    accounts = eligibleAccounts.filter { it.id.toString() != uiState.fromAccountId },
+                    selectedAccount = effectiveDestinationAccount,
+                    expanded = destinationAccountMenuExpanded,
+                    enabled = eligibleAccounts.count { it.id.toString() != uiState.fromAccountId } > 0,
+                    onExpandedChange = { destinationAccountMenuExpanded = it },
                     onAccountSelected = {
                         viewModel.onInternalDestinationAccountIdChanged(it.id.toString())
-                        destinationMenuExpanded = false
-                    },
-                    accountsList = accountsList,
-                    excludeAccountId = uiState.fromAccountId
+                        destinationAccountMenuExpanded = false
+                    }
                 )
             } else {
                 SectionLabel(text = "External beneficiary")
@@ -307,11 +336,15 @@ fun TransferScreen(
                         fontWeight = FontWeight.SemiBold
                     )
                     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                    SummaryRow("Source account", effectiveFromAccount?.accountNumber?.let { "•••• ${it.takeLast(4)}" } ?: "Not selected")
+                    SummaryRow(
+                        "Source account",
+                        effectiveFromAccount?.let { "${it.accountNumber} (ID ${it.id})" } ?: "Not resolved"
+                    )
+                    SummaryRow("Source holder", effectiveFromAccount?.accountHolder ?: "Not resolved")
                     SummaryRow(
                         "Destination",
                         if (uiState.transferMode == TransferMode.INTERNAL) {
-                            selectedDestinationAccount?.accountNumber?.let { "•••• ${it.takeLast(4)}" } ?: "Select account"
+                            effectiveDestinationAccount?.let { "${it.accountNumber} (ID ${it.id})" } ?: "Not resolved"
                         } else {
                             uiState.recipientName.ifBlank { "External beneficiary" }
                         }
@@ -350,7 +383,7 @@ fun TransferScreen(
                         )
                         OutlinedTextField(
                             value = uiState.otp,
-                            onValueChange = { viewModel.onOtpChanged(sanitizeCurrencyInput(it)) },
+                            onValueChange = { viewModel.onOtpChanged(it.filter { ch -> ch.isDigit() }.take(6)) },
                             modifier = Modifier.fillMaxWidth(),
                             label = { Text("OTP") },
                             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
@@ -371,7 +404,7 @@ fun TransferScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(54.dp),
-                enabled = !uiState.isLoading && transferReady && amountWithinLimit,
+                enabled = submitEnabled,
                 shape = MaterialTheme.shapes.extraLarge,
                 colors = ButtonDefaults.buttonColors(
                     containerColor = MaterialTheme.colorScheme.primary,
@@ -392,9 +425,17 @@ fun TransferScreen(
                 }
             }
 
-            if (uiState.transferMode == TransferMode.INTERNAL && accountsList.count { it.id.toString() != uiState.fromAccountId } == 0) {
+            if (uiState.transferMode == TransferMode.INTERNAL && eligibleAccounts.count { it.id.toString() != uiState.fromAccountId } == 0) {
                 Text(
                     text = "Add another account to transfer internally.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error
+                )
+            }
+
+            if (eligibleAccounts.isEmpty()) {
+                Text(
+                    text = "No active approved accounts available for transfer.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.error
                 )
@@ -408,6 +449,30 @@ fun TransferScreen(
                 )
             }
 
+            if (!sourceIdResolved) {
+                Text(
+                    text = "Select a source account before submitting.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error
+                )
+            }
+
+            if (canResolveDestination && !destinationIdResolved) {
+                Text(
+                    text = "Select a destination account different from the source account.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error
+                )
+            }
+
+            if (!balanceSufficient && enteredAmount > 0.0) {
+                Text(
+                    text = "Insufficient source account balance.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error
+                )
+            }
+
             Spacer(modifier = Modifier.height(4.dp))
         }
     }
@@ -415,83 +480,96 @@ fun TransferScreen(
 
 @Composable
 private fun AccountSelectorCard(
-    title: String,
+    label: String,
+    accounts: List<DashboardAccount>,
     selectedAccount: DashboardAccount?,
     expanded: Boolean,
     enabled: Boolean,
     onExpandedChange: (Boolean) -> Unit,
-    onAccountSelected: (DashboardAccount) -> Unit,
-    accountsList: List<DashboardAccount>,
-    excludeAccountId: String?
+    onAccountSelected: (DashboardAccount) -> Unit
 ) {
-    val options = accountsList.filter { it.id.toString() != excludeAccountId }
-
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        SectionLabel(text = title)
-        Box {
-            Card(
+    SectionLabel(text = label)
+    Box {
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable(enabled = enabled) { onExpandedChange(true) },
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+            shape = MaterialTheme.shapes.large,
+            elevation = CardDefaults.cardElevation(defaultElevation = 3.dp)
+        ) {
+            Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clickable(enabled = enabled) { onExpandedChange(true) },
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                shape = MaterialTheme.shapes.large,
-                elevation = CardDefaults.cardElevation(defaultElevation = 3.dp)
+                    .padding(16.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(16.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = selectedAccount?.accountType ?: "Select account",
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.SemiBold
-                        )
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Text(
-                            text = selectedAccount?.let { "•••• ${it.accountNumber.takeLast(4)}" } ?: "Tap to choose",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Text(
-                            text = selectedAccount?.let { formatFjd(it.balance) } ?: "No account selected",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.primary,
-                            fontWeight = FontWeight.Medium
-                        )
-                    }
-                    Icon(
-                        imageVector = Icons.Filled.KeyboardArrowDown,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = selectedAccount?.accountType ?: "Select account",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = selectedAccount?.accountNumber ?: "Choose from your linked accounts",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = selectedAccount?.let { "Balance: ${formatFjd(it.balance)}" } ?: "Balance unavailable",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.primary
                     )
                 }
+                Icon(
+                    imageVector = Icons.Filled.KeyboardArrowDown,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
+        }
 
-            DropdownMenu(
-                expanded = expanded,
-                onDismissRequest = { onExpandedChange(false) }
-            ) {
-                options.forEach { account ->
-                    DropdownMenuItem(
-                        text = {
-                            Column {
-                                Text(account.accountType, fontWeight = FontWeight.Medium)
-                                Text(
-                                    text = "•••• ${account.accountNumber.takeLast(4)} · ${formatFjd(account.balance)}",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                        },
-                        onClick = { onAccountSelected(account) }
-                    )
-                }
+        DropdownMenu(expanded = expanded, onDismissRequest = { onExpandedChange(false) }) {
+            accounts.forEach { account ->
+                DropdownMenuItem(
+                    text = {
+                        Column {
+                            Text(text = account.accountType, fontWeight = FontWeight.SemiBold)
+                            Text(
+                                text = "${account.accountNumber} • ${formatFjd(account.balance)}",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    },
+                    onClick = { onAccountSelected(account) }
+                )
             }
+        }
+    }
+
+    if (selectedAccount != null) {
+        AccountPreview("Selected account", selectedAccount)
+    }
+}
+
+@Composable
+private fun AccountPreview(title: String, account: DashboardAccount) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.28f)),
+        shape = MaterialTheme.shapes.medium
+    ) {
+        Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text(text = title, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold)
+            Text(text = "Account ID: ${account.id}", style = MaterialTheme.typography.bodySmall)
+            Text(text = "Account Number: ${account.accountNumber}", style = MaterialTheme.typography.bodySmall)
+            Text(text = "Holder: ${account.accountHolder}", style = MaterialTheme.typography.bodySmall)
+            Text(text = "Type: ${account.accountType}", style = MaterialTheme.typography.bodySmall)
+            Text(text = "Balance: ${formatFjd(account.balance)}", style = MaterialTheme.typography.bodySmall)
         }
     }
 }
@@ -570,6 +648,10 @@ private fun sanitizeCurrencyInput(input: String): String {
         }
     }
     return builder.toString()
+}
+
+private fun sanitizeAccountNumberInput(input: String): String {
+    return input.filter { it.isDigit() }.take(12)
 }
 
 private fun formatFjd(amount: Double): String {

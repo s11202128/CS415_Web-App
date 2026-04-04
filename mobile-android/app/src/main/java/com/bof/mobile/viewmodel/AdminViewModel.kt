@@ -78,10 +78,14 @@ data class AdminUiState(
     val customerSearchQuery: String = "",
     val selectedAccountNumberForTransactions: String = "",
 
+    val createAccountCustomerId: String = "",
     val createAccountCustomerName: String = "",
+    val createAccountName: String = "",
+    val createAccountPassword: String = "",
     val createAccountType: String = "Simple Access",
+    val createAccountPin: String = "Will be auto-generated",
+    val createAccountNumber: String = "Will be auto-generated",
     val createAccountOpeningBalance: String = "0",
-    val createAccountNumber: String = "",
 
     val depositAccountId: String = "",
     val depositAmount: String = "",
@@ -132,7 +136,10 @@ class AdminViewModel(private val repository: AdminRepository) : ViewModel() {
     fun onAccountSearchChanged(value: String) = _uiState.update { it.copy(accountSearchQuery = value) }
     fun onSelectedAccountNumberForTransactionsChanged(value: String) = _uiState.update { it.copy(selectedAccountNumberForTransactions = value) }
 
+    fun onCreateAccountCustomerIdChanged(value: String) = _uiState.update { it.copy(createAccountCustomerId = value) }
     fun onCreateAccountCustomerNameChanged(value: String) = _uiState.update { it.copy(createAccountCustomerName = value) }
+    fun onCreateAccountNameChanged(value: String) = _uiState.update { it.copy(createAccountName = value) }
+    fun onCreateAccountPasswordChanged(value: String) = _uiState.update { it.copy(createAccountPassword = value) }
     fun onCreateAccountTypeChanged(value: String) = _uiState.update { it.copy(createAccountType = value) }
     fun onCreateAccountOpeningBalanceChanged(value: String) = _uiState.update { it.copy(createAccountOpeningBalance = value) }
     fun onCreateAccountNumberChanged(value: String) = _uiState.update { it.copy(createAccountNumber = value) }
@@ -219,19 +226,26 @@ class AdminViewModel(private val repository: AdminRepository) : ViewModel() {
 
     fun createAccount() {
         val state = _uiState.value
-        val openingBalance = state.createAccountOpeningBalance.toDoubleOrNull()
-        if (state.createAccountCustomerName.isBlank() || openingBalance == null) {
-            return setError("Customer name and opening balance are required")
+        val customerId = state.createAccountCustomerId.toIntOrNull()
+        val accountName = state.createAccountName.trim()
+        
+        if ((customerId == null || customerId <= 0) && state.createAccountCustomerName.isBlank()) {
+            return setError("Customer ID or name is required")
+        }
+        
+        if (accountName.isBlank()) {
+            return setError("Account name is required")
         }
 
         viewModelScope.launch {
             setLoading(true)
             val result = repository.createAdminAccount(
                 com.bof.mobile.model.AdminCreateAccountRequest(
-                    customerName = state.createAccountCustomerName,
+                    customerId = customerId,
+                    customerName = state.createAccountCustomerName.ifBlank { null },
                     type = state.createAccountType,
-                    openingBalance = openingBalance,
-                    accountNumber = state.createAccountNumber.ifBlank { null }
+                    openingBalance = state.createAccountOpeningBalance.toDoubleOrNull() ?: 0.0,
+                    accountNumber = if (state.createAccountNumber == "Will be auto-generated") null else state.createAccountNumber.ifBlank { null }
                 )
             )
             when (result) {
@@ -239,7 +253,14 @@ class AdminViewModel(private val repository: AdminRepository) : ViewModel() {
                     _uiState.update {
                         it.copy(
                             accounts = listOf(result.data) + it.accounts,
-                            successMessage = "Account created",
+                            createAccountName = "",
+                            createAccountPassword = "",
+                            createAccountPin = "Will be auto-generated",
+                            createAccountNumber = "Will be auto-generated",
+                            createAccountCustomerId = "",
+                            createAccountCustomerName = "",
+                            createAccountOpeningBalance = "0",
+                            successMessage = "Account created successfully. PIN: ${result.data.accountPin}, Account#: ${result.data.accountNumber}",
                             errorMessage = null
                         )
                     }

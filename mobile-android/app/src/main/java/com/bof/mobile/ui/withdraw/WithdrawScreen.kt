@@ -76,8 +76,12 @@ fun WithdrawScreen(
     }
 
     LaunchedEffect(uiState.successMessage, uiState.showWithdrawOtpField) {
-        val successMessage = uiState.successMessage ?: return@LaunchedEffect
-        if (successMessage.startsWith("Withdrawal successful")) {
+        val success = uiState.successMessage ?: ""
+        if (!uiState.showWithdrawOtpField && (
+                success.startsWith("Withdrawal successful") ||
+                success.startsWith("Withdrawal verified and completed successfully")
+            )
+        ) {
             onWithdrawCompleted()
         }
     }

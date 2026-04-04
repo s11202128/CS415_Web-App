@@ -12,9 +12,11 @@ function requireAuth(req, res, next) {
 
   try {
     const decoded = jwt.verify(token, JWT_SECRET);
+    const decodedUserId = Number(decoded.userId || 0) || null;
+    const decodedCustomerId = Number(decoded.customerId || decoded.userId || 0) || null;
     req.auth = {
-      userId: Number(decoded.userId),
-      customerId: Number(decoded.customerId || 0),
+      userId: decodedUserId,
+      customerId: decodedCustomerId,
       email: decoded.email,
       fullName: decoded.fullName,
       isAdmin: Boolean(decoded.isAdmin),

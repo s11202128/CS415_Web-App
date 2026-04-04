@@ -4,10 +4,14 @@ const authService = require("../services/authService");
 const JWT_SECRET = process.env.JWT_SECRET || "bof-dev-secret-2026";
 
 function buildAuthResponse(user) {
+  const resolvedCustomerId = Boolean(user.isAdmin)
+    ? null
+    : (Number(user.customerId || user.userId || 0) || null);
+
   const token = jwt.sign(
     {
       userId: user.userId,
-      customerId: user.customerId,
+      customerId: resolvedCustomerId,
       email: user.email,
       fullName: user.fullName,
       isAdmin: Boolean(user.isAdmin),
@@ -20,7 +24,7 @@ function buildAuthResponse(user) {
     token,
     fullName: user.fullName,
     userId: user.userId,
-    customerId: user.customerId,
+    customerId: resolvedCustomerId,
     email: user.email,
     mobile: user.mobile,
     nationalId: user.nationalId,

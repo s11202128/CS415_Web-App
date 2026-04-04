@@ -1,17 +1,4 @@
 const { deposit, withdraw, verifyWithdrawalOtp, initiateBankTransfer, verifyBankTransferOtp } = require("../services/transactionService");
-const { Account, OtpVerification } = require("../models");
-
-function isAdmin(req) {
-  return Boolean(req.auth?.isAdmin);
-}
-
-function getAuthenticatedCustomerId(req) {
-  return Number(req.auth?.customerId || 0);
-}
-
-function canAccessCustomer(req, customerId) {
-  return isAdmin(req) || Number(customerId) === getAuthenticatedCustomerId(req);
-}
 
 /**
  * POST /api/transactions/deposit
@@ -20,6 +7,10 @@ function canAccessCustomer(req, customerId) {
 async function handleDeposit(req, res) {
   try {
     const { accountId, amount, note } = req.body;
+    const actor = {
+      customerId: Number(req.auth?.customerId || req.auth?.userId || 0),
+      isAdmin: Boolean(req.auth?.isAdmin),
+    };
 
     // Validation
     if (!accountId || accountId <= 0) {
@@ -35,20 +26,18 @@ async function handleDeposit(req, res) {
       return res.status(400).json({ success: false, message: "Invalid amount format" });
     }
 
-    const account = await Account.findByPk(Number(accountId));
-    if (!account) {
-      return res.status(404).json({ success: false, message: "Account not found" });
-    }
-    if (!canAccessCustomer(req, account.customerId)) {
-      return res.status(403).json({ success: false, message: "Forbidden" });
-    }
-
     // Call service
-    const result = await deposit({ accountId, amount: numericAmount, note });
+    const result = await deposit({ accountId, amount: numericAmount, note, actor });
 
     res.status(200).json(result);
   } catch (error) {
-    const statusCode = error.message.includes("not found") ? 404 : error.message.includes("Insufficient") ? 402 : 400;
+    const statusCode = error.message.includes("Forbidden")
+      ? 403
+      : error.message.includes("not found")
+      ? 404
+      : error.message.includes("Insufficient")
+      ? 402
+      : 400;
     res.status(statusCode).json({
       success: false,
       message: error.message,
@@ -63,6 +52,10 @@ async function handleDeposit(req, res) {
 async function handleWithdraw(req, res) {
   try {
     const { accountId, amount, note } = req.body;
+    const actor = {
+      customerId: Number(req.auth?.customerId || req.auth?.userId || 0),
+      isAdmin: Boolean(req.auth?.isAdmin),
+    };
 
     // Validation
     if (!accountId || accountId <= 0) {
@@ -78,20 +71,18 @@ async function handleWithdraw(req, res) {
       return res.status(400).json({ success: false, message: "Invalid amount format" });
     }
 
-    const account = await Account.findByPk(Number(accountId));
-    if (!account) {
-      return res.status(404).json({ success: false, message: "Account not found" });
-    }
-    if (!canAccessCustomer(req, account.customerId)) {
-      return res.status(403).json({ success: false, message: "Forbidden" });
-    }
-
     // Call service
-    const result = await withdraw({ accountId, amount: numericAmount, note });
+    const result = await withdraw({ accountId, amount: numericAmount, note, actor });
 
     res.status(200).json(result);
   } catch (error) {
-    const statusCode = error.message.includes("not found") ? 404 : error.message.includes("Insufficient") ? 402 : 400;
+    const statusCode = error.message.includes("Forbidden")
+      ? 403
+      : error.message.includes("not found")
+      ? 404
+      : error.message.includes("Insufficient")
+      ? 402
+      : 400;
     res.status(statusCode).json({
       success: false,
       message: error.message,
@@ -106,6 +97,10 @@ async function handleWithdraw(req, res) {
 async function handleVerifyWithdrawal(req, res) {
   try {
     const { withdrawalId, otp } = req.body;
+    const actor = {
+      customerId: Number(req.auth?.customerId || req.auth?.userId || 0),
+      isAdmin: Boolean(req.auth?.isAdmin),
+    };
 
     // Validation
     if (!withdrawalId || !withdrawalId.trim()) {
@@ -116,25 +111,18 @@ async function handleVerifyWithdrawal(req, res) {
       return res.status(400).json({ success: false, message: "OTP is required" });
     }
 
-    const pending = await OtpVerification.findOne({
-      where: {
-        referenceCode: String(withdrawalId).trim(),
-        transactionType: "withdrawal",
-      },
-    });
-    if (!pending) {
-      return res.status(404).json({ success: false, message: "Pending withdrawal not found" });
-    }
-    if (!canAccessCustomer(req, pending.customerId)) {
-      return res.status(403).json({ success: false, message: "Forbidden" });
-    }
-
     // Call service
-    const result = await verifyWithdrawalOtp({ withdrawalId, otp });
+    const result = await verifyWithdrawalOtp({ withdrawalId, otp, actor });
 
     res.status(200).json(result);
   } catch (error) {
-    const statusCode = error.message.includes("not found") ? 404 : error.message.includes("Insufficient") ? 402 : 400;
+    const statusCode = error.message.includes("Forbidden")
+      ? 403
+      : error.message.includes("not found")
+      ? 404
+      : error.message.includes("Insufficient")
+      ? 402
+      : 400;
     res.status(statusCode).json({
       success: false,
       message: error.message,
@@ -149,24 +137,20 @@ async function handleVerifyWithdrawal(req, res) {
  */
 async function handleTransfer(req, res) {
   try {
-    const payload = req.body || {};
-    const fromAccountId = Number(payload.fromAccount || payload.fromAccountId || 0);
-    if (!Number.isFinite(fromAccountId) || fromAccountId <= 0) {
-      return res.status(400).json({ success: false, message: "From account is required" });
-    }
-
-    const fromAccount = await Account.findByPk(fromAccountId);
-    if (!fromAccount) {
-      return res.status(404).json({ success: false, message: "Source account not found" });
-    }
-    if (!canAccessCustomer(req, fromAccount.customerId)) {
-      return res.status(403).json({ success: false, message: "Forbidden" });
-    }
-
-    const result = await initiateBankTransfer(payload);
+    const actor = {
+      customerId: Number(req.auth?.customerId || req.auth?.userId || 0),
+      isAdmin: Boolean(req.auth?.isAdmin),
+    };
+    const result = await initiateBankTransfer(req.body || {}, actor);
     res.status(200).json(result);
   } catch (error) {
-    const statusCode = error.message.includes("not found") ? 404 : error.message.includes("Insufficient") ? 402 : 400;
+    const statusCode = error.message.includes("Forbidden")
+      ? 403
+      : error.message.includes("not found")
+      ? 404
+      : error.message.includes("Insufficient")
+      ? 402
+      : 400;
     res.status(statusCode).json({ success: false, message: error.message });
   }
 }
@@ -178,6 +162,10 @@ async function handleTransfer(req, res) {
 async function handleVerifyTransfer(req, res) {
   try {
     const { transferId, otp } = req.body || {};
+    const actor = {
+      customerId: Number(req.auth?.customerId || req.auth?.userId || 0),
+      isAdmin: Boolean(req.auth?.isAdmin),
+    };
     if (!transferId || !String(transferId).trim()) {
       return res.status(400).json({ success: false, message: "Transfer ID is required" });
     }
@@ -185,23 +173,16 @@ async function handleVerifyTransfer(req, res) {
       return res.status(400).json({ success: false, message: "OTP is required" });
     }
 
-    const pending = await OtpVerification.findOne({
-      where: {
-        referenceCode: String(transferId).trim(),
-        transactionType: "transfer_money",
-      },
-    });
-    if (!pending) {
-      return res.status(404).json({ success: false, message: "Pending transfer not found" });
-    }
-    if (!canAccessCustomer(req, pending.customerId)) {
-      return res.status(403).json({ success: false, message: "Forbidden" });
-    }
-
-    const result = await verifyBankTransferOtp({ transferId, otp });
+    const result = await verifyBankTransferOtp({ transferId, otp, actor });
     res.status(200).json(result);
   } catch (error) {
-    const statusCode = error.message.includes("not found") ? 404 : error.message.includes("Insufficient") ? 402 : 400;
+    const statusCode = error.message.includes("Forbidden")
+      ? 403
+      : error.message.includes("not found")
+      ? 404
+      : error.message.includes("Insufficient")
+      ? 402
+      : 400;
     res.status(statusCode).json({ success: false, message: error.message });
   }
 }

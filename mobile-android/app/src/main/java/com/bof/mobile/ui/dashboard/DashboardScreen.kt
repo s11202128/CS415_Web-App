@@ -88,8 +88,14 @@ fun DashboardScreen(
     var showProfile by remember { mutableStateOf(false) }
     var txFilter by remember { mutableStateOf(DashboardTxFilter.ALL) }
 
+    // Self-healing trigger: if dashboard wasn't loaded upstream, kick one load from here.
+    LaunchedEffect(customerId, uiState.hasLoadedOnce, uiState.isLoading) {
+        if (!uiState.hasLoadedOnce && !uiState.isLoading) {
+            viewModel.loadDashboard(customerId.takeIf { it > 0 })
+        }
+    }
+
     LaunchedEffect(customerId) {
-        viewModel.loadDashboard(customerId)
         featureViewModel.loadNotifications(customerId)
         featureViewModel.loadProfile(customerId)
     }
@@ -105,7 +111,7 @@ fun DashboardScreen(
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
     ) {
-        if (uiState.isLoading) {
+        if (uiState.isLoading && uiState.data == null) {
             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 CircularProgressIndicator()
             }
@@ -136,7 +142,7 @@ fun DashboardScreen(
         }
 
         val data = uiState.data
-        if (data == null) {
+        if (data == null && uiState.hasLoadedOnce) {
             Column(
                 modifier = Modifier
                     .fillMaxSize()
@@ -150,6 +156,13 @@ fun DashboardScreen(
                     LogoutButton(onLogout = onLogout)
                 }
                 DashboardMessageBanner(text = "No dashboard data available", isError = true)
+            }
+            return@Box
+        }
+
+        if (data == null) {
+            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                CircularProgressIndicator()
             }
             return@Box
         }
@@ -179,6 +192,24 @@ fun DashboardScreen(
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             item { Spacer(modifier = Modifier.height(4.dp)) }
+
+            if (uiState.isLoading) {
+                item {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.Center,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
+                        Spacer(modifier = Modifier.size(8.dp))
+                        Text(
+                            text = "Refreshing dashboard...",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            }
 
             item {
                 HeaderSection(

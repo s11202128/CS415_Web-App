@@ -38,7 +38,8 @@ data class AdminUpdateTransferLimitRequest(
 )
 
 data class AdminCreateAccountRequest(
-    val customerName: String,
+    val customerId: Int? = null,
+    val customerName: String? = null,
     val type: String,
     val openingBalance: Double,
     val accountNumber: String? = null

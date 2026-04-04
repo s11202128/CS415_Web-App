@@ -28,7 +28,9 @@ data class TransferUiState(
     val isLoading: Boolean = false,
     val successMessage: String? = null,
     val errorMessage: String? = null,
-    val dailyLimit: Double = 10000.0
+    val dailyLimit: Double = 10000.0,
+    val latestServerResponse: TransferMoneyResponse? = null,
+    val lastUpdatedAtEpochMs: Long? = null
 )
 
 class TransferViewModel(private val transferRepository: TransferRepository) : ViewModel() {
@@ -48,12 +50,18 @@ class TransferViewModel(private val transferRepository: TransferRepository) : Vi
             transferId = null,
             requiresOtp = false,
             errorMessage = null,
-            successMessage = null
+            successMessage = null,
+            latestServerResponse = null
         )
     }
 
-    fun onFromAccountIdChanged(value: String) = _uiState.update { it.copy(fromAccountId = value) }
-    fun onInternalDestinationAccountIdChanged(value: String) = _uiState.update { it.copy(internalDestinationAccountId = value) }
+    fun onFromAccountIdChanged(value: String) = _uiState.update {
+        it.copy(fromAccountId = normalizeResolvedAccountId(value))
+    }
+
+    fun onInternalDestinationAccountIdChanged(value: String) = _uiState.update {
+        it.copy(internalDestinationAccountId = normalizeResolvedAccountId(value))
+    }
     fun onRecipientNameChanged(value: String) = _uiState.update { it.copy(recipientName = value) }
     fun onBankNameChanged(value: String) = _uiState.update { it.copy(bankName = value) }
     fun onExternalAccountNumberChanged(value: String) = _uiState.update { it.copy(externalAccountNumber = value) }
@@ -67,7 +75,7 @@ class TransferViewModel(private val transferRepository: TransferRepository) : Vi
         val amount = state.amount.toDoubleOrNull()
 
         if (fromAccountId == null || fromAccountId <= 0) {
-            return setError("Please select a valid source account")
+            return setError("Source account must be resolved to a valid account ID")
         }
         if (amount == null || amount <= 0) {
             return setError("Amount must be greater than 0")
@@ -79,7 +87,7 @@ class TransferViewModel(private val transferRepository: TransferRepository) : Vi
         if (state.transferMode == TransferMode.INTERNAL) {
             val destinationAccountId = state.internalDestinationAccountId.toIntOrNull()
             if (destinationAccountId == null || destinationAccountId <= 0) {
-                return setError("Please select a destination account")
+                return setError("Destination account must be resolved to a valid account ID")
             }
             if (destinationAccountId == fromAccountId) {
                 return setError("Source and destination accounts must be different")
@@ -138,7 +146,9 @@ class TransferViewModel(private val transferRepository: TransferRepository) : Vi
                             transferId = null,
                             requiresOtp = false,
                             successMessage = result.data.message,
-                            errorMessage = null
+                            errorMessage = null,
+                            latestServerResponse = result.data,
+                            lastUpdatedAtEpochMs = System.currentTimeMillis()
                         )
                     }
                 }
@@ -153,9 +163,12 @@ class TransferViewModel(private val transferRepository: TransferRepository) : Vi
         val amount = state.amount.toDoubleOrNull() ?: return false
         if (amount <= 0 || amount > state.dailyLimit) return false
         return if (state.transferMode == TransferMode.INTERNAL) {
-            state.fromAccountId.isNotBlank() && state.internalDestinationAccountId.isNotBlank() && state.internalDestinationAccountId != state.fromAccountId
+            val fromId = state.fromAccountId.toIntOrNull()
+            val destinationId = state.internalDestinationAccountId.toIntOrNull()
+            fromId != null && fromId > 0 && destinationId != null && destinationId > 0 && destinationId != fromId
         } else {
-            state.fromAccountId.isNotBlank() && state.recipientName.isNotBlank() && state.bankName.isNotBlank() && state.externalAccountNumber.isNotBlank()
+            val fromId = state.fromAccountId.toIntOrNull()
+            fromId != null && fromId > 0 && state.recipientName.isNotBlank() && state.bankName.isNotBlank() && state.externalAccountNumber.isNotBlank()
         }
     }
 
@@ -166,7 +179,9 @@ class TransferViewModel(private val transferRepository: TransferRepository) : Vi
                     transferId = response.transferId,
                     requiresOtp = true,
                     successMessage = response.message,
-                    errorMessage = null
+                    errorMessage = null,
+                    latestServerResponse = response,
+                    lastUpdatedAtEpochMs = System.currentTimeMillis()
                 )
             }
         } else {
@@ -183,10 +198,18 @@ class TransferViewModel(private val transferRepository: TransferRepository) : Vi
                     transferId = null,
                     requiresOtp = false,
                     successMessage = response.message.ifBlank { "Transfer successful - FJD ${String.format("%.2f", amount)}" },
-                    errorMessage = null
+                    errorMessage = null,
+                    latestServerResponse = response,
+                    lastUpdatedAtEpochMs = System.currentTimeMillis()
                 )
             }
         }
+    }
+
+    private fun normalizeResolvedAccountId(value: String): String {
+        val trimmed = value.trim()
+        val parsed = trimmed.toIntOrNull() ?: return ""
+        return if (parsed > 0) parsed.toString() else ""
     }
 
     private fun setLoading(value: Boolean) {

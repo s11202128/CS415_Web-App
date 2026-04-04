@@ -102,6 +102,62 @@ async function findByNormalizedEmail(Model, email) {
   return Model.findOne({ where: normalizedEmailWhereClause(email) });
 }
 
+async function resolveCanonicalCustomerForLogin(customer) {
+  if (!customer) {
+    return null;
+  }
+
+  const normalizedFullName = String(customer.fullName || "").trim().toLowerCase();
+  if (!normalizedFullName) {
+    return customer;
+  }
+
+  const relatedCustomers = await Customer.findAll({
+    where: where(fn("LOWER", fn("TRIM", col("fullName"))), normalizedFullName),
+  });
+
+  if (relatedCustomers.length <= 1) {
+    return customer;
+  }
+
+  const customerIds = relatedCustomers.map((row) => Number(row.id));
+  const accountCounts = await Account.findAll({
+    attributes: [
+      "customerId",
+      [fn("COUNT", col("id")), "accountCount"],
+    ],
+    where: { customerId: { [Op.in]: customerIds } },
+    group: ["customerId"],
+    raw: true,
+  });
+
+  const countMap = new Map();
+  accountCounts.forEach((row) => {
+    countMap.set(Number(row.customerId), Number(row.accountCount || 0));
+  });
+
+  const currentCount = Number(countMap.get(Number(customer.id)) || 0);
+  if (currentCount > 0) {
+    return customer;
+  }
+
+  const bestCandidate = relatedCustomers
+    .map((row) => ({ row, count: Number(countMap.get(Number(row.id)) || 0) }))
+    .filter((entry) => entry.count > 0)
+    .sort((a, b) => {
+      if (b.count !== a.count) {
+        return b.count - a.count;
+      }
+      return Number(a.row.id) - Number(b.row.id);
+    })[0];
+
+  if (!bestCandidate) {
+    return customer;
+  }
+
+  return bestCandidate.row;
+}
+
 function validatePassword(password) {
   if (!password || String(password).length < 8) {
     throw new Error("Password must be at least 8 characters");
@@ -938,13 +994,15 @@ async function loginUser({ email, mobile, username, password, ipAddress, userAge
   });
   await recordLoginAttempt({ userType: "customer", userId: customer.id, email: loginIdentifier, success: true, ipAddress, userAgent });
 
+  const canonicalCustomer = await resolveCanonicalCustomerForLogin(customer);
+
   return {
-    userId: customer.id,
-    fullName: customer.fullName,
+    userId: canonicalCustomer.id,
+    fullName: canonicalCustomer.fullName,
     email: customer.email,
-    customerId: customer.id,
+    customerId: canonicalCustomer.id,
     mobile: customer.mobile,
-    nationalId: customer.nationalId,
+    nationalId: canonicalCustomer.nationalId,
     isAdmin: false,
   };
 }

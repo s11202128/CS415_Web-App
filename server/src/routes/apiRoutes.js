@@ -50,7 +50,7 @@ function isAdmin(req) {
 }
 
 function getAuthenticatedCustomerId(req) {
-  return Number(req.auth?.customerId || 0);
+  return Number(req.auth?.customerId || req.auth?.userId || 0);
 }
 
 function canAccessCustomer(req, customerId) {
@@ -114,6 +114,7 @@ const toStatementRequestResponse = (row) => ({
 });
 
 async function getCustomerForAccountPayload(payload, options = {}) {
+  const allowAutoCreate = options.allowAutoCreate === true;
   const providedCustomerName = String(payload.customerName || "").trim();
   let customerId = payload.customerId;
 
@@ -126,6 +127,10 @@ async function getCustomerForAccountPayload(payload, options = {}) {
     const customer = await Customer.findByPk(numericCustomerId);
     if (!customer) {
       throw new Error("Customer not found");
+    }
+
+    if (providedCustomerName && String(customer.fullName || "").trim().toLowerCase() !== providedCustomerName.toLowerCase()) {
+      throw new Error("customerId and customerName do not match");
     }
 
     return customer;
@@ -142,6 +147,10 @@ async function getCustomerForAccountPayload(payload, options = {}) {
       normalizedName
     ),
   });
+
+  if (!customer && !allowAutoCreate) {
+    throw new Error("Customer not found. Use an existing customer ID.");
+  }
 
   if (!customer) {
     const nonce = Date.now();
@@ -264,14 +273,28 @@ router.get("/admin/customers", asyncHandler(async (req, res) => {
 }));
 
 router.get("/dashboard", requireAuth, asyncHandler(async (req, res) => {
-  const customerId = Number(req.query.customerId);
+  const startedAt = Date.now();
+  const requestedCustomerId = Number(req.query.customerId);
+  const fallbackCustomerId = getAuthenticatedCustomerId(req);
+  const customerId = Number.isFinite(requestedCustomerId) && requestedCustomerId > 0
+    ? requestedCustomerId
+    : fallbackCustomerId;
+
   if (!Number.isFinite(customerId) || customerId <= 0) {
     return res.status(400).json({ error: "Valid customerId query is required" });
   }
   if (!canAccessCustomer(req, customerId)) {
     return res.status(403).json({ error: "Forbidden" });
   }
-  const result = await getDashboard(customerId);
+
+  const result = await Promise.race([
+    getDashboard(customerId),
+    new Promise((_, reject) => {
+      setTimeout(() => reject(new Error("Dashboard request timed out")), 8000);
+    }),
+  ]);
+
+  console.info(`[dashboard] customerId=${customerId} loaded in ${Date.now() - startedAt}ms`);
   res.json(result);
 }));
 
@@ -356,12 +379,224 @@ router.patch("/admin/customers/:id", asyncHandler(async (req, res) => {
 }));
 
 router.get("/accounts", requireAuth, asyncHandler(async (req, res) => {
-  const where = isAdmin(req) ? undefined : { customerId: getAuthenticatedCustomerId(req) };
-  const rows = await Account.findAll({ where, order: [["createdAt", "ASC"]] });
+  let rows = [];
+
+  if (isAdmin(req)) {
+    rows = await Account.findAll({ order: [["createdAt", "ASC"]] });
+  } else {
+    const authenticatedCustomerId = getAuthenticatedCustomerId(req);
+    const customerIds = new Set();
+    if (Number.isFinite(authenticatedCustomerId) && authenticatedCustomerId > 0) {
+      customerIds.add(Number(authenticatedCustomerId));
+    }
+
+    if (customerIds.size > 0) {
+      rows = await Account.findAll({ where: { customerId: { [Op.in]: Array.from(customerIds) } }, order: [["createdAt", "ASC"]] });
+    }
+
+    // Legacy compatibility: include accounts tied to duplicate customer rows that share the same identity.
+    if (rows.length === 0) {
+      const tokenEmail = String(req.auth?.email || "").trim().toLowerCase();
+      const tokenFullName = String(req.auth?.fullName || "").trim();
+
+      let authCustomer = null;
+      if (Number.isFinite(authenticatedCustomerId) && authenticatedCustomerId > 0) {
+        authCustomer = await Customer.findByPk(authenticatedCustomerId);
+      }
+      if (!authCustomer && tokenEmail) {
+        authCustomer = await Customer.findOne({ where: { email: tokenEmail } });
+      }
+      if (!authCustomer && tokenFullName) {
+        authCustomer = await Customer.findOne({ where: { fullName: tokenFullName } });
+      }
+
+      const normalizedEmail = String(authCustomer?.email || "").trim().toLowerCase();
+      const normalizedMobile = String(authCustomer?.mobile || "").trim();
+      const normalizedFullName = String(authCustomer?.fullName || tokenFullName || "").trim();
+
+      const identityFilters = [];
+      if (tokenEmail) identityFilters.push({ email: tokenEmail });
+      if (normalizedEmail && normalizedEmail !== tokenEmail) identityFilters.push({ email: normalizedEmail });
+      if (normalizedMobile) identityFilters.push({ mobile: normalizedMobile });
+      if (normalizedFullName) identityFilters.push({ fullName: normalizedFullName });
+
+      if (identityFilters.length > 0) {
+        const relatedCustomers = await Customer.findAll({
+          attributes: ["id"],
+          where: { [Op.or]: identityFilters },
+        });
+        relatedCustomers.forEach((c) => customerIds.add(Number(c.id)));
+      }
+
+      const accountOrFilters = [];
+      if (customerIds.size > 0) {
+        accountOrFilters.push({ customerId: { [Op.in]: Array.from(customerIds) } });
+      }
+      if (normalizedFullName) {
+        accountOrFilters.push(Customer.sequelize.where(
+          Customer.sequelize.fn("LOWER", Customer.sequelize.fn("TRIM", Customer.sequelize.col("accountHolder"))),
+          normalizedFullName.toLowerCase()
+        ));
+      }
+
+      if (accountOrFilters.length > 0) {
+        rows = await Account.findAll({
+          where: { [Op.or]: accountOrFilters },
+          order: [["createdAt", "ASC"]],
+        });
+      }
+
+      // Final fallback: normalize and match via related customer identity + account holder text.
+      if (rows.length === 0) {
+        const normalizedIdentity = {
+          email: tokenEmail || normalizedEmail,
+          mobile: normalizedMobile,
+          fullName: normalizedFullName.toLowerCase(),
+        };
+
+        const candidates = await Account.findAll({
+          include: [{ model: Customer, attributes: ["id", "email", "mobile", "fullName"] }],
+          order: [["createdAt", "ASC"]],
+        });
+
+        const matchesIdentity = (account) => {
+          const customer = account.Customer || {};
+          const customerEmail = String(customer.email || "").trim().toLowerCase();
+          const customerMobile = String(customer.mobile || "").trim();
+          const customerName = String(customer.fullName || "").trim().toLowerCase();
+          const holderName = String(account.accountHolder || "").trim().toLowerCase();
+
+          if (normalizedIdentity.email && customerEmail && customerEmail === normalizedIdentity.email) return true;
+          if (normalizedIdentity.mobile && customerMobile && customerMobile === normalizedIdentity.mobile) return true;
+          if (normalizedIdentity.fullName && customerName && customerName === normalizedIdentity.fullName) return true;
+          if (normalizedIdentity.fullName && holderName && holderName === normalizedIdentity.fullName) return true;
+
+          return false;
+        };
+
+        rows = candidates.filter(matchesIdentity);
+      }
+    }
+  }
+
   res.json(rows.map(toAccountResponse));
 }));
 
-router.post("/accounts", asyncHandler(async (req, res) => {
+// DEBUG ENDPOINT: Show token identity and matched accounts (remove after diagnosing)
+router.get("/debug/my-accounts", requireAuth, asyncHandler(async (req, res) => {
+  const authenticatedCustomerId = getAuthenticatedCustomerId(req);
+  const tokenEmail = String(req.auth?.email || "").trim().toLowerCase();
+  const tokenFullName = String(req.auth?.fullName || "").trim();
+  
+  let authCustomer = null;
+  let resolveMethod = "none";
+  
+  if (Number.isFinite(authenticatedCustomerId) && authenticatedCustomerId > 0) {
+    authCustomer = await Customer.findByPk(authenticatedCustomerId);
+    resolveMethod = "customerId";
+  }
+  if (!authCustomer && tokenEmail) {
+    authCustomer = await Customer.findOne({ where: { email: tokenEmail } });
+    resolveMethod = "email";
+  }
+  if (!authCustomer && tokenFullName) {
+    authCustomer = await Customer.findOne({ where: { fullName: tokenFullName } });
+    resolveMethod = "fullName";
+  }
+  
+  const allAccounts = await Account.findAll({
+    include: [{ model: Customer, attributes: ["id", "email", "mobile", "fullName"] }],
+  });
+  
+  const matchedAccounts = allAccounts.filter((account) => {
+    const customer = account.Customer || {};
+    const customerEmail = String(customer.email || "").trim().toLowerCase();
+    const customerMobile = String(customer.mobile || "").trim();
+    const customerName = String(customer.fullName || "").trim().toLowerCase();
+    const holderName = String(account.accountHolder || "").trim().toLowerCase();
+    const normalizedFullName = (tokenFullName || authCustomer?.fullName || "").trim().toLowerCase();
+    
+    if (account.customerId === authenticatedCustomerId) return true;
+    if (tokenEmail && customerEmail && customerEmail === tokenEmail) return true;
+    if (customerMobile && customerMobile === String(authCustomer?.mobile || "").trim()) return true;
+    if (normalizedFullName && customerName && customerName === normalizedFullName) return true;
+    if (normalizedFullName && holderName && holderName === normalizedFullName) return true;
+    return false;
+  });
+  
+  res.json({
+    token: {
+      userId: req.auth?.userId,
+      customerId: req.auth?.customerId,
+      email: req.auth?.email,
+      fullName: req.auth?.fullName,
+      isAdmin: req.auth?.isAdmin,
+    },
+    authenticatedCustomerId,
+    resolvedCustomer: authCustomer ? {
+      id: authCustomer.id,
+      fullName: authCustomer.fullName,
+      email: authCustomer.email,
+      mobile: authCustomer.mobile,
+    } : null,
+    resolveMethod,
+    totalAccounts: allAccounts.length,
+    matchedAccountCount: matchedAccounts.length,
+    matchedAccounts: matchedAccounts.map((a) => ({
+      id: a.id,
+      customerId: a.customerId,
+      accountNumber: a.accountNumber,
+      accountHolder: a.accountHolder,
+      accountType: a.accountType,
+      status: a.status,
+      balance: a.balance,
+      createdAt: a.createdAt,
+    })),
+  });
+}));
+
+router.get("/accounts/lookup", requireAuth, asyncHandler(async (req, res) => {
+  const accountNumber = String(req.query.accountNumber || "").trim();
+  const purpose = String(req.query.purpose || "source").trim().toLowerCase();
+
+  if (!/^\d{12}$/.test(accountNumber)) {
+    return res.status(400).json({ error: "accountNumber must be a 12-digit value" });
+  }
+
+  if (!["source", "destination"].includes(purpose)) {
+    return res.status(400).json({ error: "purpose must be source or destination" });
+  }
+
+  const account = await Account.findOne({
+    where: { accountNumber },
+    include: [{ model: Customer, attributes: ["id", "fullName"] }],
+  });
+
+  if (!account) {
+    return res.status(404).json({ error: "Account not found" });
+  }
+
+  if (!isAdmin(req) && purpose === "source" && Number(account.customerId) !== getAuthenticatedCustomerId(req)) {
+    return res.status(403).json({ error: "Forbidden" });
+  }
+
+  if (!isAdmin(req) && purpose === "destination") {
+    const status = String(account.status || "").toLowerCase();
+    if (status !== "active") {
+      return res.status(404).json({ error: "Destination account not available" });
+    }
+  }
+
+  res.json({
+    accountId: Number(account.id),
+    accountNumber: account.accountNumber,
+    accountHolder: account.accountHolder || account.Customer?.fullName || "",
+    accountType: account.accountType,
+    status: account.status,
+  });
+}));
+
+router.post("/accounts", requireAuth, requireAdmin, asyncHandler(async (req, res) => {
   const payload = req.body || {};
   const providedAccountNumber = String(payload.accountNumber || "").trim();
   if (!payload.type) {
@@ -399,9 +634,9 @@ router.post("/accounts/request", requireAuth, asyncHandler(async (req, res) => {
     return res.status(400).json({ error: "type must be Simple Access or Savings" });
   }
 
-  const requestedCustomerId = Number(payload.customerId);
   const authenticatedCustomerId = getAuthenticatedCustomerId(req);
-  const customerId = Number.isFinite(requestedCustomerId) && requestedCustomerId > 0
+  const requestedCustomerId = Number(payload.customerId);
+  const customerId = isAdmin(req)
     ? requestedCustomerId
     : authenticatedCustomerId;
 
@@ -409,13 +644,13 @@ router.post("/accounts/request", requireAuth, asyncHandler(async (req, res) => {
     return res.status(400).json({ error: "Valid customerId is required" });
   }
 
-  if (!canAccessCustomer(req, customerId)) {
-    return res.status(403).json({ error: "Forbidden" });
-  }
-
   const customer = await Customer.findByPk(customerId);
   if (!customer) {
     return res.status(404).json({ error: "Customer not found" });
+  }
+
+  if (!canAccessCustomer(req, customerId)) {
+    return res.status(403).json({ error: "Forbidden" });
   }
 
   const providedAccountNumber = String(payload.accountNumber || "").trim();
@@ -547,6 +782,7 @@ router.post("/admin/create-account", asyncHandler(async (req, res) => {
   }
 
   const customer = await getCustomerForAccountPayload(payload, {
+    allowAutoCreate: false,
     customerDefaults: {
       nationalId: `AUTO-${Date.now()}`,
       emailVerified: true,
@@ -608,13 +844,25 @@ router.post("/admin/transactions/:id/reverse", asyncHandler(async (req, res) => 
   res.json(result);
 }));
 
-router.get("/transactions", asyncHandler(async (req, res) => {
+router.get("/transactions", requireAuth, asyncHandler(async (req, res) => {
   const accountId = String(req.query.accountId || "").trim();
   const accountNumber = String(req.query.accountNumber || "").trim();
   if (!accountId && !accountNumber) {
     return res.status(400).json({ error: "accountId or accountNumber query is required" });
   }
-  const rows = await getAccountTransactions(accountNumber || accountId);
+  const account = accountId
+    ? await Account.findByPk(Number(accountId))
+    : await Account.findOne({ where: { accountNumber } });
+
+  if (!account) {
+    return res.status(404).json({ error: "Account not found" });
+  }
+
+  if (!isAdmin(req) && Number(account.customerId) !== getAuthenticatedCustomerId(req)) {
+    return res.status(403).json({ error: "Forbidden" });
+  }
+
+  const rows = await getAccountTransactions(account.id);
   const mappedRows = await mapTransactionRows(rows);
   res.json(mappedRows.map((row) => ({
     ...row,
@@ -923,8 +1171,11 @@ router.post("/bills/scheduled", requireAuth, asyncHandler(async (req, res) => {
   res.status(201).json({ ...row, accountNumber: account.accountNumber });
 }));
 
-router.get("/bills/scheduled", asyncHandler(async (req, res) => {
-  const rows = await Bill.findAll({ where: { status: "scheduled" }, order: [["createdAt", "DESC"]] });
+router.get("/bills/scheduled", requireAuth, asyncHandler(async (req, res) => {
+  const where = isAdmin(req)
+    ? { status: "scheduled" }
+    : { status: "scheduled", customerId: getAuthenticatedCustomerId(req) };
+  const rows = await Bill.findAll({ where, order: [["createdAt", "DESC"]] });
   res.json(
     rows.map((b) => ({
       id: b.id,
@@ -939,13 +1190,26 @@ router.get("/bills/scheduled", asyncHandler(async (req, res) => {
   );
 }));
 
-router.post("/bills/scheduled/:id/run", asyncHandler(async (req, res) => {
+router.post("/bills/scheduled/:id/run", requireAuth, asyncHandler(async (req, res) => {
+  const scheduled = await Bill.findByPk(req.params.id);
+  if (!scheduled) {
+    return res.status(404).json({ error: "Scheduled payment not found" });
+  }
+  if (!isAdmin(req) && Number(scheduled.customerId) !== getAuthenticatedCustomerId(req)) {
+    return res.status(403).json({ error: "Forbidden" });
+  }
   const result = await runScheduledPayment(req.params.id);
   res.json(result);
 }));
 
-router.get("/investments", asyncHandler(async (req, res) => {
-  const rows = await Investment.findAll({ order: [["createdAt", "DESC"]] });
+router.get("/investments", requireAuth, asyncHandler(async (req, res) => {
+  const requestedCustomerId = Number(req.query.customerId || 0);
+  const customerId = requestedCustomerId > 0 ? requestedCustomerId : getAuthenticatedCustomerId(req);
+  if (!canAccessCustomer(req, customerId)) {
+    return res.status(403).json({ error: "Forbidden" });
+  }
+
+  const rows = await Investment.findAll({ where: { customerId }, order: [["createdAt", "DESC"]] });
   res.json(
     rows.map((x) => ({
       id: x.id,
@@ -958,10 +1222,18 @@ router.get("/investments", asyncHandler(async (req, res) => {
   );
 }));
 
-router.post("/investments", asyncHandler(async (req, res) => {
+router.post("/investments", requireAuth, asyncHandler(async (req, res) => {
   const payload = req.body || {};
+  const customerId = Number(payload.customerId || 0);
+  if (!Number.isFinite(customerId) || customerId <= 0) {
+    return res.status(400).json({ error: "Valid customerId is required" });
+  }
+  if (!canAccessCustomer(req, customerId)) {
+    return res.status(403).json({ error: "Forbidden" });
+  }
+
   const row = await createInvestment({
-    customerId: payload.customerId,
+    customerId,
     name: payload.name,
     amount: Number(payload.amount),
     annualRate: Number(payload.annualRate),
@@ -1267,13 +1539,13 @@ router.put("/config/interest-rate", (req, res) => {
   res.json({ reserveBankMinSavingsInterestRate: rate });
 });
 
-router.post("/year-end/interest-summaries", asyncHandler(async (req, res) => {
+router.post("/year-end/interest-summaries", requireAuth, requireAdmin, asyncHandler(async (req, res) => {
   const year = Number(req.body?.year || new Date().getFullYear());
   const rows = await generateInterestSummaries(year);
   res.json(rows);
 }));
 
-router.get("/year-end/interest-summaries", asyncHandler(async (req, res) => {
+router.get("/year-end/interest-summaries", requireAuth, requireAdmin, asyncHandler(async (req, res) => {
   const year = Number(req.query?.year || new Date().getFullYear());
   const rows = await Account.findAll({
     include: [{ model: Customer, attributes: ["id", "fullName"] }],
@@ -1298,7 +1570,7 @@ router.get("/year-end/interest-summaries", asyncHandler(async (req, res) => {
   res.json(summaries);
 }));
 
-router.post("/accounts/apply-maintenance-fees", asyncHandler(async (req, res) => {
+router.post("/accounts/apply-maintenance-fees", requireAuth, requireAdmin, asyncHandler(async (req, res) => {
   const charged = await applyMonthlyFees();
   res.json({ chargedAccounts: charged, count: charged.length });
 }));
@@ -1307,12 +1579,16 @@ router.get("/loan-products", (req, res) => {
   res.json(loanProducts);
 });
 
-router.post("/loan-applications", asyncHandler(async (req, res) => {
+router.post("/loan-applications", requireAuth, asyncHandler(async (req, res) => {
   const payload = req.body || {};
   const required = ["customerId", "loanProductId", "requestedAmount", "termMonths", "purpose"];
   const missing = required.filter((k) => payload[k] === undefined || payload[k] === null || payload[k] === "");
   if (missing.length > 0) {
     return res.status(400).json({ error: `Missing fields: ${missing.join(", ")}` });
+  }
+
+  if (!canAccessCustomer(req, payload.customerId)) {
+    return res.status(403).json({ error: "Forbidden" });
   }
 
   const product = loanProducts.find((x) => x.id === payload.loanProductId);
@@ -1347,8 +1623,9 @@ router.post("/loan-applications", asyncHandler(async (req, res) => {
   res.status(201).json(row);
 }));
 
-router.get("/loan-applications", asyncHandler(async (req, res) => {
-  const rows = await Loan.findAll({ order: [["createdAt", "DESC"]] });
+router.get("/loan-applications", requireAuth, asyncHandler(async (req, res) => {
+  const where = isAdmin(req) ? undefined : { customerId: getAuthenticatedCustomerId(req) };
+  const rows = await Loan.findAll({ where, order: [["createdAt", "DESC"]] });
   res.json(
     rows.map((l) => ({
       id: l.id,
