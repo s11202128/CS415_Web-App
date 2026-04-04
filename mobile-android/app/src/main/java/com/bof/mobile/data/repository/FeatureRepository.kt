@@ -92,14 +92,14 @@ class FeatureRepository(private val apiService: ApiService) {
         apiService.getStatementByRequest(requestId)
     }
 
-    suspend fun getBankStatement(fromDate: String, toDate: String): ApiResult<BankStatementResponse> = safeCall {
-        apiService.getBankStatement(BankStatementRequest(fromDate = fromDate, toDate = toDate))
+    suspend fun getBankStatement(fromDate: String, toDate: String, accountId: Int? = null): ApiResult<BankStatementResponse> = safeCall {
+        apiService.getBankStatement(BankStatementRequest(fromDate = fromDate, toDate = toDate, accountId = accountId))
     }
 
-    suspend fun downloadBankStatementPdf(fromDate: String, toDate: String): ApiResult<ByteArray> {
+    suspend fun downloadBankStatementPdf(fromDate: String, toDate: String, accountId: Int? = null): ApiResult<ByteArray> {
         return withContext(Dispatchers.IO) {
             try {
-                val response = apiService.downloadBankStatement(BankStatementRequest(fromDate = fromDate, toDate = toDate))
+                val response = apiService.downloadBankStatement(BankStatementRequest(fromDate = fromDate, toDate = toDate, accountId = accountId))
                 if (!response.isSuccessful) {
                     val errorMessage = parseResponseError(
                         response.errorBody()?.string().orEmpty(),

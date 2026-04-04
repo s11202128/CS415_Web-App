@@ -76,7 +76,8 @@ data class StatementRowItem(
 
 data class BankStatementRequest(
     val fromDate: String,
-    val toDate: String
+    val toDate: String,
+    val accountId: Int? = null
 )
 
 data class BankStatementDateRange(

@@ -137,7 +137,15 @@ class FeatureViewModel(private val featureRepository: FeatureRepository) : ViewM
     fun onBillAmountChanged(value: String) = _uiState.update { it.copy(billAmount = value) }
     fun onScheduledDateChanged(value: String) = _uiState.update { it.copy(scheduledDate = value) }
 
-    fun onStatementAccountIdChanged(value: String) = _uiState.update { it.copy(statementAccountId = value) }
+    fun onStatementAccountIdChanged(value: String) {
+        _uiState.update { current ->
+            val matched = current.customerAccounts.firstOrNull { it.id.toString() == value }
+            current.copy(
+                statementAccountId = value,
+                statementAccountNumber = matched?.accountNumber ?: current.statementAccountNumber
+            )
+        }
+    }
     fun onStatementAccountNumberChanged(value: String) = _uiState.update { it.copy(statementAccountNumber = value) }
     fun onStatementFromDateChanged(value: String) = _uiState.update { it.copy(statementFromDate = value) }
     fun onStatementToDateChanged(value: String) = _uiState.update { it.copy(statementToDate = value) }
@@ -254,10 +262,12 @@ class FeatureViewModel(private val featureRepository: FeatureRepository) : ViewM
 
         val fromDate = _uiState.value.statementFromDate
         val toDate = _uiState.value.statementToDate
+        val accountId = _uiState.value.statementAccountId.toIntOrNull()
+            ?: return setError("Select an account first")
 
         viewModelScope.launch {
             setLoading(true)
-            when (val result = featureRepository.getBankStatement(fromDate, toDate)) {
+            when (val result = featureRepository.getBankStatement(fromDate, toDate, accountId)) {
                 is ApiResult.Success -> updateStatementFromResponse(result.data)
                 is ApiResult.Error -> setError(result.message)
             }
@@ -278,12 +288,18 @@ class FeatureViewModel(private val featureRepository: FeatureRepository) : ViewM
                     val selectedAccount = result.data.firstOrNull { it.id == existingSelection?.id }
                         ?: existingSelection
                         ?: result.data.firstOrNull()
+                    val currentStatementAccountId = _uiState.value.statementAccountId.toIntOrNull()
+                    val statementAccount = result.data.firstOrNull { it.id == currentStatementAccountId }
+                        ?: selectedAccount
+                        ?: result.data.firstOrNull()
                     _uiState.update {
                         it.copy(
                             accounts = result.data,
                             customerAccounts = result.data,
                             selectedAccount = selectedAccount,
                             billAccountId = selectedAccount?.id?.toString().orEmpty(),
+                            statementAccountId = statementAccount?.id?.toString().orEmpty(),
+                            statementAccountNumber = statementAccount?.accountNumber.orEmpty(),
                             accountsLoading = false,
                             accountsError = null,
                             customerAccountsLoaded = true,
@@ -372,15 +388,20 @@ class FeatureViewModel(private val featureRepository: FeatureRepository) : ViewM
         val state = _uiState.value
         val fromDate = state.statementFromDate
         val toDate = state.statementToDate
+        val accountId = state.statementAccountId.toIntOrNull()
         if (fromDate.isBlank() || toDate.isBlank()) {
             return setError("Select a filter first")
+        }
+        if (accountId == null) {
+            return setError("Select an account first")
         }
 
         viewModelScope.launch {
             setLoading(true)
-            when (val result = featureRepository.downloadBankStatementPdf(fromDate, toDate)) {
+            when (val result = featureRepository.downloadBankStatementPdf(fromDate, toDate, accountId)) {
                 is ApiResult.Success -> {
-                    val fileName = "bank-statement-${LocalDate.now()}.pdf"
+                    val accountNumber = state.statementAccountNumber.ifBlank { "account-$accountId" }
+                    val fileName = "bank-statement-$accountNumber-${LocalDate.now()}.pdf"
                     try {
                         onSuccess(result.data, fileName)
                         _uiState.update { it.copy(successMessage = "PDF generated successfully", errorMessage = null) }

@@ -102,7 +102,18 @@ async function resolveStatementPayloadForUser(req) {
     throw new Error("No accounts found for this user");
   }
 
-  const accountNumbers = accounts.map((row) => String(row.accountNumber));
+  const requestedAccountId = Number(payload.accountId || 0);
+  if (!Number.isFinite(requestedAccountId) || requestedAccountId <= 0) {
+    throw new Error("accountId is required for statement generation");
+  }
+
+  const matched = accounts.find((row) => Number(row.id) === requestedAccountId);
+  if (!matched) {
+    throw new Error("Selected account not found for this user");
+  }
+
+  const selectedAccounts = [matched];
+  const accountNumbers = selectedAccounts.map((row) => String(row.accountNumber));
   const transactions = await Transaction.findAll({
     where: {
       accountNumber: { [Op.in]: accountNumbers },

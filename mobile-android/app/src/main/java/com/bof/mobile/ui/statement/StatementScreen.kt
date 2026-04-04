@@ -27,6 +27,10 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExposedDropdownMenuBox
+import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -35,6 +39,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -51,6 +58,7 @@ import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun StatementScreen(
     viewModel: FeatureViewModel,
@@ -61,11 +69,12 @@ fun StatementScreen(
     val uiState by viewModel.uiState.collectAsState()
     val context = LocalContext.current
     val dateFormatter = DateTimeFormatter.ISO_LOCAL_DATE
+    var accountMenuExpanded by remember { mutableStateOf(false) }
 
     LaunchedEffect(customerId) {
         viewModel.initialize(customerId)
+        viewModel.loadCustomerAccounts()
         viewModel.initializeStatementDateDefaults()
-        viewModel.loadBankStatement()
     }
 
     Box(
@@ -149,6 +158,47 @@ fun StatementScreen(
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
                     Text("Date Range", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+
+                    ExposedDropdownMenuBox(
+                        expanded = accountMenuExpanded,
+                        onExpandedChange = { accountMenuExpanded = !accountMenuExpanded }
+                    ) {
+                        val selectedAccount = uiState.customerAccounts.firstOrNull {
+                            it.id.toString() == uiState.statementAccountId
+                        }
+                        val selectedText = selectedAccount?.let { "${it.accountNumber} (${it.type})" }
+                            ?: "Select account"
+
+                        OutlinedTextField(
+                            value = selectedText,
+                            onValueChange = {},
+                            readOnly = true,
+                            enabled = !uiState.isLoading && uiState.customerAccounts.isNotEmpty(),
+                            label = { Text("Account") },
+                            trailingIcon = {
+                                ExposedDropdownMenuDefaults.TrailingIcon(expanded = accountMenuExpanded)
+                            },
+                            modifier = Modifier
+                                .menuAnchor()
+                                .fillMaxWidth()
+                        )
+
+                        ExposedDropdownMenu(
+                            expanded = accountMenuExpanded,
+                            onDismissRequest = { accountMenuExpanded = false }
+                        ) {
+                            uiState.customerAccounts.forEach { account ->
+                                DropdownMenuItem(
+                                    text = { Text("${account.accountNumber} (${account.type})") },
+                                    onClick = {
+                                        viewModel.onStatementAccountIdChanged(account.id.toString())
+                                        viewModel.onStatementAccountNumberChanged(account.accountNumber)
+                                        accountMenuExpanded = false
+                                    }
+                                )
+                            }
+                        }
+                    }
 
                     OutlinedTextField(
                         value = uiState.statementFromDate,
