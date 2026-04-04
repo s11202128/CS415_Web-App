@@ -25,8 +25,10 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExposedDropdownMenuBox
+import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -45,9 +47,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import com.bof.mobile.model.AccountItem
 import com.bof.mobile.model.DashboardAccount
 import com.bof.mobile.ui.components.ScreenHeader
 import com.bof.mobile.viewmodel.FeatureViewModel
@@ -55,6 +59,7 @@ import java.text.NumberFormat
 import java.util.Currency
 import java.util.Locale
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DepositScreen(
     featureViewModel: FeatureViewModel,
@@ -66,16 +71,31 @@ fun DepositScreen(
     val uiState by featureViewModel.uiState.collectAsState()
     var fromAccountMenuExpanded by remember { mutableStateOf(false) }
     var destinationAccountMenuExpanded by remember { mutableStateOf(false) }
+    val serverAccounts = uiState.customerAccounts.map {
+        DashboardAccount(
+            id = it.id,
+            accountNumber = it.accountNumber,
+            accountHolder = it.accountHolder,
+            accountType = it.type,
+            balance = it.balance,
+            status = it.status
+        )
+    }
+    val availableAccounts = if (serverAccounts.isNotEmpty()) serverAccounts else accountsList
 
-    LaunchedEffect(accountsList, uiState.depositFromAccountId, uiState.depositDestinationAccountId) {
-        if (accountsList.isEmpty()) return@LaunchedEffect
+    LaunchedEffect(Unit) {
+        featureViewModel.clearMessages()
+    }
+
+    LaunchedEffect(availableAccounts, uiState.depositFromAccountId, uiState.depositDestinationAccountId) {
+        if (availableAccounts.isEmpty()) return@LaunchedEffect
 
         if (uiState.depositFromAccountId.isBlank()) {
-            featureViewModel.onDepositFromAccountIdChanged(accountsList.first().id.toString())
+            featureViewModel.onDepositFromAccountIdChanged(availableAccounts.first().id.toString())
         }
 
         if (uiState.depositDestinationAccountId.isBlank()) {
-            val defaultDestination = if (accountsList.size > 1) accountsList[1] else accountsList.first()
+            val defaultDestination = if (availableAccounts.size > 1) availableAccounts[1] else availableAccounts.first()
             featureViewModel.onDepositDestinationAccountIdChanged(defaultDestination.id.toString())
         }
     }
@@ -90,8 +110,8 @@ fun DepositScreen(
         }
     }
 
-    val selectedFromAccount = accountsList.firstOrNull { it.id.toString() == uiState.depositFromAccountId }
-    val selectedDestinationAccount = accountsList.firstOrNull { it.id.toString() == uiState.depositDestinationAccountId }
+    val selectedFromAccount = availableAccounts.firstOrNull { it.id.toString() == uiState.depositFromAccountId }
+    val selectedDestinationAccount = availableAccounts.firstOrNull { it.id.toString() == uiState.depositDestinationAccountId }
     val fromAccountValid = selectedFromAccount != null
     val destinationAccountValid = selectedDestinationAccount != null
     val accountsDifferent =
@@ -147,6 +167,26 @@ fun DepositScreen(
                 )
             }
 
+            if (!uiState.customerAccountsLoaded) {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 3.dp),
+                    shape = MaterialTheme.shapes.large
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(16.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        CircularProgressIndicator(modifier = Modifier.size(22.dp), strokeWidth = 2.dp)
+                        Text("Loading your linked accounts from the server...")
+                    }
+                }
+            }
+
             AccountSelectorCard(
                 label = "From Account Number",
                 selectedAccount = selectedFromAccount,
@@ -156,7 +196,7 @@ fun DepositScreen(
                     featureViewModel.onDepositFromAccountIdChanged(it.id.toString())
                     fromAccountMenuExpanded = false
                 },
-                accountsList = accountsList
+                accountsList = availableAccounts
             )
 
             AccountSelectorCard(
@@ -168,7 +208,7 @@ fun DepositScreen(
                     featureViewModel.onDepositDestinationAccountIdChanged(it.id.toString())
                     destinationAccountMenuExpanded = false
                 },
-                accountsList = accountsList
+                accountsList = availableAccounts
             )
 
             if (selectedFromAccount != null && selectedDestinationAccount != null && selectedFromAccount.id == selectedDestinationAccount.id) {
@@ -181,7 +221,7 @@ fun DepositScreen(
                 )
             }
 
-            if (accountsList.isEmpty()) {
+            if (uiState.customerAccountsLoaded && availableAccounts.isEmpty()) {
                 MessageBanner(
                     text = "No account found for this customer. Create an account first to deposit.",
                     containerColor = MaterialTheme.colorScheme.errorContainer,
@@ -322,7 +362,7 @@ fun DepositScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(54.dp),
-                enabled = !uiState.isLoading && if (uiState.showDepositOtpField) uiState.depositOtp.isNotBlank() else (accountSelectionValid && amountValid),
+                enabled = !uiState.isLoading && uiState.customerAccountsLoaded && if (uiState.showDepositOtpField) uiState.depositOtp.isNotBlank() else (accountSelectionValid && amountValid),
                 shape = MaterialTheme.shapes.extraLarge,
                 colors = ButtonDefaults.buttonColors(
                     containerColor = MaterialTheme.colorScheme.primary,
@@ -346,6 +386,7 @@ fun DepositScreen(
 }
 
 @Composable
+@OptIn(ExperimentalMaterial3Api::class)
 private fun AccountSelectorCard(
     label: String,
     selectedAccount: DashboardAccount?,
@@ -357,51 +398,32 @@ private fun AccountSelectorCard(
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         SectionLabel(text = label)
 
-        Box {
-            Card(
+        ExposedDropdownMenuBox(
+            expanded = expanded,
+            onExpandedChange = { if (accountsList.isNotEmpty()) onExpandedChange(!expanded) }
+        ) {
+            OutlinedTextField(
+                value = selectedAccount?.accountNumber ?: "",
+                onValueChange = {},
+                readOnly = true,
+                enabled = accountsList.isNotEmpty(),
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clickable(enabled = accountsList.isNotEmpty()) { onExpandedChange(true) },
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                elevation = CardDefaults.cardElevation(defaultElevation = 3.dp),
-                shape = MaterialTheme.shapes.large
-            ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(16.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = selectedAccount?.accountNumber ?: "Select account number",
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.SemiBold
-                        )
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Text(
-                            text = selectedAccount?.let { "${it.accountType} · ${it.accountHolder}" } ?: "Tap to choose from your linked bank accounts",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Text(
-                            text = selectedAccount?.let { "Current balance: ${formatFjd(it.balance)}" } ?: "Current balance: account not selected",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.primary,
-                            fontWeight = FontWeight.Medium
-                        )
-                    }
-                    Icon(
-                        imageVector = Icons.Filled.KeyboardArrowDown,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                    .menuAnchor(),
+                label = { Text("Account Number") },
+                placeholder = { Text("Select from your linked accounts") },
+                trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
+                supportingText = {
+                    Text(
+                        text = selectedAccount?.let { "${it.accountType} · ${it.accountHolder} · ${formatFjd(it.balance)}" }
+                            ?: "Fetched from your customer accounts on the server",
+                        style = MaterialTheme.typography.bodySmall
                     )
-                }
-            }
+                },
+                shape = MaterialTheme.shapes.large
+            )
 
-            DropdownMenu(
+            ExposedDropdownMenu(
                 expanded = expanded,
                 onDismissRequest = { onExpandedChange(false) }
             ) {

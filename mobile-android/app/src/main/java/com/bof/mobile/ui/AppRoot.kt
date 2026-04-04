@@ -265,6 +265,7 @@ fun AppRoot() {
         if (authState.isLoggedIn && !authState.isAdmin) {
             dashboardViewModel.loadDashboard(customerId.takeIf { it > 0 })
             accountsViewModel.loadAccounts()
+            featureViewModel.loadCustomerAccounts()
         }
     }
 

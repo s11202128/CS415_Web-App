@@ -334,7 +334,6 @@ fun BillPaymentScreen(
                         )
                     },
                     scheduledBills = uiState.scheduledBills,
-                    billHistory = uiState.billHistory,
                     onRunScheduledBill = viewModel::runScheduledBill,
                     onRefreshScheduled = viewModel::loadScheduledBills,
                     onRefreshHistory = viewModel::loadBillHistory
@@ -419,7 +418,6 @@ private fun ScheduleBillPage(
     onDatePickerRequest: () -> Unit,
     onSubmit: () -> Unit,
     scheduledBills: List<com.bof.mobile.model.ScheduledBillItem>,
-    billHistory: List<com.bof.mobile.model.BillHistoryItem>,
     onRunScheduledBill: (Int) -> Unit,
     onRefreshScheduled: () -> Unit,
     onRefreshHistory: () -> Unit
@@ -473,47 +471,124 @@ private fun ScheduleBillPage(
             shape = CardCorner
         ) {
             Column(
-                modifier = Modifier.padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
+                modifier = Modifier.padding(0.dp)
             ) {
-                Text("Scheduled Bills", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                if (scheduledBills.isEmpty()) {
-                    Text("No scheduled bills", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                } else {
-                    scheduledBills.take(6).forEach { bill ->
-                        OutlinedButton(
-                            onClick = { onRunScheduledBill(bill.id) },
-                            enabled = !isLoading,
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Text("Run #${bill.id} ${bill.payee} FJD ${"%.2f".format(bill.amount)}")
-                        }
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(SectionHeaderColors)
+                        .padding(horizontal = 16.dp, vertical = 14.dp)
+                ) {
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text(
+                            "Scheduled Bills",
+                            color = Color.White,
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Text(
+                            "View upcoming scheduled payments and run a pending bill manually if needed.",
+                            color = Color.White.copy(alpha = 0.9f),
+                            style = MaterialTheme.typography.bodyMedium
+                        )
                     }
                 }
-            }
-        }
 
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-            elevation = CardDefaults.cardElevation(defaultElevation = 6.dp),
-            shape = CardCorner
-        ) {
-            Column(
-                modifier = Modifier.padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(6.dp)
-            ) {
-                Text("Bill History", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                if (billHistory.isEmpty()) {
-                    Text("No bill payments yet", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                } else {
-                    billHistory.take(8).forEach { bill ->
-                        Text("${bill.status.uppercase()} ${bill.payee} FJD ${"%.2f".format(bill.amount)}")
-                    }
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    ScheduledBillsTable(
+                        bills = scheduledBills,
+                        onRunScheduledBill = onRunScheduledBill
+                    )
                 }
             }
         }
     }
+}
+
+@Composable
+private fun ScheduledBillsTable(
+    bills: List<com.bof.mobile.model.ScheduledBillItem>,
+    onRunScheduledBill: (Int) -> Unit
+) {
+    if (bills.isEmpty()) {
+        Text("No scheduled bills", color = MaterialTheme.colorScheme.onSurfaceVariant)
+        return
+    }
+
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(0.dp)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.55f))
+                .padding(horizontal = 12.dp, vertical = 10.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            TableHeaderCell("ID", 48.dp)
+            TableHeaderCell("Account", 120.dp)
+            TableHeaderCell("Payee", 130.dp)
+            TableHeaderCell("Amount", 90.dp)
+            TableHeaderCell("Date", 110.dp)
+            TableHeaderCell("Status", 90.dp)
+            TableHeaderCell("Action", 90.dp)
+        }
+
+        bills.take(8).forEachIndexed { index, bill ->
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(
+                        if (index % 2 == 0) MaterialTheme.colorScheme.surface else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
+                    )
+                    .padding(horizontal = 12.dp, vertical = 10.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                TableBodyCell(bill.id.toString(), 48.dp)
+                TableBodyCell(bill.accountId.toString(), 120.dp)
+                TableBodyCell(bill.payee, 130.dp, bold = true)
+                TableBodyCell("FJD ${"%.2f".format(bill.amount)}", 90.dp)
+                TableBodyCell(bill.scheduledDate.take(10), 110.dp)
+                TableBodyCell(bill.status, 90.dp)
+                Button(
+                    onClick = { onRunScheduledBill(bill.id) },
+                    modifier = Modifier.width(90.dp),
+                    contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp, vertical = 6.dp),
+                    shape = RoundedCornerShape(14.dp)
+                ) {
+                    Text("Run")
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun TableHeaderCell(text: String, width: androidx.compose.ui.unit.Dp) {
+    Text(
+        text = text,
+        modifier = Modifier.width(width),
+        style = MaterialTheme.typography.labelLarge,
+        fontWeight = FontWeight.Bold,
+        color = MaterialTheme.colorScheme.onPrimaryContainer
+    )
+}
+
+@Composable
+private fun TableBodyCell(text: String, width: androidx.compose.ui.unit.Dp, bold: Boolean = false) {
+    Text(
+        text = text,
+        modifier = Modifier.width(width),
+        style = MaterialTheme.typography.bodyMedium,
+        fontWeight = if (bold) FontWeight.SemiBold else FontWeight.Normal,
+        color = MaterialTheme.colorScheme.onSurface,
+        maxLines = 2
+    )
 }
 
 @Composable

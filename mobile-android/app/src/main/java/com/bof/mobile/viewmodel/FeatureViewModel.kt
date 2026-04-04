@@ -44,6 +44,7 @@ data class FeatureUiState(
 
     val profile: ProfileResponse? = null,
     val customerAccounts: List<AccountItem> = emptyList(),
+    val customerAccountsLoaded: Boolean = false,
     val fullName: String = "",
     val mobile: String = "",
     val nationalId: String = "",
@@ -297,10 +298,12 @@ class FeatureViewModel(private val featureRepository: FeatureRepository) : ViewM
 
     fun loadCustomerAccounts() {
         viewModelScope.launch {
+            _uiState.update { it.copy(customerAccountsLoaded = false) }
             when (val result = featureRepository.getAccounts()) {
-                is ApiResult.Success -> _uiState.update { it.copy(customerAccounts = result.data, errorMessage = null) }
+                is ApiResult.Success -> _uiState.update { it.copy(customerAccounts = result.data, customerAccountsLoaded = true, errorMessage = null) }
                 is ApiResult.Error -> setError(result.message)
             }
+            _uiState.update { it.copy(customerAccountsLoaded = true) }
         }
     }
 
