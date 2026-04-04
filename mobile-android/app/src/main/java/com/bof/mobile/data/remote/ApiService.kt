@@ -155,8 +155,8 @@ interface ApiService {
     @POST("bill-payment")
     suspend fun payBill(@Body request: BillPaymentRequest): BillHistoryItem
 
-    @POST("pay-bill")
-    suspend fun payBillManual(@Body request: BillPaymentRequest): BillHistoryItem = payBill(request)
+    @POST("bills/manual")
+    suspend fun payBillManual(@Body request: BillPaymentRequest): BillHistoryItem
 
     @POST("bills/scheduled")
     suspend fun scheduleBill(@Body request: BillPaymentRequest): ScheduledBillItem

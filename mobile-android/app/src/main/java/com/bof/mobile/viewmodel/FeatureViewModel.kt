@@ -493,7 +493,7 @@ class FeatureViewModel(private val featureRepository: FeatureRepository) : ViewM
     fun payBillManual(request: BillPaymentRequest) {
         viewModelScope.launch {
             setLoading(true)
-            when (val result = featureRepository.payBill(request.copy(scheduledDate = null))) {
+            when (val result = featureRepository.payBillManual(request.copy(scheduledDate = null))) {
                 is ApiResult.Success -> {
                     _uiState.update {
                         it.copy(

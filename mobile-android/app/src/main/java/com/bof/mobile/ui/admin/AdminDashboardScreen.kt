@@ -1205,6 +1205,35 @@ private fun ReportsTab(uiState: AdminUiState, viewModel: AdminViewModel) {
         }
 
         Spacer(modifier = Modifier.height(8.dp))
+        VerticalBarGraphCard(
+            title = "Daily Transaction Count",
+            description = "Shows how many transactions were processed each day over the last 7 days. Use this to spot operational peaks and slow days.",
+            points = report.transactionsByDay.map { row ->
+                GraphPoint(
+                    label = row.day.takeLast(5),
+                    value = row.count.toDouble(),
+                    valueText = formatCompactNumber(row.count.toDouble())
+                )
+            },
+            accentColor = Color(0xFF1565C0)
+        )
+
+        Spacer(modifier = Modifier.height(8.dp))
+        VerticalBarGraphCard(
+            title = "Average Transaction Amount by Day",
+            description = "Shows the average amount per transaction for each day (total amount divided by count). This highlights value intensity, not just activity volume.",
+            points = report.transactionsByDay.map { row ->
+                val average = if (row.count > 0) row.totalAmount / row.count else 0.0
+                GraphPoint(
+                    label = row.day.takeLast(5),
+                    value = average,
+                    valueText = "FJD ${formatCompactNumber(average)}"
+                )
+            },
+            accentColor = Color(0xFF2E7D32)
+        )
+
+        Spacer(modifier = Modifier.height(8.dp))
         Text("Account type breakdown", style = MaterialTheme.typography.titleMedium)
         report.accountTypeBreakdown.forEach { row ->
             Text("${row.label}: ${row.value}")
@@ -1215,6 +1244,101 @@ private fun ReportsTab(uiState: AdminUiState, viewModel: AdminViewModel) {
         report.loanStatusBreakdown.forEach { row ->
             Text("${row.label}: ${row.value}")
         }
+    }
+}
+
+private data class GraphPoint(
+    val label: String,
+    val value: Double,
+    val valueText: String
+)
+
+@Composable
+private fun VerticalBarGraphCard(
+    title: String,
+    description: String,
+    points: List<GraphPoint>,
+    accentColor: Color
+) {
+    if (points.isEmpty()) {
+        return
+    }
+
+    val maxValue = points.maxOfOrNull { it.value }?.takeIf { it > 0.0 } ?: 1.0
+    val peakValue = points.maxOfOrNull { it.value } ?: 0.0
+    val peakPoints = points.filter { it.value == peakValue }
+    val peakSummary = peakPoints.joinToString(", ") { it.label }
+    val yMidValue = maxValue / 2.0
+
+    AdminSectionSurface(title = title, subtitle = description) {
+        Text(
+            text = "Peak day: $peakSummary (${peakPoints.firstOrNull()?.valueText ?: "0"})",
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Spacer(modifier = Modifier.height(4.dp))
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            verticalAlignment = Alignment.Bottom
+        ) {
+            Column(
+                modifier = Modifier.height(120.dp),
+                verticalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text(formatCompactNumber(maxValue), style = MaterialTheme.typography.labelSmall)
+                Text(formatCompactNumber(yMidValue), style = MaterialTheme.typography.labelSmall)
+                Text("0", style = MaterialTheme.typography.labelSmall)
+            }
+
+            points.forEach { point ->
+                val ratio = (point.value / maxValue).toFloat().coerceIn(0f, 1f)
+                val isPeak = point.value == peakValue
+                Column(
+                    modifier = Modifier.weight(1f),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Text(
+                        text = point.valueText,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Box(
+                        modifier = Modifier
+                            .height(120.dp)
+                            .fillMaxWidth(),
+                        contentAlignment = Alignment.BottomCenter
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height((120f * ratio).dp)
+                                .background(
+                                    if (isPeak) accentColor else accentColor.copy(alpha = 0.7f),
+                                    MaterialTheme.shapes.small
+                                )
+                        )
+                    }
+                    Text(
+                        text = if (isPeak) "${point.label}*" else point.label,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = if (isPeak) accentColor else MaterialTheme.colorScheme.onSurface
+                    )
+                }
+            }
+        }
+    }
+}
+
+private fun formatCompactNumber(value: Double): String {
+    val absolute = kotlin.math.abs(value)
+    return when {
+        absolute >= 1_000_000 -> "%.1fM".format(value / 1_000_000.0)
+        absolute >= 1_000 -> "%.1fK".format(value / 1_000.0)
+        absolute >= 100 -> "%.0f".format(value)
+        absolute >= 10 -> "%.1f".format(value)
+        else -> "%.2f".format(value)
     }
 }
 

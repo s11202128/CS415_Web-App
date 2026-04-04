@@ -245,7 +245,7 @@ fun DashboardScreen(
             }
 
             item {
-                TransactionHeader(onSeeAll = onNavigateToFeatures)
+                TransactionHeader()
             }
 
             item {
@@ -1000,24 +1000,13 @@ private fun ActionButtonCard(icon: String, label: String, onClick: () -> Unit, m
 }
 
 @Composable
-private fun TransactionHeader(onSeeAll: () -> Unit) {
+private fun TransactionHeader() {
     Row(
         modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween,
+        horizontalArrangement = Arrangement.Start,
         verticalAlignment = Alignment.CenterVertically
     ) {
         Text("Transaction History", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-        Button(
-            onClick = onSeeAll,
-            contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp, vertical = 0.dp),
-            colors = ButtonDefaults.buttonColors(
-                containerColor = Color.Transparent,
-                contentColor = MaterialTheme.colorScheme.primary
-            ),
-            elevation = null
-        ) {
-            Text("See all", style = MaterialTheme.typography.labelLarge)
-        }
     }
 }
 
