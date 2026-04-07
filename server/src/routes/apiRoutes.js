@@ -15,6 +15,9 @@ const {
   generateRandomAccountNumber,
   generateStatement,
   generateInterestSummaries,
+  getSavingsInterestRate,
+  setSavingsInterestRate,
+  applyMonthlySavingsInterest,
   applyMonthlyFees,
   getHighValueTransferThreshold,
   setHighValueTransferThreshold,
@@ -34,8 +37,6 @@ const loanProducts = [
   { id: "LP-002", name: "Home Loan", annualRate: 0.061, maxAmount: 450000, minTermMonths: 60, maxTermMonths: 360 },
   { id: "LP-003", name: "Vehicle Loan", annualRate: 0.074, maxAmount: 90000, minTermMonths: 12, maxTermMonths: 84 },
 ];
-
-let reserveBankMinSavingsInterestRate = 0.0325;
 
 const router = express.Router();
 
@@ -2141,7 +2142,7 @@ router.get("/admin/otp-attempts", asyncHandler(async (req, res) => {
 }));
 
 router.get("/config/interest-rate", (req, res) => {
-  res.json({ reserveBankMinSavingsInterestRate });
+  res.json({ reserveBankMinSavingsInterestRate: getSavingsInterestRate() });
 });
 
 router.put("/config/interest-rate", (req, res) => {
@@ -2149,9 +2150,33 @@ router.put("/config/interest-rate", (req, res) => {
   if (!Number.isFinite(rate) || rate < 0) {
     return res.status(400).json({ error: "Valid non-negative rate is required" });
   }
-  reserveBankMinSavingsInterestRate = rate;
-  res.json({ reserveBankMinSavingsInterestRate: rate });
+  const updatedRate = setSavingsInterestRate(rate);
+  res.json({ reserveBankMinSavingsInterestRate: updatedRate });
 });
+
+router.post("/year-end/apply-monthly-interest", requireAuth, requireAdmin, asyncHandler(async (req, res) => {
+  const credited = await applyMonthlySavingsInterest();
+  const totals = credited.reduce(
+    (acc, row) => {
+      acc.grossInterest += Number(row.grossInterest || 0);
+      acc.withholdingTax += Number(row.withholdingTax || 0);
+      acc.netInterest += Number(row.netInterest || 0);
+      return acc;
+    },
+    { grossInterest: 0, withholdingTax: 0, netInterest: 0 }
+  );
+
+  res.json({
+    creditedAccounts: credited,
+    count: credited.length,
+    totals: {
+      grossInterest: Number(totals.grossInterest.toFixed(2)),
+      withholdingTax: Number(totals.withholdingTax.toFixed(2)),
+      netInterest: Number(totals.netInterest.toFixed(2)),
+    },
+    annualRate: getSavingsInterestRate(),
+  });
+}));
 
 router.post("/year-end/interest-summaries", requireAuth, requireAdmin, asyncHandler(async (req, res) => {
   const year = Number(req.body?.year || new Date().getFullYear());
@@ -2161,26 +2186,7 @@ router.post("/year-end/interest-summaries", requireAuth, requireAdmin, asyncHand
 
 router.get("/year-end/interest-summaries", requireAuth, requireAdmin, asyncHandler(async (req, res) => {
   const year = Number(req.query?.year || new Date().getFullYear());
-  const rows = await Account.findAll({
-    include: [{ model: Customer, attributes: ["id", "fullName"] }],
-  });
-
-  const summaries = rows.map((account) => {
-    const grossInterest = account.accountType === "Savings" ? Number((Number(account.balance) * reserveBankMinSavingsInterestRate).toFixed(2)) : 0;
-    const withholdingTax = Number((grossInterest * 0.15).toFixed(2));
-    const netInterest = Number((grossInterest - withholdingTax).toFixed(2));
-    return {
-      year,
-      accountId: account.id,
-      customerId: account.customerId,
-      customerName: account.Customer?.fullName || "Unknown",
-      grossInterest,
-      withholdingTax,
-      netInterest,
-      status: "submitted_to_frcs",
-    };
-  });
-
+  const summaries = await generateInterestSummaries(year);
   res.json(summaries);
 }));
 

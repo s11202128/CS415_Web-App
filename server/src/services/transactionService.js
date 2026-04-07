@@ -141,9 +141,10 @@ async function deposit({ accountId, amount, note, actor }) {
   });
 
   if (customerIdForNotification) {
+    const ref = result.transactionId ? ` Ref: DEP-${result.transactionId}.` : "";
     await addNotification(
       customerIdForNotification,
-      `Deposit of FJD ${Number(amount).toFixed(2)} to account ${accountIdForNotification} completed. New balance: FJD ${newBalanceForNotification.toFixed(2)}.`,
+      `Your account has been credited with $${Number(amount).toFixed(2)}. New balance: $${newBalanceForNotification.toFixed(2)}.${ref}`,
       "DEPOSIT"
     );
   }
@@ -386,6 +387,7 @@ async function completeTransferNow({
   let debitTransactionId = null;
   let creditTransactionId = null;
   let sourceBalanceAfter = null;
+  let destinationBalanceAfter = null;
 
   await sequelize.transaction(async (dbTx) => {
     const sourceAccount = await Account.findByPk(fromAccountId, {
@@ -484,7 +486,7 @@ async function completeTransferNow({
         throw new Error("Transfer accounts must be different");
       }
 
-      const destinationBalanceAfter = Number((parseFloat(destinationAccount.balance) + amount).toFixed(2));
+      destinationBalanceAfter = Number((parseFloat(destinationAccount.balance) + amount).toFixed(2));
       await destinationAccount.update({ balance: destinationBalanceAfter }, { transaction: dbTx });
 
       const creditTx = await Transaction.create(
@@ -505,19 +507,21 @@ async function completeTransferNow({
   });
 
   if (sourceCustomerId) {
+    const sentRef = debitTransactionId ? ` Ref: TRX-${debitTransactionId}.` : "";
     await addNotification(
       sourceCustomerId,
       transferMode === "external"
-        ? `Transfer of FJD ${amount.toFixed(2)} to ${recipientName || accountNumber || "external recipient"} processed.`
-        : `Transfer of FJD ${amount.toFixed(2)} from account ${fromAccountId} processed.`,
+        ? `Transfer of $${amount.toFixed(2)} to ${recipientName || accountNumber || "external recipient"} was successful.${sentRef}`
+        : `Transfer of $${amount.toFixed(2)} from account ${fromAccountId} was successful.${sentRef}`,
       "TRANSFER_SENT"
     );
   }
 
   if (transferMode === "internal" && destinationCustomerId) {
+    const receiveRef = creditTransactionId ? ` Ref: TRX-${creditTransactionId}.` : "";
     await addNotification(
       destinationCustomerId,
-      `You received FJD ${amount.toFixed(2)} into account ${toAccountId}.`,
+      `Your account has been credited with $${amount.toFixed(2)}. New balance: $${Number(destinationBalanceAfter || 0).toFixed(2)}.${receiveRef}`,
       "MONEY_RECEIVED"
     );
   }

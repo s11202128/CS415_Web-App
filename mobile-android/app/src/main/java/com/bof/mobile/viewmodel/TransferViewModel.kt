@@ -51,7 +51,8 @@ data class TransferUiState(
 
 class TransferViewModel(
     private val transferRepository: TransferRepository,
-    private val accountRepository: AccountRepository
+    private val accountRepository: AccountRepository,
+    private val loggedInCustomerId: Int? = null
 ) : ViewModel() {
     private val _uiState = MutableStateFlow(TransferUiState())
     val uiState: StateFlow<TransferUiState> = _uiState
@@ -65,10 +66,14 @@ class TransferViewModel(
             _uiState.update { it.copy(accountsLoading = true, accountsLoaded = false) }
             when (val result = accountRepository.getAccounts()) {
                 is ApiResult.Success -> {
-                    val firstActive = result.data.firstOrNull { it.status.equals("active", ignoreCase = true) }
+                    val scopedAccounts = result.data.filter { account ->
+                        val matchesCustomer = loggedInCustomerId?.let { it > 0 && account.customerId == it } ?: true
+                        matchesCustomer
+                    }
+                    val firstActive = scopedAccounts.firstOrNull { it.status.equals("active", ignoreCase = true) }
                     _uiState.update {
                         it.copy(
-                            accounts = result.data,
+                            accounts = scopedAccounts,
                             fromAccountId = it.fromAccountId.ifBlank { firstActive?.id?.toString().orEmpty() },
                             accountsLoading = false,
                             accountsLoaded = true,

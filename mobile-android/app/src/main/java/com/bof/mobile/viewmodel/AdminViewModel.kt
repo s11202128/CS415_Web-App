@@ -552,6 +552,26 @@ class AdminViewModel(private val repository: AdminRepository) : ViewModel() {
         }
     }
 
+    fun applyMaintenanceFees() {
+        viewModelScope.launch {
+            setLoading(true)
+            when (val result = repository.applyMaintenanceFees()) {
+                is ApiResult.Success -> {
+                    val count = result.data.count
+                    _uiState.update {
+                        it.copy(
+                            successMessage = "Maintenance fees applied to $count account" + if (count == 1) "" else "s",
+                            errorMessage = null
+                        )
+                    }
+                    loadAccounts()
+                }
+                is ApiResult.Error -> setError(result.message)
+            }
+            setLoading(false)
+        }
+    }
+
     fun loadLoginLogs() {
         viewModelScope.launch {
             when (val result = repository.getAdminLoginLogs()) {
@@ -659,6 +679,39 @@ class AdminViewModel(private val repository: AdminRepository) : ViewModel() {
                 }
                 is ApiResult.Error -> setError(result.message)
             }
+        }
+    }
+
+    fun applyMonthlyInterest() {
+        viewModelScope.launch {
+            setLoading(true)
+            when (val result = repository.applyMonthlyInterest()) {
+                is ApiResult.Success -> {
+                    val response = result.data
+                    _uiState.update {
+                        it.copy(
+                            successMessage = "Applied monthly interest to ${response.count} account" +
+                                if (response.count == 1) "" else "s" +
+                                " (Net FJD ${"%.2f".format(response.totals.netInterest)})",
+                            errorMessage = null
+                        )
+                    }
+                    loadAccounts()
+                    loadSummaries()
+                }
+                is ApiResult.Error -> {
+                    val message = if (
+                        result.message.contains("Cannot POST /api/year-end/apply-monthly-interest", ignoreCase = true) ||
+                        result.message.contains("404", ignoreCase = true)
+                    ) {
+                        "Backend is running an older build. Restart the backend server, then try Apply monthly savings interest again."
+                    } else {
+                        result.message
+                    }
+                    setError(message)
+                }
+            }
+            setLoading(false)
         }
     }
 

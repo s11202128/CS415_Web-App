@@ -11,6 +11,8 @@ import com.bof.mobile.model.AdminDashboardReport
 import com.bof.mobile.model.AdminLoginLogItem
 import com.bof.mobile.model.AdminNotificationLogItem
 import com.bof.mobile.model.AdminOtpAttemptItem
+import com.bof.mobile.model.AdminApplyMaintenanceFeesResponse
+import com.bof.mobile.model.AdminApplyMonthlyInterestResponse
 import com.bof.mobile.model.AdminStatementUpdateRequest
 import com.bof.mobile.model.AdminTestSmsRequest
 import com.bof.mobile.model.AdminTestSmsResponse
@@ -137,13 +139,13 @@ interface ApiService {
     @POST("transfers/initiate")
     suspend fun initiateTransfer(@Body request: InitiateTransferRequest): InitiateTransferResponse
 
-    @POST("transactions/initiate-transfer")
+    @POST("transactions/transfer")
     suspend fun transfer(@Body request: TransferMoneyRequest): TransferMoneyResponse
 
     @POST("otp/verify")
     suspend fun verifyTransfer(@Body request: VerifyTransferRequest): VerifyTransferResponse
 
-    @POST("transactions/confirm-transfer")
+    @POST("transactions/transfer/verify")
     suspend fun verifyTransferOtp(@Body request: VerifyTransferOtpRequest): TransferMoneyResponse
 
     @GET("recipients/search")
@@ -278,6 +280,12 @@ interface ApiService {
 
     @PUT("admin/transfer-limit")
     suspend fun updateAdminTransferLimit(@Body body: AdminUpdateTransferLimitRequest): AdminTransferLimitResponse
+
+    @POST("accounts/apply-maintenance-fees")
+    suspend fun applyMaintenanceFees(): AdminApplyMaintenanceFeesResponse
+
+    @POST("year-end/apply-monthly-interest")
+    suspend fun applyMonthlyInterest(): AdminApplyMonthlyInterestResponse
 
     @GET("admin/dashboard-report")
     suspend fun getAdminDashboardReport(): AdminDashboardReport

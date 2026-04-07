@@ -595,9 +595,6 @@ private fun AccountSelectorCard(
         }
     }
 
-    if (selectedAccount != null) {
-        AccountPreview("Selected account", selectedAccount)
-    }
 }
 
 @Composable

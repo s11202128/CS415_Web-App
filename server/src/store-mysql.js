@@ -22,7 +22,8 @@ const MIN_OTP_TRIGGER_AMOUNT = 5000;
 const OTP_EXPIRY_MINUTES = 5;
 const OTP_MAX_ATTEMPTS = 3;
 const WITHHOLDING_TAX_RATE = 0.15;
-const SAVINGS_INTEREST_RATE = 0.0325;
+let savingsInterestRate = 0.0325;
+const SIMPLE_ACCESS_MONTHLY_FEE = 2.5;
 const MAX_FAILED_LOGIN_ATTEMPTS = 5;
 const ACCOUNT_LOCK_MINUTES = 15;
 const VERIFICATION_TOKEN_TTL_MS = 60 * 60 * 1000;
@@ -248,6 +249,28 @@ async function addNotification(customerId, message, notificationType = "SMS_ALER
     throw new Error("Customer not found");
   }
 
+  const phoneNumber = String(customer.mobile || "").trim();
+  if (!phoneNumber) {
+    const skippedRow = await NotificationLog.create({
+      userId: customer.id,
+      phoneNumber: "",
+      message: String(message || ""),
+      notificationType,
+      deliveryStatus: "skipped",
+      providerMessageId: null,
+    });
+
+    return {
+      id: skippedRow.id,
+      userId: skippedRow.userId,
+      phoneNumber: skippedRow.phoneNumber,
+      message: skippedRow.message,
+      notificationType: skippedRow.notificationType,
+      deliveryStatus: skippedRow.deliveryStatus,
+      timestamp: skippedRow.createdAt,
+    };
+  }
+
   let deliveryStatus = "queued";
   let providerMessageId = null;
 
@@ -262,7 +285,7 @@ async function addNotification(customerId, message, notificationType = "SMS_ALER
 
   const row = await NotificationLog.create({
     userId: customer.id,
-    phoneNumber: customer.mobile,
+    phoneNumber,
     message: String(message || ""),
     notificationType,
     deliveryStatus,
@@ -326,7 +349,7 @@ async function getNotificationLogs(limit = 200, userId = null) {
 }
 
 // Create a transaction in the database
-async function createTransaction({ accountId, accountNumber, kind, amount, description, counterpartyAccountId, metadata = {} }) {
+async function createTransaction({ accountId, accountNumber, kind, amount, description, transactionType, counterpartyAccountId, metadata = {} }) {
   const account = accountId ? await getAccount(accountId) : await getAccountByNumber(accountNumber);
   if (!account) {
     throw new Error("Account not found");
@@ -345,7 +368,7 @@ async function createTransaction({ accountId, accountNumber, kind, amount, descr
     userId: Number(account.customerId) || null,
     date: new Date(),
     type: kind,
-    transactionType: kind,
+    transactionType: transactionType || kind,
     amount: Math.abs(amount),
     description,
     status: "completed",
@@ -449,10 +472,19 @@ async function transfer({ fromAccountId, toAccountId, amount, description }) {
   const toCustomer = await getCustomer(toAccount.customerId);
 
   if (toCustomer) {
-    await addNotification(toCustomer.id, `You received FJD ${amount.toFixed(2)} into account ${toAccount.id}.`, "MONEY_RECEIVED");
+    const destinationAccountAfter = await getAccount(toAccount.id);
+    await addNotification(
+      toCustomer.id,
+      `Your account has been credited with $${amount.toFixed(2)}. New balance: $${Number(destinationAccountAfter?.balance || 0).toFixed(2)}. Ref: TRX-${creditTx.id}.`,
+      "MONEY_RECEIVED"
+    );
   }
   if (fromCustomer) {
-    await addNotification(fromCustomer.id, `Transfer of FJD ${amount.toFixed(2)} from account ${fromAccount.id} processed.`, "TRANSFER_SENT");
+    await addNotification(
+      fromCustomer.id,
+      `Transfer of $${amount.toFixed(2)} from account ${fromAccount.id} was successful. Ref: TRX-${debitTx.id}.`,
+      "TRANSFER_SENT"
+    );
   }
 
   return { debitTx, creditTx };
@@ -599,7 +631,11 @@ async function postBillPayment({ accountId, payee, amount, mode, scheduledDate }
   });
 
   const paymentType = /credit\s*card/i.test(String(payee || "")) ? "CREDIT_CARD_PAYMENT" : "BILL_PAYMENT";
-  await addNotification(account.customerId, `Bill payment of FJD ${amount.toFixed(2)} to ${payee} processed.`, paymentType);
+  await addNotification(
+    account.customerId,
+    `Your payment of $${amount.toFixed(2)} was successful. Thank you for using our service. Ref: PAY-${payment.id}.`,
+    paymentType
+  );
   return {
     id: payment.id,
     accountId,
@@ -717,21 +753,149 @@ async function calculateInterestForAccount(account) {
   if (account.accountType !== "Savings") {
     return 0;
   }
-  const rate = SAVINGS_INTEREST_RATE;
+  const rate = Number(savingsInterestRate) || 0;
   const baseInterest = parseFloat(account.balance) * rate;
   return Number(baseInterest.toFixed(2));
+}
+
+function getSavingsInterestRate() {
+  return Number(savingsInterestRate) || 0;
+}
+
+function setSavingsInterestRate(value) {
+  const rate = Number(value);
+  if (!Number.isFinite(rate) || rate < 0) {
+    throw new Error("Valid non-negative interest rate is required");
+  }
+  savingsInterestRate = rate;
+  return getSavingsInterestRate();
+}
+
+async function applyMonthlySavingsInterest(referenceDate = new Date()) {
+  const now = new Date(referenceDate);
+  const periodStart = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
+  const periodEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
+  const periodLabel = `${now.toLocaleString("en-US", { month: "long" })} ${now.getFullYear()}`;
+  const annualRate = getSavingsInterestRate();
+  const monthlyRate = annualRate / 12;
+
+  const savingsAccounts = await Account.findAll({
+    where: {
+      accountType: "Savings",
+      status: "active",
+    },
+  });
+
+  const credited = [];
+  for (const account of savingsAccounts) {
+    const existingCredit = await Transaction.findOne({
+      where: {
+        accountId: account.id,
+        transactionType: "interest_credit",
+        createdAt: { [Op.between]: [periodStart, periodEnd] },
+      },
+    });
+
+    if (existingCredit) {
+      continue;
+    }
+
+    const currentBalance = Number(account.balance || 0);
+    if (currentBalance <= 0 || monthlyRate <= 0) {
+      continue;
+    }
+
+    const grossInterest = Number((currentBalance * monthlyRate).toFixed(2));
+    if (grossInterest <= 0) {
+      continue;
+    }
+    const withholdingTax = Number((grossInterest * WITHHOLDING_TAX_RATE).toFixed(2));
+    const netInterest = Number((grossInterest - withholdingTax).toFixed(2));
+    if (netInterest <= 0) {
+      continue;
+    }
+
+    const interestTx = await createTransaction({
+      accountId: account.id,
+      kind: "credit",
+      amount: grossInterest,
+      transactionType: "interest_credit",
+      description: `Monthly savings interest (${periodLabel}) at ${(annualRate * 100).toFixed(2)}% p.a.`,
+    });
+
+    let taxTx = null;
+    if (withholdingTax > 0) {
+      taxTx = await createTransaction({
+        accountId: account.id,
+        kind: "debit",
+        amount: withholdingTax,
+        transactionType: "withholding_tax",
+        description: `Withholding tax (${Math.round(WITHHOLDING_TAX_RATE * 100)}%) on monthly interest (${periodLabel})`,
+      });
+    }
+
+    const refreshedAccount = await getAccount(account.id);
+    const balanceAfter = Number(refreshedAccount?.balance || 0);
+
+    try {
+      await addNotification(
+        account.customerId,
+        `Savings interest posted for ${periodLabel}: gross FJD ${grossInterest.toFixed(2)}, withholding tax FJD ${withholdingTax.toFixed(2)}, net FJD ${netInterest.toFixed(2)}. New balance: FJD ${balanceAfter.toFixed(2)}.`,
+        "INTEREST_CREDIT"
+      );
+    } catch (error) {
+      // Notification failure should not block monthly interest posting.
+    }
+
+    credited.push({
+      accountId: account.id,
+      accountNumber: account.accountNumber,
+      annualRate,
+      grossInterest,
+      withholdingTax,
+      netInterest,
+      balanceAfter,
+      interestTransactionId: interestTx.id,
+      withholdingTaxTransactionId: taxTx?.id || null,
+    });
+  }
+
+  return credited;
 }
 
 // Generate interest summaries for all accounts
 async function generateInterestSummaries(year) {
   const accounts = await Account.findAll({
+    where: { accountType: "Savings" },
     include: { association: "Customer", attributes: ["id", "fullName"] },
   });
 
+  const fromDate = new Date(year, 0, 1, 0, 0, 0, 0);
+  const toDate = new Date(year, 11, 31, 23, 59, 59, 999);
+
   const summaries = [];
   for (const account of accounts) {
-    const grossInterest = await calculateInterestForAccount(account);
-    const withholdingTax = Number((grossInterest * WITHHOLDING_TAX_RATE).toFixed(2));
+    const txRows = await Transaction.findAll({
+      where: {
+        accountId: account.id,
+        createdAt: { [Op.between]: [fromDate, toDate] },
+        transactionType: { [Op.in]: ["interest_credit", "withholding_tax"] },
+      },
+      raw: true,
+    });
+
+    const grossInterest = Number(
+      txRows
+        .filter((tx) => tx.transactionType === "interest_credit")
+        .reduce((sum, tx) => sum + Number(tx.amount || 0), 0)
+        .toFixed(2)
+    );
+    const withholdingTax = Number(
+      txRows
+        .filter((tx) => tx.transactionType === "withholding_tax")
+        .reduce((sum, tx) => sum + Number(tx.amount || 0), 0)
+        .toFixed(2)
+    );
     const netInterest = Number((grossInterest - withholdingTax).toFixed(2));
 
     summaries.push({
@@ -755,9 +919,75 @@ async function generateInterestSummaries(year) {
 
 // Apply monthly fees to accounts
 async function applyMonthlyFees() {
+  const now = new Date();
+  const periodStart = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
+  const periodEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
+  const periodLabel = `${now.toLocaleString("en-US", { month: "long" })} ${now.getFullYear()}`;
+
+  const eligibleAccounts = await Account.findAll({
+    where: {
+      accountType: "Simple Access",
+      status: "active",
+    },
+  });
+
   const charged = [];
-  // For now, no monthly fees in new setup
-  // This can be extended if we track account types with fees
+  for (const account of eligibleAccounts) {
+    const existingCharge = await Transaction.findOne({
+      where: {
+        accountId: account.id,
+        transactionType: "maintenance_fee",
+        createdAt: {
+          [Op.between]: [periodStart, periodEnd],
+        },
+      },
+    });
+
+    if (existingCharge) {
+      continue;
+    }
+
+    const currentBalance = Number(account.balance || 0);
+    if (currentBalance < SIMPLE_ACCESS_MONTHLY_FEE) {
+      continue;
+    }
+
+    const newBalance = Number((currentBalance - SIMPLE_ACCESS_MONTHLY_FEE).toFixed(2));
+    await account.update({ balance: newBalance });
+
+    const tx = await Transaction.create({
+      accountId: account.id,
+      accountNumber: account.accountNumber,
+      userId: Number(account.customerId) || null,
+      date: new Date(),
+      type: "debit",
+      transactionType: "maintenance_fee",
+      amount: SIMPLE_ACCESS_MONTHLY_FEE,
+      description: `Monthly maintenance fee (${periodLabel})`,
+      status: "completed",
+      balanceAfter: newBalance,
+      balance: newBalance,
+    });
+
+    try {
+      await addNotification(
+        account.customerId,
+        `Monthly maintenance fee of FJD ${SIMPLE_ACCESS_MONTHLY_FEE.toFixed(2)} charged on account ${account.accountNumber}. New balance: FJD ${newBalance.toFixed(2)}.`,
+        "MAINTENANCE_FEE"
+      );
+    } catch (error) {
+      // Do not fail the batch if notification delivery fails.
+    }
+
+    charged.push({
+      accountId: account.id,
+      accountNumber: account.accountNumber,
+      feeAmount: SIMPLE_ACCESS_MONTHLY_FEE,
+      balanceAfter: newBalance,
+      transactionId: tx.id,
+    });
+  }
+
   return charged;
 }
 
@@ -1339,7 +1569,7 @@ async function reverseTransaction(transactionId) {
 module.exports = {
   HIGH_VALUE_OTP_THRESHOLD,
   WITHHOLDING_TAX_RATE,
-  SAVINGS_INTEREST_RATE,
+  SAVINGS_INTEREST_RATE: getSavingsInterestRate(),
   getCustomer,
   getAccount,
   getAccountTransactions,
@@ -1352,6 +1582,9 @@ module.exports = {
   runScheduledPayment,
   generateStatement,
   generateInterestSummaries,
+  getSavingsInterestRate,
+  setSavingsInterestRate,
+  applyMonthlySavingsInterest,
   applyMonthlyFees,
   getHighValueTransferThreshold,
   setHighValueTransferThreshold,

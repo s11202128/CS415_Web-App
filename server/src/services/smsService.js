@@ -1,62 +1,68 @@
-const { URLSearchParams } = require('url');
+const twilio = require("twilio");
 
 function normalizePhoneNumber(phoneNumber) {
-  return String(phoneNumber || '').trim();
+  return String(phoneNumber || "").trim();
+}
+
+function sanitizeMessage(message) {
+  return String(message || "").replace(/[\r\n]+/g, " ").trim();
+}
+
+function getTwilioClient() {
+  const accountSid = process.env.TWILIO_ACCOUNT_SID;
+  const authToken = process.env.TWILIO_AUTH_TOKEN;
+  if (!accountSid || !authToken) {
+    throw new Error("Twilio is not fully configured");
+  }
+  return twilio(accountSid, authToken);
 }
 
 async function sendViaTwilio({ to, message }) {
-  const accountSid = process.env.TWILIO_ACCOUNT_SID;
-  const authToken = process.env.TWILIO_AUTH_TOKEN;
   const from = process.env.TWILIO_FROM_NUMBER;
 
-  if (!accountSid || !authToken || !from) {
+  if (!from) {
     throw new Error('Twilio is not fully configured');
   }
 
-  const endpoint = `https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Messages.json`;
-  const payload = new URLSearchParams({ To: to, From: from, Body: message });
-
-  const response = await fetch(endpoint, {
-    method: 'POST',
-    headers: {
-      Authorization: `Basic ${Buffer.from(`${accountSid}:${authToken}`).toString('base64')}`,
-      'Content-Type': 'application/x-www-form-urlencoded',
-    },
-    body: payload.toString(),
+  const client = getTwilioClient();
+  const data = await client.messages.create({
+    to,
+    from,
+    body: sanitizeMessage(message),
   });
 
-  const data = await response.json();
-  if (!response.ok) {
-    throw new Error(data?.message || 'Twilio SMS request failed');
-  }
-
   return {
-    provider: 'twilio',
+    provider: "twilio",
     providerMessageId: data?.sid || null,
-    status: data?.status || 'queued',
+    status: data?.status || "queued",
   };
 }
 
 async function sendSms({ to, message }) {
   const normalizedTo = normalizePhoneNumber(to);
   if (!normalizedTo) {
-    throw new Error('Recipient phone number is required');
+    throw new Error("Recipient phone number is required");
   }
 
-  const provider = String(process.env.SMS_PROVIDER || 'twilio').toLowerCase();
+  const provider = String(process.env.SMS_PROVIDER || "twilio").toLowerCase();
 
-  if (provider === 'twilio') {
-    return sendViaTwilio({ to: normalizedTo, message: String(message || '') });
+  if (provider === "twilio") {
+    return sendViaTwilio({ to: normalizedTo, message: sanitizeMessage(message) });
   }
 
-  console.log(`[SMS:mock] to=${normalizedTo} message=${String(message || '')}`);
+  console.log(`[SMS:mock] to=${normalizedTo} message=${sanitizeMessage(message)}`);
   return {
-    provider: 'mock',
+    provider: "mock",
     providerMessageId: null,
-    status: 'simulated',
+    status: "simulated",
   };
+}
+
+async function sendSMS(toPhoneNumber, message) {
+  return sendSms({ to: toPhoneNumber, message });
 }
 
 module.exports = {
   sendSms,
+  sendSMS,
 };

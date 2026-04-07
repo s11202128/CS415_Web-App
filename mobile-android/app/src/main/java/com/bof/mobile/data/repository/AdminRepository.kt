@@ -7,6 +7,8 @@ import com.bof.mobile.model.AdminCreateDepositRequest
 import com.bof.mobile.model.AdminCreateDepositResponse
 import com.bof.mobile.model.AdminDashboardReport
 import com.bof.mobile.model.AdminLoginLogItem
+import com.bof.mobile.model.AdminApplyMaintenanceFeesResponse
+import com.bof.mobile.model.AdminApplyMonthlyInterestResponse
 import com.bof.mobile.model.AdminNotificationLogItem
 import com.bof.mobile.model.AdminOtpAttemptItem
 import com.bof.mobile.model.AdminStatementUpdateRequest
@@ -106,6 +108,14 @@ class AdminRepository(private val apiService: ApiService) {
 
     suspend fun updateTransferLimit(value: Double): ApiResult<AdminTransferLimitResponse> = safeCall {
         apiService.updateAdminTransferLimit(AdminUpdateTransferLimitRequest(highValueTransferLimit = value))
+    }
+
+    suspend fun applyMaintenanceFees(): ApiResult<AdminApplyMaintenanceFeesResponse> = safeCall {
+        apiService.applyMaintenanceFees()
+    }
+
+    suspend fun applyMonthlyInterest(): ApiResult<AdminApplyMonthlyInterestResponse> = safeCall {
+        apiService.applyMonthlyInterest()
     }
 
     suspend fun getAdminStatementRequests(): ApiResult<List<StatementRequestItem>> = safeCall { apiService.getAdminStatementRequests() }

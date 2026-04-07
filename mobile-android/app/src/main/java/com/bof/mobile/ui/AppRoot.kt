@@ -87,7 +87,13 @@ fun AppRoot() {
     val createAccountViewModel = remember(apiService) { CreateAccountViewModel(accountRepository) }
     val depositViewModel = remember(apiService) { DepositViewModel(accountRepository, featureRepository) }
     val withdrawViewModel = remember(apiService) { WithdrawViewModel(accountRepository, featureRepository) }
-    val transferViewModel = remember(apiService) { TransferViewModel(TransferRepository(apiService), accountRepository) }
+    val transferViewModel = remember(apiService, authState.customerId, authState.userId) {
+        TransferViewModel(
+            transferRepository = TransferRepository(apiService),
+            accountRepository = accountRepository,
+            loggedInCustomerId = authState.customerId ?: authState.userId
+        )
+    }
     val featureViewModel = remember(apiService) { FeatureViewModel(featureRepository) }
     val adminViewModel = remember(apiService) { AdminViewModel(AdminRepository(apiService)) }
 

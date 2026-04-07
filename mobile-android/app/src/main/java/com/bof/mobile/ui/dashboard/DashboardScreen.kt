@@ -61,8 +61,8 @@ import com.bof.mobile.viewmodel.FeatureViewModel
 
 private enum class DashboardTxFilter {
     ALL,
-    INCOME,
-    EXPENSE
+    CREDIT,
+    DEBIT
 }
 
 @Composable
@@ -175,8 +175,8 @@ fun DashboardScreen(
         val filteredTransactions = data.recentTransactions.filter { tx ->
             when (txFilter) {
                 DashboardTxFilter.ALL -> true
-                DashboardTxFilter.INCOME -> isIncomeTransaction(tx.type, tx.description, tx.amount)
-                DashboardTxFilter.EXPENSE -> !isIncomeTransaction(tx.type, tx.description, tx.amount)
+                DashboardTxFilter.CREDIT -> isCreditTransaction(tx.type, tx.description, tx.amount)
+                DashboardTxFilter.DEBIT -> !isCreditTransaction(tx.type, tx.description, tx.amount)
             }
         }
 
@@ -273,7 +273,7 @@ fun DashboardScreen(
                         title = filteredTransactions[idx].description.ifBlank { filteredTransactions[idx].type },
                         subtitle = filteredTransactions[idx].type,
                         amount = filteredTransactions[idx].amount,
-                        isIncome = isIncomeTransaction(
+                        isIncome = isCreditTransaction(
                             filteredTransactions[idx].type,
                             filteredTransactions[idx].description,
                             filteredTransactions[idx].amount
@@ -1025,17 +1025,17 @@ private fun TransactionFilterRow(selected: DashboardTxFilter, onSelect: (Dashboa
             )
         )
         FilterChip(
-            selected = selected == DashboardTxFilter.INCOME,
-            onClick = { onSelect(DashboardTxFilter.INCOME) },
-            label = { Text("Income") },
+            selected = selected == DashboardTxFilter.CREDIT,
+            onClick = { onSelect(DashboardTxFilter.CREDIT) },
+            label = { Text("Credit") },
             colors = FilterChipDefaults.filterChipColors(
                 selectedContainerColor = MaterialTheme.colorScheme.primaryContainer
             )
         )
         FilterChip(
-            selected = selected == DashboardTxFilter.EXPENSE,
-            onClick = { onSelect(DashboardTxFilter.EXPENSE) },
-            label = { Text("Expense") },
+            selected = selected == DashboardTxFilter.DEBIT,
+            onClick = { onSelect(DashboardTxFilter.DEBIT) },
+            label = { Text("Debit") },
             colors = FilterChipDefaults.filterChipColors(
                 selectedContainerColor = MaterialTheme.colorScheme.primaryContainer
             )
@@ -1138,7 +1138,7 @@ private fun RowScope.BottomNavItem(symbol: String? = null, icon: androidx.compos
     }
 }
 
-private fun isIncomeTransaction(type: String, description: String, amount: Double): Boolean {
+private fun isCreditTransaction(type: String, description: String, amount: Double): Boolean {
     val normalized = "${type.lowercase()} ${description.lowercase()}"
     if (
         normalized.contains("deposit") ||

@@ -33,6 +33,44 @@ data class AdminTransferLimitResponse(
     val highValueTransferLimit: Double
 )
 
+data class AdminMaintenanceFeeChargeItem(
+    val accountId: Int,
+    val accountNumber: String,
+    val feeAmount: Double,
+    val balanceAfter: Double,
+    val transactionId: Int
+)
+
+data class AdminApplyMaintenanceFeesResponse(
+    val chargedAccounts: List<AdminMaintenanceFeeChargeItem>,
+    val count: Int
+)
+
+data class AdminInterestCreditItem(
+    val accountId: Int,
+    val accountNumber: String,
+    val annualRate: Double,
+    val grossInterest: Double,
+    val withholdingTax: Double,
+    val netInterest: Double,
+    val balanceAfter: Double,
+    val interestTransactionId: Int,
+    val withholdingTaxTransactionId: Int?
+)
+
+data class AdminInterestTotals(
+    val grossInterest: Double,
+    val withholdingTax: Double,
+    val netInterest: Double
+)
+
+data class AdminApplyMonthlyInterestResponse(
+    val creditedAccounts: List<AdminInterestCreditItem>,
+    val count: Int,
+    val totals: AdminInterestTotals,
+    val annualRate: Double
+)
+
 data class AdminUpdateTransferLimitRequest(
     val highValueTransferLimit: Double
 )
