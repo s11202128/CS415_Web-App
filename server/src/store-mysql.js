@@ -1090,27 +1090,32 @@ async function registerUser({ fullName, mobile, email, password, confirmPassword
     verifiedAt: null,
   });
 
-  // Auto-verify all users (for dev/demo)
+  // Require email verification for all users
   const customer = await Customer.create({
     fullName,
     mobile: normalizedMobile,
     email: normalizedEmail,
     password: passwordHash,
     status: "active",
-    emailVerified: true,
-    isVerified: true,
-    verificationToken: null,
-    verificationTokenExpiry: null,
-    registrationStatus: "approved",
+    emailVerified: false,
+    isVerified: false,
+    verificationToken,
+    verificationTokenExpiry: tokenExpiry,
+    registrationStatus: "pending",
   });
+  try {
+    await sendVerificationEmail({ to: customer.email, token: verificationToken });
+  } catch (error) {
+    console.warn(`[auth] verification email failed for userId=${customer.id}:`, error.message);
+  }
   return {
     userId: customer.id,
     customerId: customer.id,
     fullName,
     email: customer.email,
-    emailVerified: true,
-    isVerified: true,
-    message: "Registration successful. Email auto-verified.",
+    emailVerified: false,
+    isVerified: false,
+    message: "Registration successful. Please check your email to verify your account.",
   };
 }
 

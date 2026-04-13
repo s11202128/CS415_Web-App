@@ -6,7 +6,7 @@ import com.bof.mobile.model.ApiResult
 import com.bof.mobile.model.DashboardResponse
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.withTimeout
-import retrofit2.HttpException
+import retrofit2.HttpException 
 import java.io.IOException
 
 class DashboardRepository(private val apiService: ApiService) {
