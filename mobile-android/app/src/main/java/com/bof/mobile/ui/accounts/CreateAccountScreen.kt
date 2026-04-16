@@ -22,6 +22,7 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
@@ -35,6 +36,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
@@ -46,7 +48,7 @@ import com.bof.mobile.model.AccountItem
 import com.bof.mobile.ui.components.ScreenHeader
 import com.bof.mobile.viewmodel.CreateAccountViewModel
 
-private val REQUESTABLE_ACCOUNT_TYPES = listOf("Simple Access", "Savings")
+private val REQUESTABLE_ACCOUNT_TYPES = listOf("Simple Access", "Savings", "Current")
 
 @Composable
 fun CreateAccountScreen(
@@ -59,12 +61,14 @@ fun CreateAccountScreen(
     val uiState by viewModel.uiState.collectAsState()
     var accountTypeExpanded by remember { mutableStateOf(false) }
     var lastHandledAccountId by remember { mutableStateOf<Int?>(null) }
+    var showSubmittedDialog by rememberSaveable { mutableStateOf(false) }
 
     LaunchedEffect(uiState.createdAccount?.id) {
         val createdAccount = uiState.createdAccount ?: return@LaunchedEffect
         if (lastHandledAccountId != createdAccount.id) {
             lastHandledAccountId = createdAccount.id
             onAccountCreated(createdAccount)
+            showSubmittedDialog = true
         }
     }
 
@@ -237,6 +241,23 @@ fun CreateAccountScreen(
             }
 
             Spacer(modifier = Modifier.height(8.dp))
+        }
+
+        if (showSubmittedDialog) {
+            AlertDialog(
+                onDismissRequest = { showSubmittedDialog = false },
+                confirmButton = {
+                    Button(onClick = { showSubmittedDialog = false }) {
+                        Text("OK")
+                    }
+                },
+                title = {
+                    Text("Application Submitted!")
+                },
+                text = {
+                    Text("Your account is under review.")
+                }
+            )
         }
     }
 }

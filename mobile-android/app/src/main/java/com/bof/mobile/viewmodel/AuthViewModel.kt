@@ -15,6 +15,7 @@ data class AuthUiState(
     val email: String = "",
     val password: String = "",
     val confirmPassword: String = "",
+    val registrationAccountType: String = "Simple Access",
     val token: String? = null,
     val userId: Int? = null,
     val customerId: Int? = null,
@@ -35,6 +36,7 @@ class AuthViewModel(private val authRepository: AuthRepository) : ViewModel() {
     fun onEmailChanged(value: String) = _uiState.update { it.copy(email = value) }
     fun onPasswordChanged(value: String) = _uiState.update { it.copy(password = value) }
     fun onConfirmPasswordChanged(value: String) = _uiState.update { it.copy(confirmPassword = value) }
+    fun onRegistrationAccountTypeChanged(value: String) = _uiState.update { it.copy(registrationAccountType = value) }
 
     fun clearMessages() = _uiState.update { it.copy(errorMessage = null, registrationSuccessMessage = null) }
 
@@ -116,6 +118,7 @@ class AuthViewModel(private val authRepository: AuthRepository) : ViewModel() {
                     fullName = current.fullName,
                     mobile = current.mobile,
                     email = current.email,
+                    accountType = current.registrationAccountType,
                     password = current.password,
                     confirmPassword = current.confirmPassword
                 )
@@ -123,8 +126,14 @@ class AuthViewModel(private val authRepository: AuthRepository) : ViewModel() {
                 is ApiResult.Success -> {
                     _uiState.update {
                         it.copy(
+                            fullName = "",
+                            mobile = "",
+                            email = "",
+                            password = "",
+                            confirmPassword = "",
+                            registrationAccountType = "Simple Access",
                             isLoading = false,
-                            registrationSuccessMessage = result.data,
+                            registrationSuccessMessage = "Application Submitted!\nYour account is under review.",
                             errorMessage = null
                         )
                     }

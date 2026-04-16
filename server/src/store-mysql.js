@@ -1207,6 +1207,20 @@ async function loginUser({ email, mobile, username, password, ipAddress, userAge
     throw new Error("This account is not currently permitted to log in");
   }
 
+  const registrationStatus = String(customer.registrationStatus || "approved").toLowerCase();
+  if (registrationStatus !== "approved") {
+    await recordLoginAttempt({
+      userType: "customer",
+      userId: customer.id,
+      email: loginIdentifier,
+      success: false,
+      failureReason: `Registration ${registrationStatus}`,
+      ipAddress,
+      userAgent,
+    });
+    throw new Error("Your registration is pending admin approval");
+  }
+
   const valid = await verifyPasswordAndMigrateLegacy(customer, password);
   if (!valid) {
     const nextFailures = Number(customer.failedLoginAttempts || 0) + 1;

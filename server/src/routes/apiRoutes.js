@@ -950,8 +950,8 @@ router.post("/accounts", requireAuth, requireAdmin, asyncHandler(async (req, res
   if (!payload.type) {
     return res.status(400).json({ error: "type is required" });
   }
-  if (!["Simple Access", "Savings"].includes(payload.type)) {
-    return res.status(400).json({ error: "type must be Simple Access or Savings" });
+  if (!["Simple Access", "Savings", "Current"].includes(payload.type)) {
+    return res.status(400).json({ error: "type must be Simple Access, Current or Savings" });
   }
   if (providedAccountNumber && !/^\d{12}$/.test(providedAccountNumber)) {
     return res.status(400).json({ error: "Reenter 12 digit number" });
@@ -978,8 +978,8 @@ router.post("/accounts/request", requireAuth, asyncHandler(async (req, res) => {
   if (!payload.type) {
     return res.status(400).json({ error: "type is required" });
   }
-  if (!["Simple Access", "Savings"].includes(payload.type)) {
-    return res.status(400).json({ error: "type must be Simple Access or Savings" });
+  if (!["Simple Access", "Savings", "Current"].includes(payload.type)) {
+    return res.status(400).json({ error: "type must be Simple Access, Current or Savings" });
   }
 
   const authenticatedCustomerId = getAuthenticatedCustomerId(req);
@@ -1080,8 +1080,8 @@ router.patch("/admin/accounts/:id", asyncHandler(async (req, res) => {
   const payload = req.body || {};
   const updates = {};
   if (payload.type !== undefined) {
-    if (!["Simple Access", "Savings"].includes(payload.type)) {
-      return res.status(400).json({ error: "type must be Simple Access or Savings" });
+    if (!["Simple Access", "Savings", "Current"].includes(payload.type)) {
+      return res.status(400).json({ error: "type must be Simple Access, Current or Savings" });
     }
     updates.accountType = payload.type;
   }

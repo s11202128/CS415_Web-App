@@ -1,6 +1,7 @@
 package com.bof.mobile.ui.auth
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -11,16 +12,25 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
@@ -29,9 +39,12 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.bof.mobile.viewmodel.AuthViewModel
 
+private val REGISTRATION_ACCOUNT_TYPES = listOf("Simple Access", "Savings", "Current")
+
 @Composable
 fun RegisterScreen(viewModel: AuthViewModel, onBackToLogin: () -> Unit = {}) {
     val uiState by viewModel.uiState.collectAsState()
+    var accountTypeExpanded by remember { mutableStateOf(false) }
 
     Box(
         modifier = Modifier
@@ -105,6 +118,43 @@ fun RegisterScreen(viewModel: AuthViewModel, onBackToLogin: () -> Unit = {}) {
                         singleLine = true
                     )
 
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    Box(modifier = Modifier.fillMaxWidth()) {
+                        OutlinedTextField(
+                            value = uiState.registrationAccountType,
+                            onValueChange = {},
+                            readOnly = true,
+                            label = { Text("Account type") },
+                            trailingIcon = {
+                                Icon(
+                                    imageVector = Icons.Filled.KeyboardArrowDown,
+                                    contentDescription = null,
+                                    modifier = Modifier.clickable { accountTypeExpanded = true }
+                                )
+                            },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { accountTypeExpanded = true },
+                            singleLine = true
+                        )
+
+                        DropdownMenu(
+                            expanded = accountTypeExpanded,
+                            onDismissRequest = { accountTypeExpanded = false }
+                        ) {
+                            REGISTRATION_ACCOUNT_TYPES.forEach { type ->
+                                DropdownMenuItem(
+                                    text = { Text(type) },
+                                    onClick = {
+                                        viewModel.onRegistrationAccountTypeChanged(type)
+                                        accountTypeExpanded = false
+                                    }
+                                )
+                            }
+                        }
+                    }
+
                     Spacer(modifier = Modifier.height(12.dp))
                     Text("Security", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Spacer(modifier = Modifier.height(8.dp))
@@ -142,22 +192,6 @@ fun RegisterScreen(viewModel: AuthViewModel, onBackToLogin: () -> Unit = {}) {
                         }
                     }
 
-                    if (!uiState.registrationSuccessMessage.isNullOrBlank()) {
-                        Spacer(modifier = Modifier.height(12.dp))
-                        Card(
-                            modifier = Modifier.fillMaxWidth(),
-                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer),
-                            elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
-                        ) {
-                            Text(
-                                text = uiState.registrationSuccessMessage ?: "",
-                                color = MaterialTheme.colorScheme.onSecondaryContainer,
-                                modifier = Modifier.padding(10.dp),
-                                style = MaterialTheme.typography.bodySmall
-                            )
-                        }
-                    }
-
                     if (!uiState.errorMessage.isNullOrBlank()) {
                         Spacer(modifier = Modifier.height(12.dp))
                         Card(
@@ -187,6 +221,23 @@ fun RegisterScreen(viewModel: AuthViewModel, onBackToLogin: () -> Unit = {}) {
             }
 
             Spacer(modifier = Modifier.height(24.dp))
+        }
+
+        if (!uiState.registrationSuccessMessage.isNullOrBlank()) {
+            AlertDialog(
+                onDismissRequest = viewModel::clearMessages,
+                confirmButton = {
+                    Button(onClick = viewModel::clearMessages) {
+                        Text("OK")
+                    }
+                },
+                title = {
+                    Text("Application Submitted!")
+                },
+                text = {
+                    Text("Your account is under review.")
+                }
+            )
         }
     }
 }

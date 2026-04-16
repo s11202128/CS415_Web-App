@@ -44,6 +44,7 @@ class AuthRepository(private val apiService: ApiService) {
         fullName: String,
         mobile: String,
         email: String,
+        accountType: String,
         password: String,
         confirmPassword: String
     ): ApiResult<String> {
@@ -53,6 +54,7 @@ class AuthRepository(private val apiService: ApiService) {
                     fullName = fullName,
                     mobile = mobile,
                     email = email,
+                    accountType = accountType,
                     password = password,
                     confirmPassword = confirmPassword
                 )

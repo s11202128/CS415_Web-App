@@ -26,7 +26,7 @@ data class CreateAccountUiState(
     val createdAccount: AccountItem? = null
 )
 
-private val REQUESTABLE_ACCOUNT_TYPES = listOf("Simple Access", "Savings")
+private val REQUESTABLE_ACCOUNT_TYPES = listOf("Simple Access", "Savings", "Current")
 
 class CreateAccountViewModel(
     private val accountRepository: AccountRepository
@@ -112,7 +112,7 @@ class CreateAccountViewModel(
                     _uiState.update {
                         it.copy(
                             isSubmitting = false,
-                            successMessage = "Account request submitted. Status: ${result.data.status}.",
+                            successMessage = "Application Submitted!",
                             errorMessage = null,
                             generatedPin = result.data.accountPin ?: "Generated",
                                 generatedAccountNumber = result.data.accountNumber,

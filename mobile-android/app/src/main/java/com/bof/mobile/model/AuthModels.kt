@@ -20,6 +20,7 @@ data class RegisterRequest(
     val fullName: String,
     val mobile: String,
     val email: String,
+    val accountType: String? = null,
     val password: String,
     val confirmPassword: String
 )
