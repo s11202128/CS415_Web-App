@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material.icons.filled.CreditCard
 import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Settings
@@ -28,15 +29,16 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.FilterChip
-import androidx.compose.material3.FilterChipDefaults
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.clickable
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -48,22 +50,20 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.bof.mobile.R
 import com.bof.mobile.model.NotificationItem
 import com.bof.mobile.model.ProfileResponse
 import com.bof.mobile.viewmodel.DashboardViewModel
 import com.bof.mobile.viewmodel.FeatureViewModel
-
-private enum class DashboardTxFilter {
-    ALL,
-    CREDIT,
-    DEBIT
-}
 
 @Composable
 fun DashboardScreen(
@@ -88,7 +88,13 @@ fun DashboardScreen(
     var showBalance by remember { mutableStateOf(true) }
     var showNotifications by remember { mutableStateOf(false) }
     var showProfile by remember { mutableStateOf(false) }
-    var txFilter by remember { mutableStateOf(DashboardTxFilter.ALL) }
+    var showChangePin by remember { mutableStateOf(false) }
+    var oldPassword by remember { mutableStateOf("") }
+    var newPassword by remember { mutableStateOf("") }
+    var confirmNewPassword by remember { mutableStateOf("") }
+    var changePinMessage by remember { mutableStateOf<String?>(null) }
+    var showMenuDrawer by remember { mutableStateOf(false) }
+    var menuMessage by remember { mutableStateOf<String?>(null) }
 
     // Self-healing trigger: if dashboard wasn't loaded upstream, kick one load from here.
     LaunchedEffect(customerId, uiState.hasLoadedOnce, uiState.isLoading) {
@@ -172,13 +178,6 @@ fun DashboardScreen(
         val totalBalance = data.accounts.sumOf { it.balance }
         val firstAccount = data.accounts.firstOrNull()
         val accountNumberText = firstAccount?.accountNumber ?: "No account number"
-        val filteredTransactions = data.recentTransactions.filter { tx ->
-            when (txFilter) {
-                DashboardTxFilter.ALL -> true
-                DashboardTxFilter.CREDIT -> isCreditTransaction(tx.type, tx.description, tx.amount)
-                DashboardTxFilter.DEBIT -> !isCreditTransaction(tx.type, tx.description, tx.amount)
-            }
-        }
 
         LazyColumn(
             modifier = Modifier
@@ -218,8 +217,8 @@ fun DashboardScreen(
                     name = data.customer.fullName,
                     profile = featureUiState.profile,
                     notificationCount = featureUiState.notifications.size,
+                    onOpenMenu = { showMenuDrawer = true },
                     onOpenNotifications = { showNotifications = true },
-                    onOpenProfile = { showProfile = true },
                     onLogout = onLogout
                 )
             }
@@ -235,51 +234,14 @@ fun DashboardScreen(
 
             item {
                 ActionButtonsSection(
-                    onCreateAccount = onNavigateToCreateAccount,
                     onSendMoney = onNavigateToTransfers,
-                    onDeposit = onNavigateToDeposit,
-                    onWithdraw = onNavigateToWithdraw,
+                    onLoanFeature = onNavigateToFeatures,
                     onFunding = onNavigateToFunding,
-                    onBillPayment = onNavigateToBillPayment
+                    onBillPayment = onNavigateToBillPayment,
+                    onAccounts = onNavigateToAccounts,
+                    onStatements = onNavigateToStatement,
+                    onTransactionHistory = onNavigateToActivity
                 )
-            }
-
-            item {
-                TransactionHeader()
-            }
-
-            item {
-                TransactionFilterRow(selected = txFilter, onSelect = { txFilter = it })
-            }
-
-            if (filteredTransactions.isEmpty()) {
-                item {
-                    Card(
-                        modifier = Modifier.fillMaxWidth(),
-                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
-                    ) {
-                        Text(
-                            text = "No transactions for this filter",
-                            modifier = Modifier.padding(16.dp),
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                }
-            } else {
-                items(filteredTransactions.size) { idx ->
-                    TransactionItemRow(
-                        title = filteredTransactions[idx].description.ifBlank { filteredTransactions[idx].type },
-                        subtitle = filteredTransactions[idx].type,
-                        amount = filteredTransactions[idx].amount,
-                        isIncome = isCreditTransaction(
-                            filteredTransactions[idx].type,
-                            filteredTransactions[idx].description,
-                            filteredTransactions[idx].amount
-                        )
-                    )
-                }
             }
 
             item { Spacer(modifier = Modifier.height(6.dp)) }
@@ -310,6 +272,85 @@ fun DashboardScreen(
                 onDismiss = { showProfile = false }
             )
         }
+
+        if (showChangePin) {
+            ChangePinPanel(
+                oldPassword = oldPassword,
+                newPassword = newPassword,
+                confirmNewPassword = confirmNewPassword,
+                message = changePinMessage,
+                onOldPasswordChanged = {
+                    oldPassword = it
+                    changePinMessage = null
+                },
+                onNewPasswordChanged = {
+                    newPassword = it
+                    changePinMessage = null
+                },
+                onConfirmNewPasswordChanged = {
+                    confirmNewPassword = it
+                    changePinMessage = null
+                },
+                onSubmit = {
+                    when {
+                        oldPassword.isBlank() -> changePinMessage = "Enter your old password"
+                        newPassword.isBlank() -> changePinMessage = "Enter your new password"
+                        confirmNewPassword.isBlank() -> changePinMessage = "Confirm your new password"
+                        newPassword != confirmNewPassword -> changePinMessage = "New passwords do not match"
+                        else -> changePinMessage = "PIN updated successfully"
+                    }
+                },
+                onDismiss = {
+                    showChangePin = false
+                    oldPassword = ""
+                    newPassword = ""
+                    confirmNewPassword = ""
+                    changePinMessage = null
+                }
+            )
+        }
+
+        menuMessage?.let { message ->
+            AlertDialog(
+                onDismissRequest = { menuMessage = null },
+                title = { Text("Find Us") },
+                text = { Text(message) },
+                confirmButton = {
+                    TextButton(onClick = { menuMessage = null }) {
+                        Text("OK")
+                    }
+                }
+            )
+        }
+
+        if (showMenuDrawer) {
+            DashboardMenuDrawer(
+                accountName = data.customer.fullName,
+                accountNumber = accountNumberText,
+                lastLogin = featureUiState.profile?.lastLoginAt ?: "Not available",
+                onDismiss = { showMenuDrawer = false },
+                onMenuItemSelected = { label ->
+                    showMenuDrawer = false
+                    when (label) {
+                        "Home" -> Unit
+                        "My Contact Details" -> {
+                            featureViewModel.loadProfile(customerId)
+                            showProfile = true
+                        }
+                        "Change My PIN" -> {
+                            showChangePin = true
+                        }
+                        "Find Us" -> {
+                            menuMessage = "BRED Bank Fiji: Head Office in Suva, plus branches and ATMs across Fiji."
+                        }
+                        "Notification Setting" -> {
+                            featureViewModel.loadNotifications(customerId)
+                            showNotifications = true
+                        }
+                    }
+                }
+            )
+        }
     }
 }
 
@@ -318,8 +359,8 @@ private fun HeaderSection(
     name: String,
     profile: ProfileResponse?,
     notificationCount: Int,
+    onOpenMenu: () -> Unit,
     onOpenNotifications: () -> Unit,
-    onOpenProfile: () -> Unit,
     onLogout: () -> Unit
 ) {
     Row(
@@ -328,29 +369,7 @@ private fun HeaderSection(
         verticalAlignment = Alignment.CenterVertically
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Surface(
-                modifier = Modifier
-                    .size(46.dp),
-                shape = MaterialTheme.shapes.large,
-                color = MaterialTheme.colorScheme.secondaryContainer
-            ) {
-                Button(
-                    onClick = onOpenProfile,
-                    modifier = Modifier.fillMaxSize(),
-                    contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = MaterialTheme.colorScheme.secondaryContainer,
-                        contentColor = MaterialTheme.colorScheme.onSecondaryContainer
-                    ),
-                    elevation = ButtonDefaults.buttonElevation(defaultElevation = 0.dp)
-                ) {
-                    Image(
-                        painter = painterResource(id = R.drawable.app_image),
-                        contentDescription = "Profile",
-                        modifier = Modifier.size(22.dp)
-                    )
-                }
-            }
+            SmallIconActionButton(symbol = "☰", onClick = onOpenMenu)
             Spacer(modifier = Modifier.size(10.dp))
             Column {
                 Text(
@@ -370,7 +389,120 @@ private fun HeaderSection(
 
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             SmallIconActionButton(symbol = "🔔", badgeCount = notificationCount, onClick = onOpenNotifications)
-            SmallIconActionButton(symbol = "⎋", onClick = onLogout)
+            Button(
+                onClick = onLogout,
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = MaterialTheme.colorScheme.errorContainer,
+                    contentColor = MaterialTheme.colorScheme.onErrorContainer
+                ),
+                elevation = ButtonDefaults.buttonElevation(defaultElevation = 2.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.Logout,
+                    contentDescription = "Logout"
+                )
+                Spacer(modifier = Modifier.size(6.dp))
+                Text("Logout", fontWeight = FontWeight.SemiBold)
+            }
+        }
+    }
+}
+
+private data class DashboardMenuItem(
+    val label: String,
+    val icon: ImageVector,
+    val backgroundColor: Color
+)
+
+@Composable
+private fun DashboardMenuDrawer(
+    accountName: String,
+    accountNumber: String,
+    lastLogin: String,
+    onDismiss: () -> Unit,
+    onMenuItemSelected: (String) -> Unit
+) {
+    val menuItems = listOf(
+        DashboardMenuItem("Home", Icons.Filled.Timeline, Color(0xFFE0F2FE)),
+        DashboardMenuItem("My Contact Details", Icons.Filled.Description, Color(0xFFECFCCB)),
+        DashboardMenuItem("Change My PIN", Icons.Filled.Security, Color(0xFFFEE2E2)),
+        DashboardMenuItem("Find Us", Icons.Filled.CreditCard, Color(0xFFF3E8FF)),
+        DashboardMenuItem("Notification Setting", Icons.Filled.Settings, Color(0xFFFFF7ED))
+    )
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color.Black.copy(alpha = 0.35f))
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .clickable(onClick = onDismiss)
+        )
+
+        Card(
+            modifier = Modifier
+                .fillMaxWidth(0.75f)
+                .fillMaxSize(),
+            shape = MaterialTheme.shapes.extraLarge,
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+            elevation = CardDefaults.cardElevation(defaultElevation = 10.dp)
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Image(
+                        painter = painterResource(id = R.drawable.app_image),
+                        contentDescription = "Bank of Fiji logo",
+                        modifier = Modifier.size(40.dp)
+                    )
+                    Column {
+                        Text("Bank of Fiji", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                        Text("Digital Banking", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.55f)),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+                ) {
+                    Column(
+                        modifier = Modifier.padding(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Text("Account Name: $accountName", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+                        Text("Account Number: $accountNumber", style = MaterialTheme.typography.bodySmall)
+                        Text("Last Login: $lastLogin", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+
+                menuItems.forEach { item ->
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { onMenuItemSelected(item.label) },
+                        colors = CardDefaults.cardColors(containerColor = item.backgroundColor),
+                        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 12.dp, vertical = 11.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            Icon(imageVector = item.icon, contentDescription = item.label)
+                            Text(text = item.label, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
+                        }
+                    }
+                }
+            }
         }
     }
 }
@@ -502,239 +634,85 @@ private fun NotificationsPanel(
 }
 
 @Composable
-private fun SettingsPanel(
-    uiState: com.bof.mobile.viewmodel.FeatureUiState,
-    onFullNameChanged: (String) -> Unit,
-    onMobileChanged: (String) -> Unit,
-    onNationalIdChanged: (String) -> Unit,
-    onResidencyStatusChanged: (String) -> Unit,
-    onTinChanged: (String) -> Unit,
-    onUpdateProfile: () -> Unit,
-    onSendPasswordReset: () -> Unit,
+private fun ChangePinPanel(
+    oldPassword: String,
+    newPassword: String,
+    confirmNewPassword: String,
+    message: String?,
+    onOldPasswordChanged: (String) -> Unit,
+    onNewPasswordChanged: (String) -> Unit,
+    onConfirmNewPasswordChanged: (String) -> Unit,
+    onSubmit: () -> Unit,
     onDismiss: () -> Unit
 ) {
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color.Black.copy(alpha = 0.40f))
+            .background(Color.Black.copy(alpha = 0.35f))
             .padding(16.dp),
         contentAlignment = Alignment.Center
     ) {
         Card(
             modifier = Modifier.fillMaxWidth(),
-            shape = MaterialTheme.shapes.extraLarge,
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-            elevation = CardDefaults.cardElevation(defaultElevation = 14.dp)
+            elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
         ) {
-            Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .background(
-                            brush = Brush.linearGradient(
-                                listOf(
-                                    MaterialTheme.colorScheme.primary,
-                                    MaterialTheme.colorScheme.tertiary
-                                )
-                            )
-                        )
-                        .padding(20.dp)
-                ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Surface(
-                                shape = MaterialTheme.shapes.large,
-                                color = Color.White.copy(alpha = 0.18f),
-                                tonalElevation = 0.dp
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Filled.Settings,
-                                    contentDescription = null,
-                                    tint = Color.White,
-                                    modifier = Modifier.padding(10.dp)
-                                )
-                            }
-                            Spacer(modifier = Modifier.size(12.dp))
-                            Column {
-                                Text(
-                                    "Settings",
-                                    style = MaterialTheme.typography.titleLarge,
-                                    fontWeight = FontWeight.Bold,
-                                    color = Color.White
-                                )
-                                Text(
-                                    "Profile, security, and account preferences",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = Color.White.copy(alpha = 0.88f)
-                                )
-                            }
-                        }
-                        Button(
-                            onClick = onDismiss,
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = Color.White.copy(alpha = 0.16f),
-                                contentColor = Color.White
-                            )
-                        ) {
-                            Text("Close")
-                        }
-                    }
-                }
-
             Column(
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 0.dp),
-                verticalArrangement = Arrangement.spacedBy(16.dp)
+                modifier = Modifier.padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                Card(
+                Text("Change My PIN", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+
+                OutlinedTextField(
+                    value = oldPassword,
+                    onValueChange = onOldPasswordChanged,
+                    label = { Text("Enter old password") },
                     modifier = Modifier.fillMaxWidth(),
-                    shape = MaterialTheme.shapes.large,
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.30f)),
-                    elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
-                ) {
-                    Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Surface(
-                                shape = MaterialTheme.shapes.medium,
-                                color = MaterialTheme.colorScheme.primaryContainer
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Filled.Security,
-                                    contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.onPrimaryContainer,
-                                    modifier = Modifier.padding(8.dp)
-                                )
-                            }
-                            Spacer(modifier = Modifier.size(10.dp))
-                            Column {
-                                Text("Security overview", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                                Text("Verify status and account safety at a glance", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            }
-                        }
+                    visualTransformation = PasswordVisualTransformation(),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password)
+                )
 
-                        if (uiState.isLoading) {
-                            Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-                                CircularProgressIndicator()
-                            }
-                        }
+                OutlinedTextField(
+                    value = newPassword,
+                    onValueChange = onNewPasswordChanged,
+                    label = { Text("Enter new password") },
+                    modifier = Modifier.fillMaxWidth(),
+                    visualTransformation = PasswordVisualTransformation(),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password)
+                )
 
-                        if (!uiState.errorMessage.isNullOrBlank()) {
-                            Card(
-                                modifier = Modifier.fillMaxWidth(),
-                                shape = MaterialTheme.shapes.medium,
-                                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)
-                            ) {
-                                Text(
-                                    text = uiState.errorMessage,
-                                    modifier = Modifier.padding(12.dp),
-                                    color = MaterialTheme.colorScheme.onErrorContainer,
-                                    style = MaterialTheme.typography.bodySmall
-                                )
-                            }
-                        }
+                OutlinedTextField(
+                    value = confirmNewPassword,
+                    onValueChange = onConfirmNewPasswordChanged,
+                    label = { Text("Re-enter new password") },
+                    modifier = Modifier.fillMaxWidth(),
+                    visualTransformation = PasswordVisualTransformation(),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password)
+                )
 
-                        if (!uiState.successMessage.isNullOrBlank()) {
-                            Card(
-                                modifier = Modifier.fillMaxWidth(),
-                                shape = MaterialTheme.shapes.medium,
-                                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)
-                            ) {
-                                Text(
-                                    text = uiState.successMessage,
-                                    modifier = Modifier.padding(12.dp),
-                                    color = MaterialTheme.colorScheme.onSecondaryContainer,
-                                    style = MaterialTheme.typography.bodySmall
-                                )
-                            }
-                        }
-
-                        uiState.profile?.let { profile ->
-                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                                SettingsStatChip(label = "Email verified", value = if (profile.emailVerified) "Yes" else "No")
-                                SettingsStatChip(label = "Identity verified", value = if (profile.identityVerified) "Yes" else "No")
-                            }
-                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                                SettingsStatChip(label = "Failed logins", value = profile.failedLoginAttempts.toString())
-                                SettingsStatChip(label = "Registration", value = profile.registrationStatus)
-                            }
-                            if (!profile.lastLoginAt.isNullOrBlank()) {
-                                Text(
-                                    text = "Last login: ${profile.lastLoginAt}",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                            if (!profile.lockedUntil.isNullOrBlank()) {
-                                Text(
-                                    text = "Account locked until ${profile.lockedUntil}",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.error
-                                )
-                            }
-
-                            OutlinedButton(
-                                onClick = onSendPasswordReset,
-                                modifier = Modifier.fillMaxWidth(),
-                                enabled = profile.email.isNotBlank()
-                            ) {
-                                Text("Send password reset code")
-                            }
-                        }
-                    }
+                if (!message.isNullOrBlank()) {
+                    val isSuccess = message.contains("success", ignoreCase = true)
+                    Text(
+                        text = message,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = if (isSuccess) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error
+                    )
                 }
 
-                Card(
+                Row(
                     modifier = Modifier.fillMaxWidth(),
-                    shape = MaterialTheme.shapes.large,
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                    elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Surface(
-                                shape = MaterialTheme.shapes.medium,
-                                color = MaterialTheme.colorScheme.secondaryContainer
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Filled.CreditCard,
-                                    contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.onSecondaryContainer,
-                                    modifier = Modifier.padding(8.dp)
-                                )
-                            }
-                            Spacer(modifier = Modifier.size(10.dp))
-                            Column {
-                                Text("Profile details", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                                Text("Keep your banking identity current", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            }
-                        }
-
-                        SettingsField(value = uiState.fullName, label = "Full name", onValueChange = onFullNameChanged)
-                        SettingsField(value = uiState.mobile, label = "Mobile", onValueChange = onMobileChanged)
-                        SettingsField(value = uiState.nationalId, label = "National ID", onValueChange = onNationalIdChanged)
-                        SettingsField(value = uiState.residencyStatus, label = "Residency status", onValueChange = onResidencyStatusChanged)
-                        SettingsField(value = uiState.tin, label = "TIN", onValueChange = onTinChanged)
-
-                        Button(
-                            onClick = onUpdateProfile,
-                            modifier = Modifier.fillMaxWidth(),
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = MaterialTheme.colorScheme.primary,
-                                contentColor = MaterialTheme.colorScheme.onPrimary
-                            )
-                        ) {
-                            Text("Save changes")
-                        }
+                    OutlinedButton(onClick = onDismiss, modifier = Modifier.weight(1f)) {
+                        Text("Close")
+                    }
+                    Button(onClick = onSubmit, modifier = Modifier.weight(1f)) {
+                        Text("Update PIN")
                     }
                 }
             }
         }
     }
-}
-
 }
 
 @Composable
@@ -954,25 +932,26 @@ private fun BalanceCard(
 
 @Composable
 private fun ActionButtonsSection(
-    onCreateAccount: () -> Unit,
     onSendMoney: () -> Unit,
-    onDeposit: () -> Unit,
-    onWithdraw: () -> Unit,
+    onLoanFeature: () -> Unit,
     onFunding: () -> Unit,
-    onBillPayment: () -> Unit
+    onBillPayment: () -> Unit,
+    onAccounts: () -> Unit,
+    onStatements: () -> Unit,
+    onTransactionHistory: () -> Unit
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            ActionButtonCard("➕", "Create Account", onCreateAccount, Modifier.weight(1f))
+            ActionButtonCard("🏛", "Accounts", onAccounts, Modifier.weight(1f))
             ActionButtonCard("↗", "Transfer Money", onSendMoney, Modifier.weight(1f))
         }
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            ActionButtonCard("🏦", "Deposit", onDeposit, Modifier.weight(1f))
-            ActionButtonCard("💸", "Withdraw", onWithdraw, Modifier.weight(1f))
+            ActionButtonCard("🧾", "Bill Payment", onBillPayment, Modifier.weight(1f))
+            ActionButtonCard("📄", "Apply Loan", onLoanFeature, Modifier.weight(1f))
         }
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            ActionButtonCard("💼", "Funding", onFunding, Modifier.weight(1f))
-            ActionButtonCard("🧾", "Bill Payment", onBillPayment, Modifier.weight(1f))
+            ActionButtonCard("📑", "Statements", onStatements, Modifier.weight(1f))
+            ActionButtonCard("📜", "Transaction History", onTransactionHistory, Modifier.weight(1f))
         }
     }
 }
@@ -999,92 +978,6 @@ private fun ActionButtonCard(icon: String, label: String, onClick: () -> Unit, m
     }
 }
 
-@Composable
-private fun TransactionHeader() {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.Start,
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Text("Transaction History", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-    }
-}
-
-@Composable
-private fun TransactionFilterRow(selected: DashboardTxFilter, onSelect: (DashboardTxFilter) -> Unit) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(8.dp)
-    ) {
-        FilterChip(
-            selected = selected == DashboardTxFilter.ALL,
-            onClick = { onSelect(DashboardTxFilter.ALL) },
-            label = { Text("All") },
-            colors = FilterChipDefaults.filterChipColors(
-                selectedContainerColor = MaterialTheme.colorScheme.primaryContainer
-            )
-        )
-        FilterChip(
-            selected = selected == DashboardTxFilter.CREDIT,
-            onClick = { onSelect(DashboardTxFilter.CREDIT) },
-            label = { Text("Credit") },
-            colors = FilterChipDefaults.filterChipColors(
-                selectedContainerColor = MaterialTheme.colorScheme.primaryContainer
-            )
-        )
-        FilterChip(
-            selected = selected == DashboardTxFilter.DEBIT,
-            onClick = { onSelect(DashboardTxFilter.DEBIT) },
-            label = { Text("Debit") },
-            colors = FilterChipDefaults.filterChipColors(
-                selectedContainerColor = MaterialTheme.colorScheme.primaryContainer
-            )
-        )
-    }
-}
-
-@Composable
-private fun TransactionItemRow(title: String, subtitle: String, amount: Double, isIncome: Boolean) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(12.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Row(
-                modifier = Modifier.weight(1f),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Surface(
-                    modifier = Modifier.size(38.dp),
-                    shape = MaterialTheme.shapes.large,
-                    color = if (isIncome) Color(0xFFD9F8E6) else Color(0xFFFFE2E2)
-                ) {
-                    Box(contentAlignment = Alignment.Center) {
-                        Text(if (isIncome) "⬇" else "⬆")
-                    }
-                }
-                Spacer(modifier = Modifier.size(10.dp))
-                Column {
-                    Text(title, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold)
-                    Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-            }
-            Text(
-                text = if (isIncome) "+$${"%.2f".format(amount)}" else "-$${"%.2f".format(kotlin.math.abs(amount))}",
-                style = MaterialTheme.typography.bodyLarge,
-                color = if (isIncome) Color(0xFF1B8F47) else Color(0xFFC73737),
-                fontWeight = FontWeight.Bold
-            )
-        }
-    }
-}
 
 @Composable
 private fun DashboardFooter(
@@ -1136,32 +1029,6 @@ private fun RowScope.BottomNavItem(symbol: String? = null, icon: androidx.compos
             Text(label, style = MaterialTheme.typography.labelSmall)
         }
     }
-}
-
-private fun isCreditTransaction(type: String, description: String, amount: Double): Boolean {
-    val normalized = "${type.lowercase()} ${description.lowercase()}"
-    if (
-        normalized.contains("deposit") ||
-        normalized.contains("credit") ||
-        normalized.contains("income") ||
-        normalized.contains("salary") ||
-        normalized.contains("refund") ||
-        normalized.contains("cash in") ||
-        normalized.contains("transfer in") ||
-        normalized.contains("received") ||
-        normalized.contains("interest")
-    ) return true
-    if (
-        normalized.contains("withdraw") ||
-        normalized.contains("debit") ||
-        normalized.contains("expense") ||
-        normalized.contains("payment") ||
-        normalized.contains("bill") ||
-        normalized.contains("fee") ||
-        normalized.contains("transfer out") ||
-        normalized.contains("sent")
-    ) return false
-    return amount >= 0
 }
 
 @Composable

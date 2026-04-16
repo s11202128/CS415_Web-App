@@ -38,6 +38,12 @@ import androidx.compose.ui.unit.dp
 import com.bof.mobile.model.AccountItem
 import com.bof.mobile.ui.components.ScreenHeader
 import com.bof.mobile.viewmodel.AccountsViewModel
+import java.time.Instant
+import java.time.LocalDateTime
+import java.time.OffsetDateTime
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
+import java.util.Locale
 
 private enum class AccountsTab {
     OVERVIEW,
@@ -227,11 +233,12 @@ private fun OverviewTab(accounts: List<AccountItem>) {
                     ) {
                         Text("ID", modifier = Modifier.width(70.dp), fontWeight = FontWeight.Bold)
                         Text("Account Number", modifier = Modifier.width(170.dp), fontWeight = FontWeight.Bold)
-                        Text("Account Holder", modifier = Modifier.width(170.dp), fontWeight = FontWeight.Bold)
+                        Text("Account Name", modifier = Modifier.width(170.dp), fontWeight = FontWeight.Bold)
                         Text("PIN", modifier = Modifier.width(80.dp), fontWeight = FontWeight.Bold)
-                        Text("Type", modifier = Modifier.width(140.dp), fontWeight = FontWeight.Bold)
+                        Text("Account Type", modifier = Modifier.width(140.dp), fontWeight = FontWeight.Bold)
                         Text("Status", modifier = Modifier.width(130.dp), fontWeight = FontWeight.Bold)
                         Text("Balance", modifier = Modifier.width(120.dp), fontWeight = FontWeight.Bold)
+                        Text("Updated Time", modifier = Modifier.width(170.dp), fontWeight = FontWeight.Bold)
                         Text("Charge", modifier = Modifier.width(120.dp), fontWeight = FontWeight.Bold)
                     }
 
@@ -248,6 +255,7 @@ private fun OverviewTab(accounts: List<AccountItem>) {
                             Text(account.type, modifier = Modifier.width(140.dp), style = MaterialTheme.typography.bodyMedium)
                             Text(account.status, modifier = Modifier.width(130.dp), style = MaterialTheme.typography.bodyMedium)
                             Text("FJD ${"%.2f".format(account.balance)}", modifier = Modifier.width(120.dp), style = MaterialTheme.typography.bodyMedium)
+                            Text(formatAccountUpdatedTime(account.createdAt), modifier = Modifier.width(170.dp), style = MaterialTheme.typography.bodyMedium)
                             Text("FJD ${"%.2f".format(account.maintenanceFee)}", modifier = Modifier.width(120.dp), style = MaterialTheme.typography.bodyMedium)
                         }
                     }
@@ -297,18 +305,28 @@ private fun CreateTab(
             ) {
                 Column(modifier = Modifier.padding(12.dp)) {
                     Text(
-                        text = account.type.ifBlank { "Account" },
+                        text = "Account Name: ${account.accountHolder.ifBlank { "N/A" }}",
                         style = MaterialTheme.typography.labelLarge,
                         color = MaterialTheme.colorScheme.primary
                     )
                     Spacer(modifier = Modifier.height(2.dp))
                     Text(
-                        text = "FJD ${"%.2f".format(account.balance)}",
+                        text = "Account Type: ${account.type.ifBlank { "Account" }}",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Text(
+                        text = "Balance: FJD ${"%.2f".format(account.balance)}",
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.SemiBold
                     )
                     Text(
                         text = maskAccountNumber(account.accountNumber),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Text(
+                        text = "Updated: ${formatAccountUpdatedTime(account.createdAt)}",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -377,6 +395,24 @@ private fun CreateTab(
 private fun maskAccountNumber(accountNumber: String): String {
     val suffix = accountNumber.takeLast(4)
     return if (suffix.isBlank()) "...." else ".... $suffix"
+}
+
+private fun formatAccountUpdatedTime(raw: String?): String {
+    val value = raw?.trim().orEmpty()
+    if (value.isBlank()) return "N/A"
+
+    val outputFormatter = DateTimeFormatter.ofPattern("dd MMM yyyy, hh:mm a", Locale.ENGLISH)
+    val zone = ZoneId.systemDefault()
+
+    val parsed = runCatching {
+        Instant.parse(value).atZone(zone).format(outputFormatter)
+    }.recoverCatching {
+        OffsetDateTime.parse(value).atZoneSameInstant(zone).format(outputFormatter)
+    }.recoverCatching {
+        LocalDateTime.parse(value).atZone(zone).format(outputFormatter)
+    }.getOrNull()
+
+    return parsed ?: value
 }
 
 @Composable

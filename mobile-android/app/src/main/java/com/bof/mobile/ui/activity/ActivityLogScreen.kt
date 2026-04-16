@@ -1,7 +1,6 @@
 package com.bof.mobile.ui.activity
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -9,15 +8,12 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -25,10 +21,20 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.bof.mobile.model.BankStatementTransaction
 import com.bof.mobile.ui.components.ScreenHeader
 import com.bof.mobile.viewmodel.FeatureViewModel
+import java.time.Instant
+import java.time.LocalDateTime
+import java.time.OffsetDateTime
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
+import java.util.Locale
 
 @Composable
 fun ActivityLogScreen(
@@ -38,10 +44,28 @@ fun ActivityLogScreen(
     onBack: () -> Unit
 ) {
     val uiState by viewModel.uiState.collectAsState()
+    val transactions = uiState.statementTransactions.sortedByDescending { it.date }
 
     LaunchedEffect(customerId) {
         viewModel.initialize(customerId)
-        viewModel.loadActivityLogs()
+        viewModel.loadCustomerAccounts()
+        viewModel.initializeStatementDateDefaults()
+    }
+
+    LaunchedEffect(
+        uiState.customerAccountsLoaded,
+        uiState.statementAccountId,
+        uiState.statementFromDate,
+        uiState.statementToDate
+    ) {
+        if (
+            uiState.customerAccountsLoaded &&
+            uiState.statementAccountId.isNotBlank() &&
+            uiState.statementFromDate.isNotBlank() &&
+            uiState.statementToDate.isNotBlank()
+        ) {
+            viewModel.loadBankStatement()
+        }
     }
 
     Column(
@@ -52,8 +76,8 @@ fun ActivityLogScreen(
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         ScreenHeader(
-            title = "Activity Log",
-            subtitle = "All your account activities in one organized table.",
+            title = "Transaction History",
+            subtitle = "Your account transactions with separate credit and debit columns.",
             onBack = onBack,
             enabled = canGoBack
         )
@@ -76,19 +100,18 @@ fun ActivityLogScreen(
             }
         }
 
-        if (!uiState.isLoading && uiState.activityLogs.isEmpty()) {
+        if (!uiState.isLoading && transactions.isEmpty()) {
             Card(
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
             ) {
                 Text(
-                    text = "No activity recorded yet",
+                    text = "No transactions found for the selected period",
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(12.dp)
                 )
             }
         }
 
-        val tableScrollState = rememberScrollState()
         Card(
             modifier = Modifier.fillMaxWidth(),
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
@@ -97,7 +120,6 @@ fun ActivityLogScreen(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .horizontalScroll(tableScrollState)
             ) {
                 Row(
                     modifier = Modifier
@@ -105,15 +127,21 @@ fun ActivityLogScreen(
                         .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.45f))
                         .padding(vertical = 10.dp)
                 ) {
-                    Text("Time", modifier = Modifier.width(180.dp).padding(horizontal = 10.dp), fontWeight = FontWeight.Bold)
-                    Text("Type", modifier = Modifier.width(170.dp).padding(horizontal = 10.dp), fontWeight = FontWeight.Bold)
-                    Text("Description", modifier = Modifier.width(320.dp).padding(horizontal = 10.dp), fontWeight = FontWeight.Bold)
-                    Text("Status", modifier = Modifier.width(120.dp).padding(horizontal = 10.dp), fontWeight = FontWeight.Bold)
+                    Text("Date", modifier = Modifier.weight(1.4f).padding(horizontal = 8.dp), fontWeight = FontWeight.Bold, maxLines = 1)
+                    Text("Description", modifier = Modifier.weight(1.5f).padding(horizontal = 8.dp), fontWeight = FontWeight.Bold, maxLines = 1)
+                    Text("Amount", modifier = Modifier.weight(1.3f).padding(horizontal = 8.dp), fontWeight = FontWeight.Bold, maxLines = 1, textAlign = TextAlign.End)
+                    Text("Credit", modifier = Modifier.weight(1.1f).padding(horizontal = 8.dp), fontWeight = FontWeight.Bold, maxLines = 1, textAlign = TextAlign.End)
+                    Text("Debit", modifier = Modifier.weight(1.1f).padding(horizontal = 8.dp), fontWeight = FontWeight.Bold, maxLines = 1, textAlign = TextAlign.End)
+                    Text("Balance", modifier = Modifier.weight(1.2f).padding(horizontal = 8.dp), fontWeight = FontWeight.Bold, maxLines = 1, textAlign = TextAlign.End)
                 }
 
                 LazyColumn(verticalArrangement = Arrangement.spacedBy(0.dp)) {
-                    items(uiState.activityLogs.size) { index ->
-                        val item = uiState.activityLogs[index]
+                    itemsIndexed(items = transactions, key = { _, item -> item.id }) { index, item ->
+                        val direction = resolveTransactionDirection(item)
+                        val isCredit = direction == TransactionDirection.CREDIT
+                        val isDebit = direction == TransactionDirection.DEBIT
+                        val creditAmount = if (isCredit) item.amount else 0.0
+                        val debitAmount = if (isDebit) item.amount else 0.0
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -125,46 +153,112 @@ fun ActivityLogScreen(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Text(
-                                item.timestamp,
-                                modifier = Modifier.width(180.dp).padding(horizontal = 10.dp),
+                                formatTransactionDate(item.date),
+                                modifier = Modifier.weight(1.4f).padding(horizontal = 8.dp),
                                 style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                            Text(
-                                item.activity_type,
-                                modifier = Modifier.width(170.dp).padding(horizontal = 10.dp),
-                                style = MaterialTheme.typography.bodyMedium,
-                                fontWeight = FontWeight.SemiBold
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
                             )
                             Text(
                                 item.description,
-                                modifier = Modifier.width(320.dp).padding(horizontal = 10.dp),
-                                style = MaterialTheme.typography.bodyMedium
+                                modifier = Modifier.weight(1.5f).padding(horizontal = 8.dp),
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.SemiBold,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
                             )
-                            Surface(
-                                modifier = Modifier.width(120.dp).padding(horizontal = 8.dp),
-                                shape = MaterialTheme.shapes.small,
-                                color = if (item.status.equals("success", ignoreCase = true)) {
-                                    MaterialTheme.colorScheme.tertiaryContainer
-                                } else {
-                                    MaterialTheme.colorScheme.errorContainer
-                                }
-                            ) {
-                                Text(
-                                    item.status,
-                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-                                    style = MaterialTheme.typography.labelLarge,
-                                    color = if (item.status.equals("success", ignoreCase = true)) {
-                                        MaterialTheme.colorScheme.onTertiaryContainer
-                                    } else {
-                                        MaterialTheme.colorScheme.onErrorContainer
-                                    }
-                                )
-                            }
+                            Text(
+                                formatAmount(item.amount),
+                                modifier = Modifier.weight(1.3f).padding(horizontal = 8.dp),
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurface,
+                                fontWeight = FontWeight.Bold,
+                                maxLines = 1,
+                                textAlign = TextAlign.End
+                            )
+                            Text(
+                                formatAmount(creditAmount),
+                                modifier = Modifier.weight(1.1f).padding(horizontal = 8.dp),
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = if (isCredit) CreditAmountColor else MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1,
+                                textAlign = TextAlign.End
+                            )
+                            Text(
+                                formatAmount(debitAmount),
+                                modifier = Modifier.weight(1.1f).padding(horizontal = 8.dp),
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = if (isDebit) DebitAmountColor else MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1,
+                                textAlign = TextAlign.End
+                            )
+                            Text(
+                                formatBalanceAmount(item.balance),
+                                modifier = Modifier.weight(1.2f).padding(horizontal = 8.dp),
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurface,
+                                maxLines = 1,
+                                textAlign = TextAlign.End
+                            )
                         }
                     }
                 }
             }
         }
     }
+}
+
+private enum class TransactionDirection {
+    CREDIT,
+    DEBIT
+}
+
+private val CreditAmountColor = Color(0xFF2E7D32)
+private val DebitAmountColor = Color(0xFFC62828)
+
+private fun resolveTransactionDirection(item: BankStatementTransaction): TransactionDirection {
+    val normalized = "${item.transactionType} ${item.description}".lowercase()
+    return when {
+        normalized.contains("debit") ||
+            normalized.contains("withdraw") ||
+            normalized.contains("transfer out") ||
+            normalized.contains("transfer_out") ||
+            normalized.contains("bill") ||
+            normalized.contains("payment") ||
+            normalized.contains("fee") -> TransactionDirection.DEBIT
+        normalized.contains("credit") ||
+            normalized.contains("deposit") ||
+            normalized.contains("refund") ||
+            normalized.contains("interest") ||
+            normalized.contains("transfer in") ||
+            normalized.contains("transfer_in") ||
+            normalized.contains("incoming") -> TransactionDirection.CREDIT
+        item.amount < 0 -> TransactionDirection.DEBIT
+        else -> TransactionDirection.CREDIT
+    }
+}
+
+private fun formatAmount(value: Double): String {
+    return "$${"%.2f".format(value)}"
+}
+
+private fun formatBalanceAmount(value: Double): String {
+    val prefix = if (value < 0) "-" else ""
+    return "$prefix${formatAmount(kotlin.math.abs(value))}"
+}
+
+private fun formatTransactionDate(rawDate: String): String {
+    val fijiZone = ZoneId.of("Pacific/Fiji")
+    val outputFormatter = DateTimeFormatter.ofPattern("dd MMM, hh:mm a", Locale.ENGLISH)
+
+    val parsed = runCatching {
+        Instant.parse(rawDate).atZone(fijiZone).format(outputFormatter)
+    }.recoverCatching {
+        OffsetDateTime.parse(rawDate).atZoneSameInstant(fijiZone).format(outputFormatter)
+    }.recoverCatching {
+        LocalDateTime.parse(rawDate).atZone(fijiZone).format(outputFormatter)
+    }.getOrNull()
+
+    return parsed ?: rawDate
 }

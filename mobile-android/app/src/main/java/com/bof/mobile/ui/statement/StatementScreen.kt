@@ -71,6 +71,7 @@ fun StatementScreen(
         viewModel.initialize(customerId)
         viewModel.loadCustomerAccounts()
         viewModel.initializeStatementDateDefaults()
+        viewModel.loadInvestments(customerId)
     }
 
     Box(
@@ -264,6 +265,69 @@ fun StatementScreen(
                                 style = MaterialTheme.typography.bodySmall
                             )
                             Spacer(modifier = Modifier.height(4.dp))
+                        }
+                    }
+                }
+            }
+
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                elevation = CardDefaults.cardElevation(defaultElevation = 3.dp)
+            ) {
+                Column(
+                    modifier = Modifier.padding(14.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Text("Investments", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+
+                    OutlinedTextField(
+                        value = uiState.investmentType,
+                        onValueChange = viewModel::onInvestmentTypeChanged,
+                        label = { Text("Investment type") },
+                        enabled = !uiState.isLoading,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    OutlinedTextField(
+                        value = uiState.investmentAmount,
+                        onValueChange = viewModel::onInvestmentAmountChanged,
+                        label = { Text("Amount") },
+                        enabled = !uiState.isLoading,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    OutlinedTextField(
+                        value = uiState.investmentExpectedReturn,
+                        onValueChange = viewModel::onInvestmentExpectedReturnChanged,
+                        label = { Text("Expected return (%)") },
+                        enabled = !uiState.isLoading,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    OutlinedTextField(
+                        value = uiState.investmentMaturityDate,
+                        onValueChange = viewModel::onInvestmentMaturityDateChanged,
+                        label = { Text("Maturity date (YYYY-MM-DD)") },
+                        enabled = !uiState.isLoading,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+
+                    androidx.compose.foundation.layout.Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Button(onClick = viewModel::createInvestment, modifier = Modifier.weight(1f), enabled = !uiState.isLoading) {
+                            Text("Create Investment")
+                        }
+                        OutlinedButton(onClick = { viewModel.loadInvestments(customerId) }, modifier = Modifier.weight(1f), enabled = !uiState.isLoading) {
+                            Text("Refresh")
+                        }
+                    }
+
+                    if (uiState.investments.isEmpty()) {
+                        Text("No investments available yet", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    } else {
+                        uiState.investments.take(3).forEach { investment ->
+                            Text(
+                                "${investment.investmentType} • FJD ${"%.2f".format(investment.amount)} • ${investment.status}",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
                         }
                     }
                 }

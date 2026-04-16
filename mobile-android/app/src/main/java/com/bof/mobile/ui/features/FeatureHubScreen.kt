@@ -54,7 +54,6 @@ fun FeatureHubScreen(viewModel: FeatureViewModel, customerId: Int, canGoBack: Bo
         viewModel.initialize(customerId)
         viewModel.loadLoanProducts()
         viewModel.loadLoanApplications()
-        viewModel.loadInvestments()
     }
 
     Box(
@@ -79,7 +78,7 @@ fun FeatureHubScreen(viewModel: FeatureViewModel, customerId: Int, canGoBack: Bo
         ) {
             ScreenHeader(
                 title = "More Features",
-                subtitle = "Manage profile, statements, interest, and account services in one place.",
+                subtitle = "Apply for loans and manage account services in one place.",
                 onBack = onBack,
                 enabled = canGoBack
             )
@@ -106,21 +105,6 @@ fun FeatureHubScreen(viewModel: FeatureViewModel, customerId: Int, canGoBack: Bo
                     containerColor = MaterialTheme.colorScheme.secondaryContainer,
                     textColor = MaterialTheme.colorScheme.onSecondaryContainer
                 )
-            }
-
-            FeaturePanel("Interest Summaries") {
-                OutlinedTextField(
-                    value = uiState.selectedYear,
-                    onValueChange = viewModel::onSelectedYearChanged,
-                    label = { Text("Year") },
-                    modifier = Modifier.fillMaxWidth()
-                )
-                OutlinedButton(onClick = viewModel::loadInterestSummaries, modifier = Modifier.fillMaxWidth()) {
-                    Text("Load interest summaries")
-                }
-                uiState.interestSummaries.take(3).forEach { row ->
-                    Text("${row.year} Net ${"%.2f".format(row.netInterest)} (${row.status})")
-                }
             }
 
             FeaturePanel("Loan Application") {
@@ -217,83 +201,6 @@ fun FeatureHubScreen(viewModel: FeatureViewModel, customerId: Int, canGoBack: Bo
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
-                }
-            }
-
-            FeaturePanel("Investments") {
-                OutlinedTextField(
-                    value = uiState.investmentType,
-                    onValueChange = viewModel::onInvestmentTypeChanged,
-                    label = { Text("Investment type") },
-                    modifier = Modifier.fillMaxWidth()
-                )
-                OutlinedTextField(
-                    value = uiState.investmentAmount,
-                    onValueChange = viewModel::onInvestmentAmountChanged,
-                    label = { Text("Amount") },
-                    modifier = Modifier.fillMaxWidth()
-                )
-                OutlinedTextField(
-                    value = uiState.investmentExpectedReturn,
-                    onValueChange = viewModel::onInvestmentExpectedReturnChanged,
-                    label = { Text("Expected return (%)") },
-                    modifier = Modifier.fillMaxWidth()
-                )
-                OutlinedTextField(
-                    value = uiState.investmentMaturityDate,
-                    onValueChange = viewModel::onInvestmentMaturityDateChanged,
-                    label = { Text("Maturity date (YYYY-MM-DD)") },
-                    modifier = Modifier.fillMaxWidth()
-                )
-
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Button(onClick = viewModel::createInvestment, modifier = Modifier.weight(1f)) {
-                        Text("Create Investment")
-                    }
-                    OutlinedButton(onClick = { viewModel.loadInvestments(customerId) }, modifier = Modifier.weight(1f)) {
-                        Text("Refresh")
-                    }
-                }
-
-                uiState.investments.take(3).forEach { investment ->
-                    Text(
-                        "${investment.investmentType} • FJD ${"%.2f".format(investment.amount)} • ${investment.status}",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-            }
-
-            FeaturePanel("Password Reset") {
-                OutlinedTextField(
-                    value = uiState.resetEmail,
-                    onValueChange = viewModel::onResetEmailChanged,
-                    label = { Text("Email") },
-                    modifier = Modifier.fillMaxWidth()
-                )
-                OutlinedButton(onClick = viewModel::forgotPassword, modifier = Modifier.fillMaxWidth()) {
-                    Text("Send reset code")
-                }
-                OutlinedTextField(
-                    value = uiState.resetId,
-                    onValueChange = viewModel::onResetIdChanged,
-                    label = { Text("Reset ID") },
-                    modifier = Modifier.fillMaxWidth()
-                )
-                OutlinedTextField(
-                    value = uiState.resetOtp,
-                    onValueChange = viewModel::onResetOtpChanged,
-                    label = { Text("OTP") },
-                    modifier = Modifier.fillMaxWidth()
-                )
-                OutlinedTextField(
-                    value = uiState.newPassword,
-                    onValueChange = viewModel::onNewPasswordChanged,
-                    label = { Text("New Password") },
-                    modifier = Modifier.fillMaxWidth()
-                )
-                Button(onClick = viewModel::resetPassword, modifier = Modifier.fillMaxWidth()) {
-                    Text("Complete password reset")
                 }
             }
 
