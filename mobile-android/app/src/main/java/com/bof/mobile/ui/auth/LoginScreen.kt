@@ -1,5 +1,6 @@
 package com.bof.mobile.ui.auth
 
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -23,8 +24,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.bof.mobile.R
 import com.bof.mobile.viewmodel.AuthViewModel
 
 @Composable
@@ -52,6 +55,12 @@ fun LoginScreen(viewModel: AuthViewModel, onOpenRegister: () -> Unit = {}) {
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             // Logo/Brand section
+            Image(
+                painter = painterResource(id = R.drawable.app_image),
+                contentDescription = "Bank of Fiji symbol",
+                modifier = Modifier.height(74.dp)
+            )
+            Spacer(modifier = Modifier.height(10.dp))
             Text(text = "Bank of Fiji", style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Bold)
             Text(text = "Secure Banking", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Spacer(modifier = Modifier.height(24.dp))
