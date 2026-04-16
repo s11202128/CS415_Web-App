@@ -293,6 +293,30 @@ const initializeDatabase = async () => {
         defaultValue: false,
       });
     }
+    if (!customerColumns.is_verified) {
+      await safeAddColumn(queryInterface, "customers", "is_verified", {
+        type: DataTypes.BOOLEAN,
+        allowNull: true,
+        defaultValue: false,
+      });
+      await sequelize.query(`
+        UPDATE customers
+        SET is_verified = COALESCE(emailVerified, 0)
+        WHERE is_verified IS NULL
+      `);
+    }
+    if (!customerColumns.verification_token) {
+      await safeAddColumn(queryInterface, "customers", "verification_token", {
+        type: DataTypes.STRING,
+        allowNull: true,
+      });
+    }
+    if (!customerColumns.verification_token_expires) {
+      await safeAddColumn(queryInterface, "customers", "verification_token_expires", {
+        type: DataTypes.DATE,
+        allowNull: true,
+      });
+    }
     if (!customerColumns.failedLoginAttempts) {
       await safeAddColumn(queryInterface, "customers", "failedLoginAttempts", {
         type: DataTypes.INTEGER,

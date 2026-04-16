@@ -1,39 +1,39 @@
 package com.bof.mobile.ui.billpayment
-
 import android.app.DatePickerDialog
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.ExposedDropdownMenuBox
-import androidx.compose.material3.ExposedDropdownMenuDefaults
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Tab
 import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -50,17 +50,36 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import com.bof.mobile.model.BillHistoryItem
 import com.bof.mobile.model.BillPaymentRequest
-import com.bof.mobile.model.AccountItem
+import com.bof.mobile.model.ScheduledBillItem
 import com.bof.mobile.ui.components.ScreenHeader
 import com.bof.mobile.viewmodel.FeatureViewModel
 import java.time.LocalDate
-import java.time.format.DateTimeFormatter
+import java.time.LocalDateTime
+import java.time.LocalTime
+import java.util.Calendar
 
 private val CardCorner = RoundedCornerShape(24.dp)
 private val SectionHeaderColors = Brush.horizontalGradient(
     listOf(Color(0xFF1565C0), Color(0xFF1E88E5))
 )
+private const val DefaultBillType = "Utilities"
+private const val DefaultPaymentMethod = "Account Balance"
+private const val MinBillAmount = 0.01
+private const val MaxBillAmount = 10000.0
+private const val DigicelBiller = "Digicel Fiji"
+private const val EnergyFijiBiller = "Energy Fiji"
+private const val EnergyFijiService = "Electricity"
+private const val HousingAuthorityBiller = "Housing Authority"
+private const val HousingAuthorityService = "Housing Services"
+private const val TelecomFijiBiller = "Telecom Fiji"
+private const val VodafoneFijiBiller = "Vodafone"
+private const val WaterAuthorityBiller = "Water Authority"
+private const val WaterAuthorityService = "Water Service"
+private const val RequiredAccountNumberLength = 10
+private const val ScheduleMode = "schedule"
+private const val RecurringMode = "recurring"
 
 @Composable
 fun BillPaymentScreen(
@@ -70,35 +89,90 @@ fun BillPaymentScreen(
     onBack: () -> Unit
 ) {
     val uiState by viewModel.uiState.collectAsState()
-    val context = LocalContext.current
-    val dateFormatter = remember { DateTimeFormatter.ISO_LOCAL_DATE }
+    val billers = remember {
+        listOf(
+            DigicelBiller,
+            "Energy Fiji",
+            "Housing Authority",
+            "Telecom Fiji",
+            "Vodafone",
+            "Water Authority"
+        )
+    }
+    val digicelServices = remember {
+        listOf("Sky Pacific Payment", "Digicel Phone Service")
+    }
+    val telecomServices = remember {
+        listOf("Phone Landline", "Internet Services")
+    }
+    val vodafoneServices = remember {
+        listOf("Internet Services", "Mobile Service")
+    }
+    val recurrenceOptions = remember { listOf("Daily", "Weekly", "Monthly") }
+
     var selectedTab by rememberSaveable { mutableStateOf(0) }
+    var searchQuery by rememberSaveable { mutableStateOf("") }
+    var selectedBiller by rememberSaveable { mutableStateOf<String?>(null) }
+    var selectedDigicelService by rememberSaveable { mutableStateOf<String?>(null) }
+    var selectedTelecomService by rememberSaveable { mutableStateOf<String?>(null) }
+    var selectedVodafoneService by rememberSaveable { mutableStateOf<String?>(null) }
+    var billAmount by rememberSaveable { mutableStateOf("") }
+    var serviceAccountNumber by rememberSaveable { mutableStateOf("") }
+    var receiptDate by rememberSaveable { mutableStateOf("") }
+    var selectedMode by rememberSaveable { mutableStateOf<String?>(null) }
+    var recurrenceOption by rememberSaveable { mutableStateOf("Monthly") }
+    var scheduledDate by rememberSaveable { mutableStateOf("") }
+    var scheduledHour by rememberSaveable { mutableStateOf("12") }
+    var scheduledMinute by rememberSaveable { mutableStateOf("00") }
+    var scheduledMeridiem by rememberSaveable { mutableStateOf("AM") }
+    var formError by rememberSaveable { mutableStateOf<String?>(null) }
+    var showPaymentSuccessDialog by rememberSaveable { mutableStateOf(false) }
+    var paymentSuccessMessage by rememberSaveable { mutableStateOf("Bill paid successfully") }
 
-    var manualPayeeName by rememberSaveable { mutableStateOf("") }
-    var manualBillAmount by rememberSaveable { mutableStateOf("") }
-    var manualBillType by rememberSaveable { mutableStateOf("") }
-    var manualPaymentMethod by rememberSaveable { mutableStateOf("") }
-    var manualNote by rememberSaveable { mutableStateOf("") }
-    var manualError by rememberSaveable { mutableStateOf<String?>(null) }
+    val clearBillForm = {
+        selectedBiller = null
+        selectedDigicelService = null
+        selectedTelecomService = null
+        selectedVodafoneService = null
+        billAmount = ""
+        serviceAccountNumber = ""
+        receiptDate = ""
+        selectedMode = null
+        recurrenceOption = "Monthly"
+        scheduledDate = ""
+        scheduledHour = "12"
+        scheduledMinute = "00"
+        scheduledMeridiem = "AM"
+        formError = null
+    }
 
-    var schedulePayeeName by rememberSaveable { mutableStateOf("") }
-    var scheduleBillAmount by rememberSaveable { mutableStateOf("") }
-    var scheduleBillType by rememberSaveable { mutableStateOf("") }
-    var schedulePaymentMethod by rememberSaveable { mutableStateOf("") }
-    var schedulePaymentDate by rememberSaveable { mutableStateOf(LocalDate.now().plusDays(1).format(dateFormatter)) }
-    var scheduleRepeat by rememberSaveable { mutableStateOf("") }
-    var scheduleNote by rememberSaveable { mutableStateOf("") }
-    var scheduleError by rememberSaveable { mutableStateOf<String?>(null) }
-
-    val billTypes = remember { listOf("Utilities", "Internet", "Rent", "Insurance", "Subscription", "Other") }
-    val paymentMethods = remember { listOf("Account Balance", "Debit Card", "Credit Card", "Bank Transfer") }
-    val repeatOptions = remember { listOf("One-time", "Daily", "Weekly", "Monthly") }
+    val filteredBillers = remember(searchQuery, billers) {
+        val normalizedQuery = searchQuery.trim()
+        if (normalizedQuery.isBlank()) {
+            billers
+        } else {
+            billers.filter { it.contains(normalizedQuery, ignoreCase = true) }
+        }
+    }
 
     LaunchedEffect(customerId) {
         viewModel.initialize(customerId)
         viewModel.loadAccounts()
-        viewModel.loadScheduledBills()
         viewModel.loadBillHistory()
+        viewModel.loadScheduledBills()
+    }
+
+    LaunchedEffect(uiState.successMessage) {
+        val success = uiState.successMessage.orEmpty()
+        if (
+            success.startsWith("Bill paid successfully") ||
+            success.startsWith("Bill scheduled successfully") ||
+            success.startsWith("Recurring bill scheduled successfully")
+        ) {
+            paymentSuccessMessage = success
+            showPaymentSuccessDialog = true
+            viewModel.clearMessages()
+        }
     }
 
     Box(
@@ -117,13 +191,12 @@ fun BillPaymentScreen(
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .verticalScroll(rememberScrollState())
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             ScreenHeader(
                 title = "Bill Payment",
-                subtitle = "Use the two form panels below to pay now or schedule later.",
+                subtitle = "Choose your biller or review your bill payment history.",
                 onBack = onBack,
                 enabled = canGoBack
             )
@@ -154,338 +227,643 @@ fun BillPaymentScreen(
                 Tab(
                     selected = selectedTab == 0,
                     onClick = { selectedTab = 0 },
-                    text = { Text("Manual Bill Payment") }
+                    text = { Text("Choose Your Biller") }
                 )
                 Tab(
                     selected = selectedTab == 1,
                     onClick = { selectedTab = 1 },
-                    text = { Text("Schedule Bill Payment") }
+                    text = { Text("Bill Payment History") }
+                )
+                Tab(
+                    selected = selectedTab == 2,
+                    onClick = { selectedTab = 2 },
+                    text = { Text("SCHEDULE BILLS") }
                 )
             }
 
             when (selectedTab) {
-                0 -> ManualBillPage(
-                    payeeName = manualPayeeName,
-                    billAmount = manualBillAmount,
-                    billType = manualBillType,
-                    paymentMethod = manualPaymentMethod,
-                    note = manualNote,
-                    billTypes = billTypes,
-                    paymentMethods = paymentMethods,
-                    accounts = uiState.accounts,
-                    selectedAccount = uiState.selectedAccount,
-                    isLoading = uiState.isLoading,
-                    errorText = manualError,
-                    onAccountSelected = viewModel::selectAccount,
-                    onPayeeNameChange = {
-                        manualPayeeName = it
-                        manualError = null
-                    },
-                    onBillAmountChange = {
-                        manualBillAmount = it
-                        manualError = null
-                    },
-                    onBillTypeChange = {
-                        manualBillType = it
-                        manualError = null
-                    },
-                    onPaymentMethodChange = {
-                        manualPaymentMethod = it
-                        manualError = null
-                    },
-                    onNoteChange = {
-                        manualNote = it
-                        manualError = null
-                    },
-                    onSubmit = {
-                        val validationError = validateBillForm(
-                            payeeName = manualPayeeName,
-                            accountNumber = uiState.selectedAccount?.accountNumber.orEmpty(),
-                            billAmount = manualBillAmount,
-                            billType = manualBillType,
-                            paymentMethod = manualPaymentMethod
-                        )
-                        if (validationError != null) {
-                            manualError = validationError
-                            return@ManualBillPage
-                        }
-                        val selectedAccount = uiState.selectedAccount
-                        if (selectedAccount == null) {
-                                        manualError = "Select a valid account number"
-                                        return@ManualBillPage
-                                    }
-                        viewModel.payBillManual(
-                            BillPaymentRequest(
-                                accountId = selectedAccount.id,
-                                accountNumber = selectedAccount.accountNumber,
-                                payee = manualPayeeName.trim(),
-                                amount = manualBillAmount.trim().toDouble(),
-                                billType = manualBillType,
-                                paymentMethod = manualPaymentMethod,
-                                note = manualNote.ifBlank { null }
+                0 -> Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    if (selectedBiller == null) {
+                        BillSectionCard(
+                            title = "Choose Biller",
+                            subtitle = "Search or tap a biller to open its payment options."
+                        ) {
+                            BillTextField(
+                                value = searchQuery,
+                                onValueChange = { searchQuery = it },
+                                label = "Search Biller",
+                                placeholder = "Search billers",
+                                enabled = !uiState.isLoading,
+                                keyboardType = KeyboardType.Text
                             )
-                        )
+
+                            if (filteredBillers.isEmpty()) {
+                                Text(
+                                    text = "No billers match your search.",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            } else {
+                                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                                    filteredBillers.forEach { biller ->
+                                        BillerListItem(
+                                            name = biller,
+                                            subtitle = "",
+                                            isSelected = false,
+                                            onClick = {
+                                                selectedBiller = biller
+                                                if (biller == DigicelBiller) {
+                                                    selectedDigicelService = null
+                                                }
+                                                if (biller == TelecomFijiBiller) {
+                                                    selectedTelecomService = null
+                                                }
+                                                if (biller == VodafoneFijiBiller) {
+                                                    selectedVodafoneService = null
+                                                }
+                                                billAmount = ""
+                                                serviceAccountNumber = ""
+                                                receiptDate = ""
+                                                selectedMode = null
+                                                recurrenceOption = "Monthly"
+                                                scheduledDate = ""
+                                                scheduledHour = "12"
+                                                scheduledMinute = "00"
+                                                scheduledMeridiem = "AM"
+                                                formError = null
+                                            }
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    } else {
+                        val openedBiller = selectedBiller!!
+                        BillSectionCard(
+                            title = openedBiller,
+                            subtitle = if (openedBiller == DigicelBiller) {
+                            "Choose a Digicel service to open its payment section."
+                        } else {
+                            "Enter the amount and account number for this biller."
+                        }
+                        ) {
+                            Button(
+                                onClick = {
+                                    selectedBiller = null
+                                    selectedDigicelService = null
+                                    selectedTelecomService = null
+                                    selectedVodafoneService = null
+                                    selectedMode = null
+                                    recurrenceOption = "Monthly"
+                                    scheduledDate = ""
+                                    scheduledHour = "12"
+                                    scheduledMinute = "00"
+                                    scheduledMeridiem = "AM"
+                                    formError = null
+                                },
+                                enabled = !uiState.isLoading,
+                                shape = RoundedCornerShape(14.dp)
+                            ) {
+                                Text("Back To Billers")
+                            }
+
+                            if (openedBiller == DigicelBiller && selectedDigicelService == null) {
+                                Text(
+                                    text = "Digicel Services",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                                    digicelServices.forEach { service ->
+                                        BillerListItem(
+                                            name = service,
+                                            subtitle = "",
+                                            isSelected = service == selectedDigicelService,
+                                            onClick = {
+                                                selectedDigicelService = service
+                                                selectedTelecomService = null
+                                                selectedVodafoneService = null
+                                                billAmount = ""
+                                                serviceAccountNumber = ""
+                                                receiptDate = ""
+                                                selectedMode = null
+                                                recurrenceOption = "Monthly"
+                                                scheduledDate = ""
+                                                scheduledHour = "12"
+                                                scheduledMinute = "00"
+                                                scheduledMeridiem = "AM"
+                                                formError = null
+                                            }
+                                        )
+                                    }
+                                }
+                                if (selectedDigicelService == null) {
+                                    Text(
+                                        text = "Select a Digicel service to continue to payment.",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+
+                            if (openedBiller == DigicelBiller && !selectedDigicelService.isNullOrBlank()) {
+                                Text(
+                                    text = "Selected Service: ${selectedDigicelService.orEmpty()}",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                                Button(
+                                    onClick = {
+                                        selectedDigicelService = null
+                                        selectedTelecomService = null
+                                        selectedVodafoneService = null
+                                        billAmount = ""
+                                        serviceAccountNumber = ""
+                                        receiptDate = ""
+                                        selectedMode = null
+                                        recurrenceOption = "Monthly"
+                                        scheduledDate = ""
+                                        scheduledHour = "12"
+                                        scheduledMinute = "00"
+                                        scheduledMeridiem = "AM"
+                                        formError = null
+                                    },
+                                    enabled = !uiState.isLoading,
+                                    shape = RoundedCornerShape(14.dp)
+                                ) {
+                                    Text("Change Service")
+                                }
+                            }
+
+                            if (openedBiller == TelecomFijiBiller && selectedTelecomService == null) {
+                                Text(
+                                    text = "Telecom Services",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                                    telecomServices.forEach { service ->
+                                        BillerListItem(
+                                            name = service,
+                                            subtitle = "",
+                                            isSelected = service == selectedTelecomService,
+                                            onClick = {
+                                                selectedTelecomService = service
+                                                selectedDigicelService = null
+                                                selectedVodafoneService = null
+                                                billAmount = ""
+                                                serviceAccountNumber = ""
+                                                receiptDate = ""
+                                                selectedMode = null
+                                                recurrenceOption = "Monthly"
+                                                scheduledDate = ""
+                                                scheduledHour = "12"
+                                                scheduledMinute = "00"
+                                                scheduledMeridiem = "AM"
+                                                formError = null
+                                            }
+                                        )
+                                    }
+                                }
+                                Text(
+                                    text = "Select a Telecom Fiji service to continue to payment.",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+
+                            if (openedBiller == TelecomFijiBiller && !selectedTelecomService.isNullOrBlank()) {
+                                Text(
+                                    text = "Selected Service: ${selectedTelecomService.orEmpty()}",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                                Button(
+                                    onClick = {
+                                        selectedTelecomService = null
+                                        selectedDigicelService = null
+                                        selectedVodafoneService = null
+                                        billAmount = ""
+                                        serviceAccountNumber = ""
+                                        receiptDate = ""
+                                        selectedMode = null
+                                        recurrenceOption = "Monthly"
+                                        scheduledDate = ""
+                                        scheduledHour = "12"
+                                        scheduledMinute = "00"
+                                        scheduledMeridiem = "AM"
+                                        formError = null
+                                    },
+                                    enabled = !uiState.isLoading,
+                                    shape = RoundedCornerShape(14.dp)
+                                ) {
+                                    Text("Change Service")
+                                }
+                            }
+
+                            if (openedBiller == VodafoneFijiBiller && selectedVodafoneService == null) {
+                                Text(
+                                    text = "Vodafone Fiji Services",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                                    vodafoneServices.forEach { service ->
+                                        BillerListItem(
+                                            name = service,
+                                            subtitle = "",
+                                            isSelected = service == selectedVodafoneService,
+                                            onClick = {
+                                                selectedVodafoneService = service
+                                                selectedDigicelService = null
+                                                selectedTelecomService = null
+                                                billAmount = ""
+                                                serviceAccountNumber = ""
+                                                receiptDate = ""
+                                                selectedMode = null
+                                                recurrenceOption = "Monthly"
+                                                scheduledDate = ""
+                                                scheduledHour = "12"
+                                                scheduledMinute = "00"
+                                                scheduledMeridiem = "AM"
+                                                formError = null
+                                            }
+                                        )
+                                    }
+                                }
+                                Text(
+                                    text = "Select a Vodafone Fiji service to continue to payment.",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+
+                            if (openedBiller == VodafoneFijiBiller && !selectedVodafoneService.isNullOrBlank()) {
+                                Text(
+                                    text = "Selected Service: ${selectedVodafoneService.orEmpty()}",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                                Button(
+                                    onClick = {
+                                        selectedVodafoneService = null
+                                        selectedDigicelService = null
+                                        selectedTelecomService = null
+                                        billAmount = ""
+                                        serviceAccountNumber = ""
+                                        receiptDate = ""
+                                        selectedMode = null
+                                        recurrenceOption = "Monthly"
+                                        scheduledDate = ""
+                                        scheduledHour = "12"
+                                        scheduledMinute = "00"
+                                        scheduledMeridiem = "AM"
+                                        formError = null
+                                    },
+                                    enabled = !uiState.isLoading,
+                                    shape = RoundedCornerShape(14.dp)
+                                ) {
+                                    Text("Change Service")
+                                }
+                            }
+
+                            if (openedBiller == EnergyFijiBiller) {
+                                Text(
+                                    text = "Service: $EnergyFijiService",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                            }
+
+                            if (openedBiller == HousingAuthorityBiller) {
+                                Text(
+                                    text = "Service: $HousingAuthorityService",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                            }
+
+                            if (openedBiller == WaterAuthorityBiller) {
+                                Text(
+                                    text = "Service: $WaterAuthorityService",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                            }
+
+                            val showPaymentSection = when (openedBiller) {
+                                DigicelBiller -> !selectedDigicelService.isNullOrBlank()
+                                TelecomFijiBiller -> !selectedTelecomService.isNullOrBlank()
+                                VodafoneFijiBiller -> !selectedVodafoneService.isNullOrBlank()
+                                else -> true
+                            }
+                            if (showPaymentSection) {
+                                val payeeLabel = resolvedPayee(
+                                    openedBiller,
+                                    selectedDigicelService,
+                                    selectedTelecomService,
+                                    selectedVodafoneService
+                                )
+
+                                BillTextField(
+                                    value = billAmount,
+                                    onValueChange = {
+                                        billAmount = it
+                                        formError = null
+                                    },
+                                    label = "Amount",
+                                    placeholder = "0.01 - 10000.00",
+                                    enabled = !uiState.isLoading,
+                                    keyboardType = KeyboardType.Decimal
+                                )
+                                BillTextField(
+                                    value = serviceAccountNumber,
+                                    onValueChange = {
+                                        serviceAccountNumber =
+                                            it.filter { char -> char.isDigit() }.take(RequiredAccountNumberLength)
+                                        formError = null
+                                    },
+                                    label = "Account Number",
+                                    placeholder = "Enter 10-digit account number",
+                                    enabled = !uiState.isLoading,
+                                    keyboardType = KeyboardType.Number
+                                )
+                                Text(
+                                    text = "Account number must be exactly 10 digits.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                ScheduleDatePickerField(
+                                    value = receiptDate,
+                                    enabled = !uiState.isLoading,
+                                    labelText = "Invoice Date",
+                                    emptyButtonText = "Pick invoice date",
+                                    onDateSelected = {
+                                        receiptDate = it
+                                        formError = null
+                                    }
+                                )
+
+                                formError?.takeIf { it.isNotBlank() }?.let {
+                                    Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium)
+                                }
+
+                                ScheduleModeToggle(
+                                    selectedMode = selectedMode,
+                                    onScheduleSelected = {
+                                        selectedMode = if (selectedMode == ScheduleMode) null else ScheduleMode
+                                        formError = null
+                                    },
+                                    onRecurringSelected = {
+                                        selectedMode = if (selectedMode == RecurringMode) null else RecurringMode
+                                        formError = null
+                                    }
+                                )
+
+                                if (selectedMode == RecurringMode) {
+                                    RecurrenceDropdown(
+                                        value = recurrenceOption,
+                                        options = recurrenceOptions,
+                                        enabled = !uiState.isLoading,
+                                        onValueSelected = {
+                                            recurrenceOption = it
+                                            formError = null
+                                        }
+                                    )
+                                }
+
+                                if (selectedMode == ScheduleMode || selectedMode == RecurringMode) {
+                                    ScheduleDatePickerField(
+                                        value = scheduledDate,
+                                        enabled = !uiState.isLoading,
+                                        onDateSelected = {
+                                            scheduledDate = it
+                                            formError = null
+                                        }
+                                    )
+
+                                    TimeDropdownPicker(
+                                        hour = scheduledHour,
+                                        minute = scheduledMinute,
+                                        meridiem = scheduledMeridiem,
+                                        enabled = !uiState.isLoading,
+                                        onHourSelected = {
+                                            scheduledHour = it
+                                            formError = null
+                                        },
+                                        onMinuteSelected = {
+                                            scheduledMinute = it
+                                            formError = null
+                                        },
+                                        onMeridiemSelected = {
+                                            scheduledMeridiem = it
+                                            formError = null
+                                        }
+                                    )
+                                }
+
+                                Button(
+                                    onClick = {
+                                        try {
+                                            val validationError = validateBillRequest(
+                                                amount = billAmount,
+                                                accountNumber = serviceAccountNumber,
+                                                receiptDate = receiptDate
+                                            )
+                                            val selectedAccount = uiState.selectedAccount ?: uiState.accounts.firstOrNull()
+                                            if (validationError != null) {
+                                                formError = validationError
+                                                return@Button
+                                            }
+                                            if (selectedAccount == null) {
+                                                formError = "No bank account available for bill payment"
+                                                return@Button
+                                            }
+
+                                            val amountValue = billAmount.trim().toDoubleOrNull()
+                                            if (amountValue == null) {
+                                                formError = "Enter a valid amount"
+                                                return@Button
+                                            }
+
+                                            val scheduleModeSelected = selectedMode == ScheduleMode || selectedMode == RecurringMode
+                                            if (!scheduleModeSelected) {
+                                                viewModel.payBillManual(
+                                                    BillPaymentRequest(
+                                                        accountId = selectedAccount.id,
+                                                        accountNumber = selectedAccount.accountNumber,
+                                                        payee = payeeLabel,
+                                                        amount = amountValue,
+                                                        billType = DefaultBillType,
+                                                        paymentMethod = DefaultPaymentMethod,
+                                                        note = buildBillNote(serviceAccountNumber, receiptDate)
+                                                    )
+                                                )
+                                                return@Button
+                                            }
+
+                                            val scheduledDateTime = buildScheduledDateTime(
+                                                dateInput = scheduledDate,
+                                                hourInput = scheduledHour,
+                                                minuteInput = scheduledMinute,
+                                                meridiemInput = scheduledMeridiem
+                                            )
+                                            if (scheduledDateTime == null) {
+                                                formError = "Select valid schedule date and time"
+                                                return@Button
+                                            }
+                                            if (scheduledDateTime.isBefore(LocalDateTime.now())) {
+                                                formError = "Schedule date/time must be in the future"
+                                                return@Button
+                                            }
+
+                                            viewModel.scheduleBill(
+                                                BillPaymentRequest(
+                                                    accountId = selectedAccount.id,
+                                                    accountNumber = selectedAccount.accountNumber,
+                                                    payee = payeeLabel,
+                                                    amount = amountValue,
+                                                    scheduledDate = scheduledDateTime.toString(),
+                                                    billType = DefaultBillType,
+                                                    paymentMethod = DefaultPaymentMethod,
+                                                    note = buildBillNote(serviceAccountNumber, receiptDate),
+                                                    repeat = if (selectedMode == RecurringMode) recurrenceOption else "One-time",
+                                                    paymentDate = scheduledDateTime.toString()
+                                                )
+                                            )
+                                        } catch (exception: Exception) {
+                                            formError = "Unable to process bill request. Please check your details and try again."
+                                        }
+                                    },
+                                    enabled = !uiState.isLoading,
+                                    modifier = Modifier.fillMaxWidth(),
+                                    shape = RoundedCornerShape(16.dp),
+                                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
+                                ) {
+                                    val buttonLabel = when (selectedMode) {
+                                        ScheduleMode -> "Schedule Bill"
+                                        RecurringMode -> "Set Recurring Bill"
+                                        else -> "Pay Now"
+                                    }
+                                    Text(buttonLabel)
+                                }
+                            }
+                        }
                     }
+                }
+
+                1 -> BillHistoryTab(
+                    historyItems = uiState.billHistory,
+                    isLoading = uiState.isLoading
                 )
 
-                1 -> ScheduleBillPage(
-                    payeeName = schedulePayeeName,
-                    billAmount = scheduleBillAmount,
-                    billType = scheduleBillType,
-                    paymentMethod = schedulePaymentMethod,
-                    paymentDate = schedulePaymentDate,
-                    repeat = scheduleRepeat,
-                    note = scheduleNote,
-                    billTypes = billTypes,
-                    paymentMethods = paymentMethods,
-                    repeatOptions = repeatOptions,
-                    accounts = uiState.accounts,
-                    selectedAccount = uiState.selectedAccount,
-                    isLoading = uiState.isLoading,
-                    errorText = scheduleError,
-                    onAccountSelected = viewModel::selectAccount,
-                    onPayeeNameChange = {
-                        schedulePayeeName = it
-                        scheduleError = null
-                    },
-                    onBillAmountChange = {
-                        scheduleBillAmount = it
-                        scheduleError = null
-                    },
-                    onBillTypeChange = {
-                        scheduleBillType = it
-                        scheduleError = null
-                    },
-                    onPaymentMethodChange = {
-                        schedulePaymentMethod = it
-                        scheduleError = null
-                    },
-                    onPaymentDateChange = {
-                        schedulePaymentDate = it
-                        scheduleError = null
-                    },
-                    onRepeatChange = {
-                        scheduleRepeat = it
-                        scheduleError = null
-                    },
-                    onNoteChange = {
-                        scheduleNote = it
-                        scheduleError = null
-                    },
-                    onDatePickerRequest = {
-                        showDatePicker(
-                            context = context,
-                            currentValue = schedulePaymentDate,
-                            formatter = dateFormatter,
-                            onDateSelected = { selectedDate ->
-                                schedulePaymentDate = selectedDate
-                                scheduleError = null
-                            }
-                        )
-                    },
-                    onSubmit = {
-                        val validationError = validateScheduledBillForm(
-                            payeeName = schedulePayeeName,
-                            accountNumber = uiState.selectedAccount?.accountNumber.orEmpty(),
-                            billAmount = scheduleBillAmount,
-                            billType = scheduleBillType,
-                            paymentMethod = schedulePaymentMethod,
-                            paymentDate = schedulePaymentDate,
-                            repeat = scheduleRepeat
-                        )
-                        if (validationError != null) {
-                            scheduleError = validationError
-                            return@ScheduleBillPage
-                        }
-                        val selectedAccount = uiState.selectedAccount
-                        if (selectedAccount == null) {
-                                        scheduleError = "Select a valid account number"
-                                        return@ScheduleBillPage
-                                    }
-                        viewModel.scheduleBill(
-                            BillPaymentRequest(
-                                accountId = selectedAccount.id,
-                                accountNumber = selectedAccount.accountNumber,
-                                payee = schedulePayeeName.trim(),
-                                amount = scheduleBillAmount.trim().toDouble(),
-                                scheduledDate = schedulePaymentDate.trim(),
-                                billType = scheduleBillType,
-                                paymentMethod = schedulePaymentMethod,
-                                note = scheduleNote.ifBlank { null },
-                                repeat = scheduleRepeat,
-                                paymentDate = schedulePaymentDate.trim()
-                            )
-                        )
-                    },
-                    scheduledBills = uiState.scheduledBills,
-                    onRunScheduledBill = viewModel::runScheduledBill,
-                    onRefreshScheduled = viewModel::loadScheduledBills,
-                    onRefreshHistory = viewModel::loadBillHistory
+                2 -> ScheduledBillsTab(
+                    scheduledItems = uiState.scheduledBills,
+                    isLoading = uiState.isLoading
                 )
             }
         }
-    }
-}
 
-@Composable
-private fun ManualBillPage(
-    payeeName: String,
-    billAmount: String,
-    billType: String,
-    paymentMethod: String,
-    note: String,
-    billTypes: List<String>,
-    paymentMethods: List<String>,
-    accounts: List<AccountItem>,
-    selectedAccount: AccountItem?,
-    isLoading: Boolean,
-    errorText: String?,
-    onAccountSelected: (AccountItem) -> Unit,
-    onPayeeNameChange: (String) -> Unit,
-    onBillAmountChange: (String) -> Unit,
-    onBillTypeChange: (String) -> Unit,
-    onPaymentMethodChange: (String) -> Unit,
-    onNoteChange: (String) -> Unit,
-    onSubmit: () -> Unit
-) {
-    BillSectionCard(
-        title = "Manual Bill Payment",
-        subtitle = "Open the manual payment form and submit an immediate bill payment."
-    ) {
-        ManualBillPaymentForm(
-            payeeName = payeeName,
-            billAmount = billAmount,
-            billType = billType,
-            paymentMethod = paymentMethod,
-            note = note,
-            billTypes = billTypes,
-            paymentMethods = paymentMethods,
-            accounts = accounts,
-            selectedAccount = selectedAccount,
-            isLoading = isLoading,
-            onAccountSelected = onAccountSelected,
-            onPayeeNameChange = onPayeeNameChange,
-            onBillAmountChange = onBillAmountChange,
-            onBillTypeChange = onBillTypeChange,
-            onPaymentMethodChange = onPaymentMethodChange,
-            onNoteChange = onNoteChange,
-            errorText = errorText,
-            onSubmit = onSubmit
-        )
-    }
-}
-
-@Composable
-private fun ScheduleBillPage(
-    payeeName: String,
-    billAmount: String,
-    billType: String,
-    paymentMethod: String,
-    paymentDate: String,
-    repeat: String,
-    note: String,
-    billTypes: List<String>,
-    paymentMethods: List<String>,
-    repeatOptions: List<String>,
-    accounts: List<AccountItem>,
-    selectedAccount: AccountItem?,
-    isLoading: Boolean,
-    errorText: String?,
-    onAccountSelected: (AccountItem) -> Unit,
-    onPayeeNameChange: (String) -> Unit,
-    onBillAmountChange: (String) -> Unit,
-    onBillTypeChange: (String) -> Unit,
-    onPaymentMethodChange: (String) -> Unit,
-    onPaymentDateChange: (String) -> Unit,
-    onRepeatChange: (String) -> Unit,
-    onNoteChange: (String) -> Unit,
-    onDatePickerRequest: () -> Unit,
-    onSubmit: () -> Unit,
-    scheduledBills: List<com.bof.mobile.model.ScheduledBillItem>,
-    onRunScheduledBill: (Int) -> Unit,
-    onRefreshScheduled: () -> Unit,
-    onRefreshHistory: () -> Unit
-) {
-    Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
-        BillSectionCard(
-            title = "Schedule Bill Payment",
-            subtitle = "Open the schedule payment form and set a future payment date."
-        ) {
-            ScheduledBillPaymentForm(
-                payeeName = payeeName,
-                billAmount = billAmount,
-                billType = billType,
-                paymentMethod = paymentMethod,
-                paymentDate = paymentDate,
-                repeat = repeat,
-                note = note,
-                billTypes = billTypes,
-                paymentMethods = paymentMethods,
-                repeatOptions = repeatOptions,
-                accounts = accounts,
-                selectedAccount = selectedAccount,
-                isLoading = isLoading,
-                onAccountSelected = onAccountSelected,
-                onPayeeNameChange = onPayeeNameChange,
-                onBillAmountChange = onBillAmountChange,
-                onBillTypeChange = onBillTypeChange,
-                onPaymentMethodChange = onPaymentMethodChange,
-                onPaymentDateChange = onPaymentDateChange,
-                onRepeatChange = onRepeatChange,
-                onNoteChange = onNoteChange,
-                onDatePickerRequest = onDatePickerRequest,
-                errorText = errorText,
-                onSubmit = onSubmit
+        if (showPaymentSuccessDialog) {
+            AlertDialog(
+                onDismissRequest = {},
+                title = { Text("Successful") },
+                text = { Text(paymentSuccessMessage) },
+                confirmButton = {
+                    TextButton(
+                        onClick = {
+                            showPaymentSuccessDialog = false
+                            clearBillForm()
+                        }
+                    ) {
+                        Text("OK")
+                    }
+                }
             )
         }
+    }
+}
 
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-            OutlinedButton(onClick = onRefreshScheduled, enabled = !isLoading, modifier = Modifier.weight(1f)) {
-                Text("Refresh scheduled")
-            }
-            OutlinedButton(onClick = onRefreshHistory, enabled = !isLoading, modifier = Modifier.weight(1f)) {
-                Text("Refresh history")
-            }
+private fun resolvedPayee(
+    selectedBiller: String,
+    selectedDigicelService: String?,
+    selectedTelecomService: String?,
+    selectedVodafoneService: String?
+): String {
+    return if (selectedBiller == DigicelBiller) {
+        "$selectedBiller - ${selectedDigicelService.orEmpty()}"
+    } else if (selectedBiller == EnergyFijiBiller) {
+        "$selectedBiller - $EnergyFijiService"
+    } else if (selectedBiller == HousingAuthorityBiller) {
+        "$selectedBiller - $HousingAuthorityService"
+    } else if (selectedBiller == TelecomFijiBiller) {
+        "$selectedBiller - ${selectedTelecomService.orEmpty()}"
+    } else if (selectedBiller == VodafoneFijiBiller) {
+        "$selectedBiller - ${selectedVodafoneService.orEmpty()}"
+    } else if (selectedBiller == WaterAuthorityBiller) {
+        "$selectedBiller - $WaterAuthorityService"
+    } else {
+        selectedBiller
+    }
+}
+
+private fun buildBillNote(
+    serviceAccountNumber: String,
+    receiptDate: String
+): String {
+    val accountPrefix = "Service Account: ${serviceAccountNumber.trim()}"
+    val receiptPrefix = "Invoice Date: ${receiptDate.trim()}"
+    return if (receiptDate.trim().isBlank()) accountPrefix else "$accountPrefix | $receiptPrefix"
+}
+
+@Composable
+private fun BillHistoryTab(
+    historyItems: List<BillHistoryItem>,
+    isLoading: Boolean
+) {
+    BillSectionCard(
+        title = "Bill Payment History",
+        subtitle = "Review your previous bill payments here."
+    ) {
+        if (historyItems.isEmpty()) {
+            Text(
+                text = if (isLoading) "Loading payment history..." else "No bill payments found yet.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            return@BillSectionCard
         }
 
-        Card(
+        LazyColumn(
             modifier = Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-            elevation = CardDefaults.cardElevation(defaultElevation = 6.dp),
-            shape = CardCorner
+            verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            Column(
-                modifier = Modifier.padding(0.dp)
-            ) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .background(SectionHeaderColors)
-                        .padding(horizontal = 16.dp, vertical = 14.dp)
+            items(historyItems, key = { it.id }) { item ->
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(18.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
+                    )
                 ) {
-                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Column(
+                        modifier = Modifier.padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
                         Text(
-                            "Scheduled Bills",
-                            color = Color.White,
-                            style = MaterialTheme.typography.titleLarge,
+                            text = item.payee,
+                            style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold
                         )
-                        Text(
-                            "View upcoming scheduled payments and run a pending bill manually if needed.",
-                            color = Color.White.copy(alpha = 0.9f),
-                            style = MaterialTheme.typography.bodyMedium
-                        )
+                        Text("Amount: FJD ${"%.2f".format(item.amount)}")
+                        Text("Status: ${item.status}")
+                        Text("Created: ${item.createdAt.take(10)}")
                     }
-                }
-
-                Column(
-                    modifier = Modifier.padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    ScheduledBillsTable(
-                        bills = scheduledBills,
-                        onRunScheduledBill = onRunScheduledBill
-                    )
                 }
             }
         }
@@ -493,86 +871,156 @@ private fun ScheduleBillPage(
 }
 
 @Composable
-private fun ScheduledBillsTable(
-    bills: List<com.bof.mobile.model.ScheduledBillItem>,
-    onRunScheduledBill: (Int) -> Unit
+private fun ScheduledBillsTab(
+    scheduledItems: List<ScheduledBillItem>,
+    isLoading: Boolean
 ) {
-    if (bills.isEmpty()) {
-        Text("No scheduled bills", color = MaterialTheme.colorScheme.onSurfaceVariant)
-        return
+    BillSectionCard(
+        title = "Scheduled Bills",
+        subtitle = "Review your pending scheduled bill payments."
+    ) {
+        if (scheduledItems.isEmpty()) {
+            Text(
+                text = if (isLoading) "Loading scheduled bills..." else "No scheduled bills found.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            return@BillSectionCard
+        }
+
+        LazyColumn(
+            modifier = Modifier.fillMaxWidth(),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            items(scheduledItems, key = { it.id }) { item ->
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(18.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
+                    )
+                ) {
+                    Column(
+                        modifier = Modifier.padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Text(
+                            text = item.payee,
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Text("Amount: FJD ${"%.2f".format(item.amount)}")
+                        Text("Scheduled: ${item.scheduledDate}")
+                        Text("Status: ${item.status}")
+                        Text("Created: ${item.createdAt.take(10)}")
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun BillerListItem(
+    name: String,
+    subtitle: String,
+    isSelected: Boolean,
+    onClick: () -> Unit
+) {
+    val shape = RoundedCornerShape(20.dp)
+    val containerColor = if (isSelected) {
+        MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.95f)
+    } else {
+        MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.52f)
     }
 
-    Column(
-        modifier = Modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(0.dp)
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .border(
+                width = 1.dp,
+                color = if (isSelected) {
+                    MaterialTheme.colorScheme.primary.copy(alpha = 0.45f)
+                } else {
+                    MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.75f)
+                },
+                shape = shape
+            ),
+        shape = shape,
+        colors = CardDefaults.cardColors(containerColor = containerColor),
+        elevation = CardDefaults.cardElevation(defaultElevation = if (isSelected) 8.dp else 3.dp)
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.55f))
-                .padding(horizontal = 12.dp, vertical = 10.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                .padding(horizontal = 14.dp, vertical = 12.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            TableHeaderCell("ID", 48.dp)
-            TableHeaderCell("Account", 120.dp)
-            TableHeaderCell("Payee", 130.dp)
-            TableHeaderCell("Amount", 90.dp)
-            TableHeaderCell("Date", 110.dp)
-            TableHeaderCell("Status", 90.dp)
-            TableHeaderCell("Action", 90.dp)
-        }
-
-        bills.take(8).forEachIndexed { index, bill ->
-            Row(
+            Box(
                 modifier = Modifier
-                    .fillMaxWidth()
+                    .size(42.dp)
                     .background(
-                        if (index % 2 == 0) MaterialTheme.colorScheme.surface else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
-                    )
-                    .padding(horizontal = 12.dp, vertical = 10.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically
+                        color = if (isSelected) {
+                            MaterialTheme.colorScheme.primary.copy(alpha = 0.18f)
+                        } else {
+                            MaterialTheme.colorScheme.primary.copy(alpha = 0.1f)
+                        },
+                        shape = RoundedCornerShape(12.dp)
+                    ),
+                contentAlignment = Alignment.Center
             ) {
-                TableBodyCell(bill.id.toString(), 48.dp)
-                TableBodyCell(bill.accountId.toString(), 120.dp)
-                TableBodyCell(bill.payee, 130.dp, bold = true)
-                TableBodyCell("FJD ${"%.2f".format(bill.amount)}", 90.dp)
-                TableBodyCell(bill.scheduledDate.take(10), 110.dp)
-                TableBodyCell(bill.status, 90.dp)
-                Button(
-                    onClick = { onRunScheduledBill(bill.id) },
-                    modifier = Modifier.width(90.dp),
-                    contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp, vertical = 6.dp),
-                    shape = RoundedCornerShape(14.dp)
-                ) {
-                    Text("Run")
+                Text(
+                    text = initialsForBiller(name),
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.primary
+                )
+            }
+
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(2.dp)
+            ) {
+                Text(
+                    text = name,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                if (isSelected || subtitle.isNotBlank()) {
+                    Text(
+                        text = if (isSelected) "Currently selected" else subtitle,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = if (isSelected) {
+                            MaterialTheme.colorScheme.primary
+                        } else {
+                            MaterialTheme.colorScheme.onSurfaceVariant
+                        }
+                    )
                 }
             }
+
+            Spacer(
+                modifier = Modifier
+                    .size(8.dp)
+                    .background(
+                        color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant,
+                        shape = RoundedCornerShape(99.dp)
+                    )
+            )
         }
     }
 }
 
-@Composable
-private fun TableHeaderCell(text: String, width: androidx.compose.ui.unit.Dp) {
-    Text(
-        text = text,
-        modifier = Modifier.width(width),
-        style = MaterialTheme.typography.labelLarge,
-        fontWeight = FontWeight.Bold,
-        color = MaterialTheme.colorScheme.onPrimaryContainer
-    )
-}
-
-@Composable
-private fun TableBodyCell(text: String, width: androidx.compose.ui.unit.Dp, bold: Boolean = false) {
-    Text(
-        text = text,
-        modifier = Modifier.width(width),
-        style = MaterialTheme.typography.bodyMedium,
-        fontWeight = if (bold) FontWeight.SemiBold else FontWeight.Normal,
-        color = MaterialTheme.colorScheme.onSurface,
-        maxLines = 2
-    )
+private fun initialsForBiller(name: String): String {
+    val parts = name.trim().split(" ").filter { it.isNotBlank() }
+    return when {
+        parts.size >= 2 -> (parts[0].take(1) + parts[1].take(1)).uppercase()
+        parts.isNotEmpty() -> parts[0].take(2).uppercase()
+        else -> "BL"
+    }
 }
 
 @Composable
@@ -616,206 +1064,6 @@ private fun BillSectionCard(
 }
 
 @Composable
-private fun ManualBillPaymentForm(
-    payeeName: String,
-    billAmount: String,
-    billType: String,
-    paymentMethod: String,
-    note: String,
-    billTypes: List<String>,
-    paymentMethods: List<String>,
-    accounts: List<AccountItem>,
-    selectedAccount: AccountItem?,
-    isLoading: Boolean,
-    onAccountSelected: (AccountItem) -> Unit,
-    onPayeeNameChange: (String) -> Unit,
-    onBillAmountChange: (String) -> Unit,
-    onBillTypeChange: (String) -> Unit,
-    onPaymentMethodChange: (String) -> Unit,
-    onNoteChange: (String) -> Unit,
-    errorText: String?,
-    onSubmit: () -> Unit
-) {
-    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        BillTextField(
-            value = payeeName,
-            onValueChange = onPayeeNameChange,
-            label = "Payee Name",
-            placeholder = "Enter payee name",
-            enabled = !isLoading,
-            keyboardType = KeyboardType.Text
-        )
-        BillAccountDropdown(
-            selectedAccount = selectedAccount,
-            label = "Account Number",
-            placeholder = if (accounts.isEmpty()) "No accounts available" else "Choose your account number",
-            accounts = accounts,
-            enabled = !isLoading && accounts.isNotEmpty(),
-            onAccountSelected = onAccountSelected
-        )
-        BillTextField(
-            value = billAmount,
-            onValueChange = onBillAmountChange,
-            label = "Bill Amount",
-            placeholder = "0.00",
-            enabled = !isLoading,
-            keyboardType = KeyboardType.Decimal
-        )
-        BillDropdownField(
-            value = billType,
-            onValueSelected = onBillTypeChange,
-            label = "Select Bill Type",
-            placeholder = "Choose bill type",
-            options = billTypes,
-            enabled = !isLoading
-        )
-        BillDropdownField(
-            value = paymentMethod,
-            onValueSelected = onPaymentMethodChange,
-            label = "Payment Method",
-            placeholder = "Choose payment method",
-            options = paymentMethods,
-            enabled = !isLoading
-        )
-        BillTextField(
-            value = note,
-            onValueChange = onNoteChange,
-            label = "Note (optional)",
-            placeholder = "Add a note",
-            enabled = !isLoading,
-            keyboardType = KeyboardType.Text,
-            minLines = 3
-        )
-
-        errorText?.takeIf { it.isNotBlank() }?.let {
-            Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium)
-        }
-
-        Button(
-            onClick = onSubmit,
-            enabled = !isLoading,
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(16.dp),
-            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
-            elevation = ButtonDefaults.buttonElevation(defaultElevation = 4.dp, pressedElevation = 2.dp)
-        ) {
-            Text(if (isLoading) "Submitting..." else "Pay Bill")
-        }
-    }
-}
-
-@Composable
-private fun ScheduledBillPaymentForm(
-    payeeName: String,
-    billAmount: String,
-    billType: String,
-    paymentMethod: String,
-    paymentDate: String,
-    repeat: String,
-    note: String,
-    billTypes: List<String>,
-    paymentMethods: List<String>,
-    repeatOptions: List<String>,
-    accounts: List<AccountItem>,
-    selectedAccount: AccountItem?,
-    isLoading: Boolean,
-    onAccountSelected: (AccountItem) -> Unit,
-    onPayeeNameChange: (String) -> Unit,
-    onBillAmountChange: (String) -> Unit,
-    onBillTypeChange: (String) -> Unit,
-    onPaymentMethodChange: (String) -> Unit,
-    onPaymentDateChange: (String) -> Unit,
-    onRepeatChange: (String) -> Unit,
-    onNoteChange: (String) -> Unit,
-    onDatePickerRequest: () -> Unit,
-    errorText: String?,
-    onSubmit: () -> Unit
-) {
-    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        BillTextField(
-            value = payeeName,
-            onValueChange = onPayeeNameChange,
-            label = "Payee Name",
-            placeholder = "Enter payee name",
-            enabled = !isLoading,
-            keyboardType = KeyboardType.Text
-        )
-        BillAccountDropdown(
-            selectedAccount = selectedAccount,
-            label = "Account Number",
-            placeholder = if (accounts.isEmpty()) "No accounts available" else "Choose your account number",
-            accounts = accounts,
-            enabled = !isLoading && accounts.isNotEmpty(),
-            onAccountSelected = onAccountSelected
-        )
-        BillTextField(
-            value = billAmount,
-            onValueChange = onBillAmountChange,
-            label = "Bill Amount",
-            placeholder = "0.00",
-            enabled = !isLoading,
-            keyboardType = KeyboardType.Decimal
-        )
-        BillDropdownField(
-            value = billType,
-            onValueSelected = onBillTypeChange,
-            label = "Select Bill Type",
-            placeholder = "Choose bill type",
-            options = billTypes,
-            enabled = !isLoading
-        )
-        BillDropdownField(
-            value = paymentMethod,
-            onValueSelected = onPaymentMethodChange,
-            label = "Payment Method",
-            placeholder = "Choose payment method",
-            options = paymentMethods,
-            enabled = !isLoading
-        )
-        BillDateField(
-            value = paymentDate,
-            label = "Payment Date",
-            placeholder = "Select a date",
-            enabled = !isLoading,
-            onValueChange = onPaymentDateChange,
-            onClick = onDatePickerRequest
-        )
-        BillDropdownField(
-            value = repeat,
-            onValueSelected = onRepeatChange,
-            label = "Repeat",
-            placeholder = "Select repeat frequency",
-            options = repeatOptions,
-            enabled = !isLoading
-        )
-        BillTextField(
-            value = note,
-            onValueChange = onNoteChange,
-            label = "Note (optional)",
-            placeholder = "Add a note",
-            enabled = !isLoading,
-            keyboardType = KeyboardType.Text,
-            minLines = 3
-        )
-
-        errorText?.takeIf { it.isNotBlank() }?.let {
-            Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium)
-        }
-
-        Button(
-            onClick = onSubmit,
-            enabled = !isLoading,
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(16.dp),
-            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
-            elevation = ButtonDefaults.buttonElevation(defaultElevation = 4.dp, pressedElevation = 2.dp)
-        ) {
-            Text(if (isLoading) "Submitting..." else "Schedule Payment")
-        }
-    }
-}
-
-@Composable
 private fun BillTextField(
     value: String,
     onValueChange: (String) -> Unit,
@@ -844,193 +1092,271 @@ private fun BillTextField(
     )
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun BillAccountDropdown(
-    selectedAccount: AccountItem?,
-    label: String,
-    placeholder: String,
-    accounts: List<AccountItem>,
-    enabled: Boolean,
-    onAccountSelected: (AccountItem) -> Unit
-) {
-    var expanded by remember { mutableStateOf(false) }
-    val displayValue = selectedAccount?.let { "${it.accountNumber} • ${it.type}" }.orEmpty()
-
-    ExposedDropdownMenuBox(
-        expanded = expanded,
-        onExpandedChange = { if (enabled) expanded = !expanded }
-    ) {
-        OutlinedTextField(
-            value = displayValue,
-            onValueChange = {},
-            readOnly = true,
-            enabled = enabled,
-            label = { Text(label) },
-            placeholder = { Text(placeholder) },
-            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
-            modifier = Modifier
-                .menuAnchor()
-                .fillMaxWidth(),
-            shape = RoundedCornerShape(16.dp),
-            colors = OutlinedTextFieldDefaults.colors(
-                focusedBorderColor = MaterialTheme.colorScheme.primary,
-                unfocusedBorderColor = MaterialTheme.colorScheme.outline,
-                focusedLabelColor = MaterialTheme.colorScheme.primary,
-                cursorColor = MaterialTheme.colorScheme.primary
-            )
-        )
-
-        ExposedDropdownMenu(
-            expanded = expanded,
-            onDismissRequest = { expanded = false }
-        ) {
-            accounts.forEach { account ->
-                DropdownMenuItem(
-                    text = { Text("${account.accountNumber} • ${account.type}") },
-                    onClick = {
-                        onAccountSelected(account)
-                        expanded = false
-                    }
-                )
-            }
-        }
+private fun validateBillRequest(
+    amount: String,
+    accountNumber: String,
+    receiptDate: String
+): String? {
+    if (accountNumber.trim().isBlank()) return "Account Number is required"
+    val normalizedAccount = accountNumber.trim()
+    if (normalizedAccount.length != RequiredAccountNumberLength || !normalizedAccount.all { it.isDigit() }) {
+        return "Account number must be exactly 10 digits"
     }
+    if (receiptDate.trim().isBlank()) {
+        return "Invoice Date is required"
+    }
+    if (runCatching { LocalDate.parse(receiptDate.trim()) }.isFailure) {
+        return "Invoice Date is invalid"
+    }
+    val parsedAmount = amount.toDoubleOrNull()
+    if (parsedAmount == null || parsedAmount < MinBillAmount || parsedAmount > MaxBillAmount) {
+        return "Amount must be between 0.01 and 10000"
+    }
+    return null
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+private fun buildScheduledDateTime(
+    dateInput: String,
+    hourInput: String,
+    minuteInput: String,
+    meridiemInput: String
+): LocalDateTime? {
+    val date = runCatching { LocalDate.parse(dateInput.trim()) }.getOrNull() ?: return null
+    val hour12 = hourInput.toIntOrNull() ?: return null
+    val minute = minuteInput.toIntOrNull() ?: return null
+    if (hour12 !in 1..12 || minute !in 0..59) return null
+    val normalizedMeridiem = meridiemInput.trim().uppercase()
+    val hour24 = when (normalizedMeridiem) {
+        "AM" -> if (hour12 == 12) 0 else hour12
+        "PM" -> if (hour12 == 12) 12 else hour12 + 12
+        else -> return null
+    }
+    val time = LocalTime.of(hour24, minute)
+    return LocalDateTime.of(date, time)
+}
+
 @Composable
-private fun BillDropdownField(
-    value: String,
-    onValueSelected: (String) -> Unit,
-    label: String,
-    placeholder: String,
-    options: List<String>,
-    enabled: Boolean
+private fun ScheduleModeToggle(
+    selectedMode: String?,
+    onScheduleSelected: () -> Unit,
+    onRecurringSelected: () -> Unit
 ) {
-    var expanded by remember { mutableStateOf(false) }
-
-    ExposedDropdownMenuBox(
-        expanded = expanded,
-        onExpandedChange = { if (enabled) expanded = !expanded }
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(10.dp)
     ) {
-        OutlinedTextField(
-            value = value,
-            onValueChange = {},
-            readOnly = true,
-            enabled = enabled,
-            label = { Text(label) },
-            placeholder = { Text(placeholder) },
-            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
-            modifier = Modifier
-                .menuAnchor()
-                .fillMaxWidth(),
-            shape = RoundedCornerShape(16.dp),
-            colors = OutlinedTextFieldDefaults.colors(
-                focusedBorderColor = MaterialTheme.colorScheme.primary,
-                unfocusedBorderColor = MaterialTheme.colorScheme.outline,
-                focusedLabelColor = MaterialTheme.colorScheme.primary,
-                cursorColor = MaterialTheme.colorScheme.primary
-            )
-        )
-
-        ExposedDropdownMenu(
-            expanded = expanded,
-            onDismissRequest = { expanded = false }
+        Row(
+            modifier = Modifier.weight(1f),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            options.forEach { option ->
-                DropdownMenuItem(
-                    text = { Text(option) },
-                    onClick = {
-                        onValueSelected(option)
-                        expanded = false
-                    }
-                )
-            }
+            Switch(
+                checked = selectedMode == ScheduleMode,
+                onCheckedChange = { onScheduleSelected() }
+            )
+            Text("Schedule")
+        }
+
+        Row(
+            modifier = Modifier.weight(1f),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Switch(
+                checked = selectedMode == RecurringMode,
+                onCheckedChange = { onRecurringSelected() }
+            )
+            Text("Recurring")
         }
     }
 }
 
 @Composable
-private fun BillDateField(
+private fun ScheduleDatePickerField(
     value: String,
-    label: String,
-    placeholder: String,
     enabled: Boolean,
-    onValueChange: (String) -> Unit,
-    onClick: () -> Unit
-) {
-    OutlinedTextField(
-        value = value,
-        onValueChange = onValueChange,
-        readOnly = true,
-        enabled = enabled,
-        label = { Text(label) },
-        placeholder = { Text(placeholder) },
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(enabled = enabled) { onClick() },
-        shape = RoundedCornerShape(16.dp),
-        colors = OutlinedTextFieldDefaults.colors(
-            focusedBorderColor = MaterialTheme.colorScheme.primary,
-            unfocusedBorderColor = MaterialTheme.colorScheme.outline,
-            focusedLabelColor = MaterialTheme.colorScheme.primary,
-            cursorColor = MaterialTheme.colorScheme.primary
-        )
-    )
-}
-
-private fun validateBillForm(
-    payeeName: String,
-    accountNumber: String,
-    billAmount: String,
-    billType: String,
-    paymentMethod: String
-): String? {
-    if (payeeName.isBlank()) return "Payee Name is required"
-    if (accountNumber.isBlank()) return "Account Number is required"
-    val amount = billAmount.toDoubleOrNull()
-    if (amount == null || amount <= 0.0) return "Bill Amount must be a valid positive number"
-    if (billType.isBlank()) return "Select Bill Type is required"
-    if (paymentMethod.isBlank()) return "Payment Method is required"
-    return null
-}
-
-private fun validateScheduledBillForm(
-    payeeName: String,
-    accountNumber: String,
-    billAmount: String,
-    billType: String,
-    paymentMethod: String,
-    paymentDate: String,
-    repeat: String
-): String? {
-    validateBillForm(payeeName, accountNumber, billAmount, billType, paymentMethod)?.let { return it }
-    if (paymentDate.isBlank()) return "Payment Date is required"
-    if (runCatching { LocalDate.parse(paymentDate, DateTimeFormatter.ISO_LOCAL_DATE) }.isFailure) {
-        return "Payment Date must be a valid date"
-    }
-    if (repeat.isBlank()) return "Repeat is required"
-    return null
-}
-
-private fun showDatePicker(
-    context: android.content.Context,
-    currentValue: String,
-    formatter: DateTimeFormatter,
+    labelText: String = "Schedule Date",
+    emptyButtonText: String = "Pick date",
     onDateSelected: (String) -> Unit
 ) {
-    val defaultDate = runCatching { LocalDate.parse(currentValue, formatter) }
-        .getOrDefault(LocalDate.now())
-    DatePickerDialog(
-        context,
-        { _, year, month, dayOfMonth ->
-            onDateSelected(LocalDate.of(year, month + 1, dayOfMonth).format(formatter))
-        },
-        defaultDate.year,
-        defaultDate.monthValue - 1,
-        defaultDate.dayOfMonth
-    ).show()
+    val context = LocalContext.current
+    val calendar = remember { Calendar.getInstance() }
+
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Text(
+            text = labelText,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Button(
+            onClick = {
+                val picker = DatePickerDialog(
+                    context,
+                    { _, year, month, dayOfMonth ->
+                        onDateSelected(String.format("%04d-%02d-%02d", year, month + 1, dayOfMonth))
+                    },
+                    calendar.get(Calendar.YEAR),
+                    calendar.get(Calendar.MONTH),
+                    calendar.get(Calendar.DAY_OF_MONTH)
+                )
+                picker.show()
+            },
+            enabled = enabled,
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(16.dp),
+            colors = ButtonDefaults.buttonColors(
+                containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                contentColor = MaterialTheme.colorScheme.onSurface
+            )
+        ) {
+            Text(if (value.isBlank()) emptyButtonText else value)
+        }
+    }
+}
+
+@Composable
+private fun TimeDropdownPicker(
+    hour: String,
+    minute: String,
+    meridiem: String,
+    enabled: Boolean,
+    onHourSelected: (String) -> Unit,
+    onMinuteSelected: (String) -> Unit,
+    onMeridiemSelected: (String) -> Unit
+) {
+    val hourOptions = remember { (1..12).map { it.toString().padStart(2, '0') } }
+    val minuteOptions = remember { (0..59).map { it.toString().padStart(2, '0') } }
+    val meridiemOptions = remember { listOf("AM", "PM") }
+
+    Text(
+        text = "Schedule Time",
+        style = MaterialTheme.typography.bodyMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant
+    )
+
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        TimePartDropdown(
+            value = hour,
+            label = "Hour",
+            options = hourOptions,
+            enabled = enabled,
+            onValueSelected = onHourSelected,
+            modifier = Modifier.weight(1f)
+        )
+        TimePartDropdown(
+            value = minute,
+            label = "Minute",
+            options = minuteOptions,
+            enabled = enabled,
+            onValueSelected = onMinuteSelected,
+            modifier = Modifier.weight(1f)
+        )
+        TimePartDropdown(
+            value = meridiem,
+            label = "Unit",
+            options = meridiemOptions,
+            enabled = enabled,
+            onValueSelected = onMeridiemSelected,
+            modifier = Modifier.weight(1f)
+        )
+    }
+}
+
+@Composable
+private fun TimePartDropdown(
+    value: String,
+    label: String,
+    options: List<String>,
+    enabled: Boolean,
+    onValueSelected: (String) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    var expanded by remember { mutableStateOf(false) }
+
+    Column(modifier = modifier) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Box(modifier = Modifier.fillMaxWidth()) {
+            Button(
+                onClick = { expanded = true },
+                enabled = enabled,
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(14.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                    contentColor = MaterialTheme.colorScheme.onSurface
+                )
+            ) {
+                Text(value)
+            }
+            DropdownMenu(
+                expanded = expanded,
+                onDismissRequest = { expanded = false }
+            ) {
+                options.forEach { option ->
+                    DropdownMenuItem(
+                        text = { Text(option) },
+                        onClick = {
+                            onValueSelected(option)
+                            expanded = false
+                        }
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun RecurrenceDropdown(
+    value: String,
+    options: List<String>,
+    enabled: Boolean,
+    onValueSelected: (String) -> Unit
+) {
+    var expanded by remember { mutableStateOf(false) }
+
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Text(
+            text = "Recurrence",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Box(modifier = Modifier.fillMaxWidth()) {
+            Button(
+                onClick = { expanded = true },
+                enabled = enabled,
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(16.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                    contentColor = MaterialTheme.colorScheme.onSurface
+                )
+            ) {
+                Text(value.ifBlank { "Choose recurrence" })
+            }
+            DropdownMenu(
+                expanded = expanded,
+                onDismissRequest = { expanded = false }
+            ) {
+                options.forEach { option ->
+                    DropdownMenuItem(
+                        text = { Text(option) },
+                        onClick = {
+                            onValueSelected(option)
+                            expanded = false
+                        }
+                    )
+                }
+            }
+        }
+    }
 }
 
 @Composable
@@ -1058,7 +1384,7 @@ private fun BillMessageBanner(
                 color = if (isError) MaterialTheme.colorScheme.onErrorContainer else MaterialTheme.colorScheme.onSecondaryContainer
             )
             if (onAction != null && !actionLabel.isNullOrBlank()) {
-                OutlinedButton(onClick = onAction) {
+                Button(onClick = onAction, shape = RoundedCornerShape(14.dp)) {
                     Text(actionLabel)
                 }
             }

@@ -497,11 +497,12 @@ class FeatureViewModel(private val featureRepository: FeatureRepository) : ViewM
                 is ApiResult.Success -> {
                     _uiState.update {
                         it.copy(
-                            successMessage = "Bill paid successfully",
+                            successMessage = "Bill paid successfully - FJD ${"%.2f".format(result.data.amount)}",
                             billHistory = listOf(result.data) + it.billHistory,
                             errorMessage = null
                         )
                     }
+                    loadBillHistory()
                 }
 
                 is ApiResult.Error -> setError(result.message)
@@ -535,9 +536,15 @@ class FeatureViewModel(private val featureRepository: FeatureRepository) : ViewM
             setLoading(true)
             when (val result = featureRepository.scheduleBill(request)) {
                 is ApiResult.Success -> {
+                    val recurrence = request.repeat?.takeIf { it.isNotBlank() && !it.equals("One-time", ignoreCase = true) }
+                    val scheduleMessage = if (recurrence != null) {
+                        "Recurring bill scheduled successfully for ${request.payee} ($recurrence)"
+                    } else {
+                        "Bill scheduled successfully for ${request.payee}"
+                    }
                     _uiState.update {
                         it.copy(
-                            successMessage = "Bill scheduled",
+                            successMessage = scheduleMessage,
                             scheduledBills = listOf(result.data) + it.scheduledBills,
                             errorMessage = null
                         )
