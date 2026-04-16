@@ -3,6 +3,15 @@ plugins {
     id("org.jetbrains.kotlin.android")
 }
 
+import java.util.Properties
+
+val localProperties = Properties().apply {
+    val localPropertiesFile = rootProject.file("local.properties")
+    if (localPropertiesFile.exists()) {
+        localPropertiesFile.inputStream().use(::load)
+    }
+}
+
 android {
     namespace = "com.bof.mobile"
     compileSdk = 34
@@ -14,8 +23,11 @@ android {
         versionCode = 1
         versionName = "1.0"
 
-        val mobileApiBaseUrl = (project.findProperty("MOBILE_API_BASE_URL") as String?)
-            ?: "http://10.223.154.114:4000/api/"
+        val mobileApiBaseUrl = (
+            localProperties.getProperty("MOBILE_API_BASE_URL")
+                ?: project.findProperty("MOBILE_API_BASE_URL") as String?
+                ?: "http://10.0.2.2:4000/api/"
+            ).trim()
         buildConfigField("String", "API_BASE_URL", "\"$mobileApiBaseUrl\"")
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
@@ -35,11 +47,11 @@ android {
     }
 
     compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_17
-        targetCompatibility = JavaVersion.VERSION_17
+        sourceCompatibility = JavaVersion.VERSION_21
+        targetCompatibility = JavaVersion.VERSION_21
     }
     kotlinOptions {
-        jvmTarget = "17"
+        jvmTarget = "21"
     }
 
     buildFeatures {

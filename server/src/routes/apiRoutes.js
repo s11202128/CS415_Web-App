@@ -289,6 +289,12 @@ function parseScheduledAccountId(description) {
   return match ? Number(match[1]) : null;
 }
 
+function parsePaidBillAccountId(description) {
+  const text = String(description || "");
+  const match = text.match(/account:(\d+)/i);
+  return match ? Number(match[1]) : null;
+}
+
 async function mapTransactionRows(rows) {
   const accountNumbers = Array.from(new Set(rows.map((row) => String(row.accountNumber || "")).filter(Boolean)));
   const accounts = accountNumbers.length
@@ -1559,6 +1565,27 @@ router.get("/bills/scheduled", requireAuth, asyncHandler(async (req, res) => {
       scheduledDate: b.dueDate,
       status: "scheduled",
       createdAt: b.createdAt,
+    }))
+  );
+}));
+
+router.get("/bills/history", requireAuth, asyncHandler(async (req, res) => {
+  const where = isAdmin(req)
+    ? { status: "paid" }
+    : { status: "paid", customerId: getAuthenticatedCustomerId(req) };
+
+  const rows = await Bill.findAll({ where, order: [["createdAt", "DESC"]] });
+  res.json(
+    rows.map((b) => ({
+      id: b.id,
+      accountId: parsePaidBillAccountId(b.description),
+      customerId: b.customerId,
+      payee: b.billType,
+      amount: Number(b.amount),
+      scheduledDate: b.dueDate,
+      status: b.status,
+      createdAt: b.createdAt,
+      description: b.description,
     }))
   );
 }));
