@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "690158292356",
+    "project_id": "bof-a2-auth",
+    "storage_bucket": "bof-a2-auth.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:690158292356:android:7644826056bbe7dceb21d1",
+        "android_client_info": {
+          "package_name": "com.bof.mobile"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDuxS-P74dHjvfZscFaWxku074dXlZxISw"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

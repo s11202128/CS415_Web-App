@@ -116,7 +116,7 @@ fun AdminDashboardScreen(viewModel: AdminViewModel, canGoBack: Boolean, onBack: 
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color(0xFFF4F6F9))
+            .background(Color.White)
     ) {
         Column(
             modifier = Modifier

@@ -1,47 +1,23 @@
 package com.bof.mobile.ui.billpayment
+
 import android.app.DatePickerDialog
+import android.os.Build
+import androidx.annotation.RequiresApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.OutlinedTextFieldDefaults
-import androidx.compose.material3.Switch
-import androidx.compose.material3.Tab
-import androidx.compose.material3.TabRow
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
@@ -59,6 +35,7 @@ import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.LocalTime
 import java.util.Calendar
+import java.util.Locale
 
 private val CardCorner = RoundedCornerShape(24.dp)
 private val SectionHeaderColors = Brush.horizontalGradient(
@@ -81,6 +58,7 @@ private const val RequiredAccountNumberLength = 10
 private const val ScheduleMode = "schedule"
 private const val RecurringMode = "recurring"
 
+@RequiresApi(Build.VERSION_CODES.O)
 @Composable
 fun BillPaymentScreen(
     viewModel: FeatureViewModel,
@@ -110,7 +88,7 @@ fun BillPaymentScreen(
     }
     val recurrenceOptions = remember { listOf("Daily", "Weekly", "Monthly") }
 
-    var selectedTab by rememberSaveable { mutableStateOf(0) }
+    var selectedTab by rememberSaveable { mutableIntStateOf(0) }
     var searchQuery by rememberSaveable { mutableStateOf("") }
     var selectedBiller by rememberSaveable { mutableStateOf<String?>(null) }
     var selectedDigicelService by rememberSaveable { mutableStateOf<String?>(null) }
@@ -273,19 +251,12 @@ fun BillPaymentScreen(
                                     filteredBillers.forEach { biller ->
                                         BillerListItem(
                                             name = biller,
-                                            subtitle = "",
                                             isSelected = false,
                                             onClick = {
                                                 selectedBiller = biller
-                                                if (biller == DigicelBiller) {
-                                                    selectedDigicelService = null
-                                                }
-                                                if (biller == TelecomFijiBiller) {
-                                                    selectedTelecomService = null
-                                                }
-                                                if (biller == VodafoneFijiBiller) {
-                                                    selectedVodafoneService = null
-                                                }
+                                                selectedDigicelService = null
+                                                selectedTelecomService = null
+                                                selectedVodafoneService = null
                                                 billAmount = ""
                                                 serviceAccountNumber = ""
                                                 receiptDate = ""
@@ -329,6 +300,8 @@ fun BillPaymentScreen(
                                 enabled = !uiState.isLoading,
                                 shape = RoundedCornerShape(14.dp)
                             ) {
+                                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null, modifier = Modifier.size(ButtonDefaults.IconSize))
+                                Spacer(Modifier.size(ButtonDefaults.IconSpacing))
                                 Text("Back To Billers")
                             }
 
@@ -342,7 +315,6 @@ fun BillPaymentScreen(
                                     digicelServices.forEach { service ->
                                         BillerListItem(
                                             name = service,
-                                            subtitle = "",
                                             isSelected = service == selectedDigicelService,
                                             onClick = {
                                                 selectedDigicelService = service
@@ -362,13 +334,6 @@ fun BillPaymentScreen(
                                         )
                                     }
                                 }
-                                if (selectedDigicelService == null) {
-                                    Text(
-                                        text = "Select a Digicel service to continue to payment.",
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                }
                             }
 
                             if (openedBiller == DigicelBiller && !selectedDigicelService.isNullOrBlank()) {
@@ -378,21 +343,7 @@ fun BillPaymentScreen(
                                     fontWeight = FontWeight.SemiBold
                                 )
                                 Button(
-                                    onClick = {
-                                        selectedDigicelService = null
-                                        selectedTelecomService = null
-                                        selectedVodafoneService = null
-                                        billAmount = ""
-                                        serviceAccountNumber = ""
-                                        receiptDate = ""
-                                        selectedMode = null
-                                        recurrenceOption = "Monthly"
-                                        scheduledDate = ""
-                                        scheduledHour = "12"
-                                        scheduledMinute = "00"
-                                        scheduledMeridiem = "AM"
-                                        formError = null
-                                    },
+                                    onClick = { selectedDigicelService = null },
                                     enabled = !uiState.isLoading,
                                     shape = RoundedCornerShape(14.dp)
                                 ) {
@@ -410,7 +361,6 @@ fun BillPaymentScreen(
                                     telecomServices.forEach { service ->
                                         BillerListItem(
                                             name = service,
-                                            subtitle = "",
                                             isSelected = service == selectedTelecomService,
                                             onClick = {
                                                 selectedTelecomService = service
@@ -430,11 +380,6 @@ fun BillPaymentScreen(
                                         )
                                     }
                                 }
-                                Text(
-                                    text = "Select a Telecom Fiji service to continue to payment.",
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
                             }
 
                             if (openedBiller == TelecomFijiBiller && !selectedTelecomService.isNullOrBlank()) {
@@ -444,21 +389,7 @@ fun BillPaymentScreen(
                                     fontWeight = FontWeight.SemiBold
                                 )
                                 Button(
-                                    onClick = {
-                                        selectedTelecomService = null
-                                        selectedDigicelService = null
-                                        selectedVodafoneService = null
-                                        billAmount = ""
-                                        serviceAccountNumber = ""
-                                        receiptDate = ""
-                                        selectedMode = null
-                                        recurrenceOption = "Monthly"
-                                        scheduledDate = ""
-                                        scheduledHour = "12"
-                                        scheduledMinute = "00"
-                                        scheduledMeridiem = "AM"
-                                        formError = null
-                                    },
+                                    onClick = { selectedTelecomService = null },
                                     enabled = !uiState.isLoading,
                                     shape = RoundedCornerShape(14.dp)
                                 ) {
@@ -476,7 +407,6 @@ fun BillPaymentScreen(
                                     vodafoneServices.forEach { service ->
                                         BillerListItem(
                                             name = service,
-                                            subtitle = "",
                                             isSelected = service == selectedVodafoneService,
                                             onClick = {
                                                 selectedVodafoneService = service
@@ -496,11 +426,6 @@ fun BillPaymentScreen(
                                         )
                                     }
                                 }
-                                Text(
-                                    text = "Select a Vodafone Fiji service to continue to payment.",
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
                             }
 
                             if (openedBiller == VodafoneFijiBiller && !selectedVodafoneService.isNullOrBlank()) {
@@ -510,21 +435,7 @@ fun BillPaymentScreen(
                                     fontWeight = FontWeight.SemiBold
                                 )
                                 Button(
-                                    onClick = {
-                                        selectedVodafoneService = null
-                                        selectedDigicelService = null
-                                        selectedTelecomService = null
-                                        billAmount = ""
-                                        serviceAccountNumber = ""
-                                        receiptDate = ""
-                                        selectedMode = null
-                                        recurrenceOption = "Monthly"
-                                        scheduledDate = ""
-                                        scheduledHour = "12"
-                                        scheduledMinute = "00"
-                                        scheduledMeridiem = "AM"
-                                        formError = null
-                                    },
+                                    onClick = { selectedVodafoneService = null },
                                     enabled = !uiState.isLoading,
                                     shape = RoundedCornerShape(14.dp)
                                 ) {
@@ -736,8 +647,8 @@ fun BillPaymentScreen(
                                                     paymentDate = scheduledDateTime.toString()
                                                 )
                                             )
-                                        } catch (exception: Exception) {
-                                            formError = "Unable to process bill request. Please check your details and try again."
+                                        } catch (e: Exception) {
+                                            formError = "Unable to process bill request. Please check your details: ${e.message}"
                                         }
                                     },
                                     enabled = !uiState.isLoading,
@@ -795,20 +706,14 @@ private fun resolvedPayee(
     selectedTelecomService: String?,
     selectedVodafoneService: String?
 ): String {
-    return if (selectedBiller == DigicelBiller) {
-        "$selectedBiller - ${selectedDigicelService.orEmpty()}"
-    } else if (selectedBiller == EnergyFijiBiller) {
-        "$selectedBiller - $EnergyFijiService"
-    } else if (selectedBiller == HousingAuthorityBiller) {
-        "$selectedBiller - $HousingAuthorityService"
-    } else if (selectedBiller == TelecomFijiBiller) {
-        "$selectedBiller - ${selectedTelecomService.orEmpty()}"
-    } else if (selectedBiller == VodafoneFijiBiller) {
-        "$selectedBiller - ${selectedVodafoneService.orEmpty()}"
-    } else if (selectedBiller == WaterAuthorityBiller) {
-        "$selectedBiller - $WaterAuthorityService"
-    } else {
-        selectedBiller
+    return when (selectedBiller) {
+        DigicelBiller -> "$selectedBiller - ${selectedDigicelService.orEmpty()}"
+        EnergyFijiBiller -> "$selectedBiller - $EnergyFijiService"
+        HousingAuthorityBiller -> "$selectedBiller - $HousingAuthorityService"
+        TelecomFijiBiller -> "$selectedBiller - ${selectedTelecomService.orEmpty()}"
+        VodafoneFijiBiller -> "$selectedBiller - ${selectedVodafoneService.orEmpty()}"
+        WaterAuthorityBiller -> "$selectedBiller - $WaterAuthorityService"
+        else -> selectedBiller
     }
 }
 
@@ -923,7 +828,6 @@ private fun ScheduledBillsTab(
 @Composable
 private fun BillerListItem(
     name: String,
-    subtitle: String,
     isSelected: Boolean,
     onClick: () -> Unit
 ) {
@@ -989,15 +893,11 @@ private fun BillerListItem(
                     fontWeight = if (isSelected) FontWeight.Bold else FontWeight.SemiBold,
                     color = MaterialTheme.colorScheme.onSurface
                 )
-                if (isSelected || subtitle.isNotBlank()) {
+                if (isSelected) {
                     Text(
-                        text = if (isSelected) "Currently selected" else subtitle,
+                        text = "Currently selected",
                         style = MaterialTheme.typography.bodySmall,
-                        color = if (isSelected) {
-                            MaterialTheme.colorScheme.primary
-                        } else {
-                            MaterialTheme.colorScheme.onSurfaceVariant
-                        }
+                        color = MaterialTheme.colorScheme.primary
                     )
                 }
             }
@@ -1092,6 +992,7 @@ private fun BillTextField(
     )
 }
 
+@RequiresApi(Build.VERSION_CODES.O)
 private fun validateBillRequest(
     amount: String,
     accountNumber: String,
@@ -1115,6 +1016,7 @@ private fun validateBillRequest(
     return null
 }
 
+@RequiresApi(Build.VERSION_CODES.O)
 private fun buildScheduledDateTime(
     dateInput: String,
     hourInput: String,
@@ -1193,7 +1095,7 @@ private fun ScheduleDatePickerField(
                 val picker = DatePickerDialog(
                     context,
                     { _, year, month, dayOfMonth ->
-                        onDateSelected(String.format("%04d-%02d-%02d", year, month + 1, dayOfMonth))
+                        onDateSelected(String.format(Locale.US, "%04d-%02d-%02d", year, month + 1, dayOfMonth))
                     },
                     calendar.get(Calendar.YEAR),
                     calendar.get(Calendar.MONTH),
@@ -1209,7 +1111,7 @@ private fun ScheduleDatePickerField(
                 contentColor = MaterialTheme.colorScheme.onSurface
             )
         ) {
-            Text(if (value.isBlank()) emptyButtonText else value)
+            Text(value.ifBlank { emptyButtonText })
         }
     }
 }

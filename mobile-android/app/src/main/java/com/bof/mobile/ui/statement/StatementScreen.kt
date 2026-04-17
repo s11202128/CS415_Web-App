@@ -64,27 +64,12 @@ fun StatementScreen(
     onBack: () -> Unit
 ) {
     val uiState by viewModel.uiState.collectAsState()
-    val context = LocalContext.current
     var accountMenuExpanded by remember { mutableStateOf(false) }
-
-    LaunchedEffect(customerId) {
-        viewModel.initialize(customerId)
-        viewModel.loadCustomerAccounts()
-        viewModel.initializeStatementDateDefaults()
-    }
-
+    val context = LocalContext.current
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(
-                brush = Brush.verticalGradient(
-                    listOf(
-                        MaterialTheme.colorScheme.background,
-                        MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.35f),
-                        MaterialTheme.colorScheme.surface
-                    )
-                )
-            )
+            .background(Color.White)
     ) {
         Column(
             modifier = Modifier

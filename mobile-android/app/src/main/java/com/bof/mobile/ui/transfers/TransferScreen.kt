@@ -156,15 +156,7 @@ fun TransferScreen(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(
-                brush = Brush.verticalGradient(
-                    listOf(
-                        MaterialTheme.colorScheme.background,
-                        MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.18f),
-                        MaterialTheme.colorScheme.surface
-                    )
-                )
-            )
+            .background(Color.White)
     ) {
         Column(
             modifier = Modifier
