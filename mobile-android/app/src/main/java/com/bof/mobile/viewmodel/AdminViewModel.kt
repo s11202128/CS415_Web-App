@@ -33,6 +33,7 @@ enum class AdminTab(val group: AdminMenuGroup, val label: String) {
     OVERVIEW(AdminMenuGroup.OVERVIEW, "Overview"),
 
     CUSTOMERS(AdminMenuGroup.OPERATIONS, "Customers"),
+    REGISTRATION_REQUESTS(AdminMenuGroup.OPERATIONS, "Registration Requests"),
     ACCOUNTS(AdminMenuGroup.OPERATIONS, "Accounts"),
     DEPOSITS(AdminMenuGroup.OPERATIONS, "Deposits"),
     INVESTMENTS(AdminMenuGroup.OPERATIONS, "Investments"),

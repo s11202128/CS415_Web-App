@@ -79,7 +79,7 @@ private enum class AdminBottomNavItem(
     ACCOUNTS(
         label = "Accounts",
         icon = Icons.Filled.People,
-        tabs = listOf(AdminTab.ACCOUNTS)
+        tabs = listOf(AdminTab.REGISTRATION_REQUESTS, AdminTab.ACCOUNTS)
     ),
     TRANSACTIONS(
         label = "Transactions",
@@ -459,6 +459,7 @@ private fun AdminTabContent(uiState: AdminUiState, viewModel: AdminViewModel) {
     when (uiState.activeTab) {
         AdminTab.OVERVIEW -> OverviewTab(uiState = uiState, viewModel = viewModel)
         AdminTab.CUSTOMERS -> CustomersTab(uiState = uiState, viewModel = viewModel)
+        AdminTab.REGISTRATION_REQUESTS -> RegistrationRequestsTab(uiState = uiState, viewModel = viewModel)
         AdminTab.ACCOUNTS -> AccountsTab(uiState = uiState, viewModel = viewModel)
         AdminTab.DEPOSITS -> DepositsTab(uiState = uiState, viewModel = viewModel)
         AdminTab.INVESTMENTS -> InvestmentsTab(uiState = uiState, viewModel = viewModel)
@@ -479,7 +480,63 @@ private fun AdminTabContent(uiState: AdminUiState, viewModel: AdminViewModel) {
 }
 
 @Composable
+private fun RegistrationRequestsTab(uiState: AdminUiState, viewModel: AdminViewModel) {
+    val pendingRegistrations = uiState.customers
+        .filter { it.registrationStatus.equals("pending", ignoreCase = true) }
+        .sortedBy { it.id }
+
+    AdminSectionSurface(
+        title = "Registration Requests",
+        subtitle = "Approve or decline each request directly from the name list.",
+        actionContent = {
+            OutlinedButton(onClick = viewModel::loadCustomers) { Text("Refresh") }
+        }
+    ) {
+        if (pendingRegistrations.isEmpty()) {
+            Text("No new registration submissions.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+        } else {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                pendingRegistrations.forEach { customer ->
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f))
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(12.dp),
+                            horizontalArrangement = Arrangement.Start,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                OutlinedButton(
+                                    onClick = { viewModel.updateCustomer(customer.id, mapOf("registrationStatus" to "approved")) }
+                                ) { Text("Confirm") }
+                                OutlinedButton(
+                                    onClick = { viewModel.updateCustomer(customer.id, mapOf("registrationStatus" to "rejected")) }
+                                ) { Text("Reject") }
+                            }
+
+                            Spacer(modifier = Modifier.width(12.dp))
+
+                            Text(
+                                text = customer.fullName,
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
 private fun VerificationTab(uiState: AdminUiState, viewModel: AdminViewModel) {
+    val sortedCustomers = uiState.customers.sortedWith(
+        compareByDescending<com.bof.mobile.model.ProfileResponse> { it.registrationStatus.equals("pending", ignoreCase = true) }
+            .thenByDescending { it.id }
+    )
+
     AdminSectionSurface(
         title = "Account Verification Monitoring",
         subtitle = "Review verification flags and update customer compliance status."
@@ -500,14 +557,14 @@ private fun VerificationTab(uiState: AdminUiState, viewModel: AdminViewModel) {
                     AdminTableColumn("Email Verified", 120.dp),
                     AdminTableColumn("ID Verified", 110.dp),
                     AdminTableColumn("KYC Status", 130.dp),
-                    AdminTableColumn("Actions", 320.dp)
+                    AdminTableColumn("Actions", 780.dp)
                 )
             )
 
-            if (uiState.customers.isEmpty()) {
+            if (sortedCustomers.isEmpty()) {
                 AdminEmptyTableRow("No customers available for verification review.")
             } else {
-                uiState.customers.forEachIndexed { index, customer ->
+                sortedCustomers.forEachIndexed { index, customer ->
                     AdminTableDataRow(index) {
                         AdminTableCell("#${customer.id}", 70.dp)
                         AdminTableCell(customer.fullName, 180.dp, bold = true)
@@ -516,10 +573,23 @@ private fun VerificationTab(uiState: AdminUiState, viewModel: AdminViewModel) {
                         AdminStatusChip(if (customer.emailVerified) "verified" else "pending", 120.dp)
                         AdminStatusChip(if (customer.identityVerified) "verified" else "pending", 110.dp)
                         AdminStatusChip(customer.registrationStatus, 130.dp)
+                        val actionsScroll = rememberScrollState()
                         Row(
-                            modifier = Modifier.width(320.dp),
+                            modifier = Modifier
+                                .width(780.dp)
+                                .horizontalScroll(actionsScroll),
                             horizontalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
+                            OutlinedButton(
+                                onClick = { viewModel.updateCustomer(customer.id, mapOf("registrationStatus" to "approved")) },
+                                enabled = !customer.registrationStatus.equals("approved", ignoreCase = true),
+                                modifier = Modifier.height(36.dp)
+                            ) { Text("Approve Registration") }
+                            OutlinedButton(
+                                onClick = { viewModel.updateCustomer(customer.id, mapOf("registrationStatus" to "rejected")) },
+                                enabled = !customer.registrationStatus.equals("rejected", ignoreCase = true),
+                                modifier = Modifier.height(36.dp)
+                            ) { Text("Decline Registration") }
                             OutlinedButton(
                                 onClick = { viewModel.updateCustomer(customer.id, mapOf("emailVerified" to true)) },
                                 enabled = !customer.emailVerified,
@@ -550,6 +620,7 @@ private fun VerificationTab(uiState: AdminUiState, viewModel: AdminViewModel) {
 
 @Composable
 private fun OverviewTab(uiState: AdminUiState, viewModel: AdminViewModel) {
+    val pendingRegistrations = uiState.customers.count { it.registrationStatus.equals("pending", ignoreCase = true) }
     val totalUsers = uiState.customers.size
     val totalAccounts = uiState.accounts.size
     val totalBalance = uiState.accounts.sumOf { it.balance }
@@ -560,7 +631,7 @@ private fun OverviewTab(uiState: AdminUiState, viewModel: AdminViewModel) {
     val pendingWithdrawals = uiState.transactions.count {
         it.kind.equals("withdraw", ignoreCase = true) && it.status.equals("pending", ignoreCase = true)
     }
-    val pendingApprovals = pendingDeposits + pendingLoans + pendingWithdrawals
+    val pendingApprovals = pendingDeposits + pendingLoans + pendingWithdrawals + pendingRegistrations
 
     val incomeAmount = uiState.transactions
         .filter {
@@ -614,14 +685,16 @@ private fun OverviewTab(uiState: AdminUiState, viewModel: AdminViewModel) {
                     title = "Total Users",
                     value = totalUsers.toString(),
                     icon = Icons.Filled.People,
-                    accent = Color(0xFF1E88E5)
+                    accent = Color(0xFF1E88E5),
+                    onClick = { viewModel.setActiveTab(AdminTab.CUSTOMERS) }
                 )
                 AdminSummaryCard(
                     modifier = Modifier.weight(1f),
                     title = "Total Accounts",
                     value = totalAccounts.toString(),
                     icon = Icons.Filled.AccountBalanceWallet,
-                    accent = Color(0xFF43A047)
+                    accent = Color(0xFF43A047),
+                    onClick = { viewModel.setActiveTab(AdminTab.ACCOUNTS) }
                 )
             }
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
@@ -630,14 +703,16 @@ private fun OverviewTab(uiState: AdminUiState, viewModel: AdminViewModel) {
                     title = "Total Balance",
                     value = "FJD ${"%.2f".format(totalBalance)}",
                     icon = Icons.Filled.Payments,
-                    accent = Color(0xFFFB8C00)
+                    accent = Color(0xFFFB8C00),
+                    onClick = { viewModel.setActiveTab(AdminTab.REPORTS) }
                 )
                 AdminSummaryCard(
                     modifier = Modifier.weight(1f),
                     title = "Pending Approvals",
                     value = pendingApprovals.toString(),
                     icon = Icons.Filled.FactCheck,
-                    accent = Color(0xFFE53935)
+                    accent = Color(0xFFE53935),
+                    onClick = { viewModel.setActiveTab(AdminTab.REGISTRATION_REQUESTS) }
                 )
             }
 
@@ -663,9 +738,24 @@ private fun OverviewTab(uiState: AdminUiState, viewModel: AdminViewModel) {
 
             AdminSectionSurface(
                 title = "Pending Approvals",
-                subtitle = "Handle pending deposits, withdrawals, and loans with existing actions."
+                subtitle = "Handle pending registrations, deposits, withdrawals, and loans with existing actions."
             ) {
                 val pendingRows = mutableListOf<PendingApprovalItem>()
+
+                uiState.customers
+                    .filter { it.registrationStatus.equals("pending", ignoreCase = true) }
+                    .sortedBy { it.id }
+                    .forEach { customer ->
+                        pendingRows.add(
+                            PendingApprovalItem(
+                                user = customer.fullName,
+                                requestType = "Registration",
+                                amount = customer.email,
+                                onApprove = { viewModel.updateCustomer(customer.id, mapOf("registrationStatus" to "approved")) },
+                                onReject = { viewModel.updateCustomer(customer.id, mapOf("registrationStatus" to "rejected")) }
+                            )
+                        )
+                    }
 
                 uiState.accounts
                     .filter { it.status.equals("pending_approval", ignoreCase = true) }
@@ -717,7 +807,7 @@ private fun OverviewTab(uiState: AdminUiState, viewModel: AdminViewModel) {
                 if (pendingRows.isEmpty()) {
                     Text("No pending approvals right now.", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 } else {
-                    pendingRows.take(10).forEach { row ->
+                    pendingRows.forEach { row ->
                         PendingApprovalRow(
                             user = row.user,
                             requestType = row.requestType,
@@ -753,10 +843,15 @@ private fun AdminSummaryCard(
     title: String,
     value: String,
     icon: ImageVector,
-    accent: Color
+    accent: Color,
+    onClick: (() -> Unit)? = null
 ) {
     Card(
-        modifier = modifier,
+        modifier = if (onClick != null) {
+            modifier.clickable(onClick = onClick)
+        } else {
+            modifier
+        },
         shape = MaterialTheme.shapes.large,
         colors = CardDefaults.cardColors(containerColor = Color.White),
         elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
@@ -884,21 +979,32 @@ private fun PendingApprovalRow(
     onApprove: (() -> Unit)?,
     onReject: (() -> Unit)?
 ) {
-    Row(
+    Column(
         modifier = Modifier
             .fillMaxWidth()
             .padding(vertical = 8.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        verticalAlignment = Alignment.CenterVertically
+        verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(2.dp)) {
             Text(user, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
             Text(requestType, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Text(amount, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
         }
-        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            OutlinedButton(onClick = { onApprove?.invoke() }, enabled = onApprove != null) { Text("Approve") }
-            OutlinedButton(onClick = { onReject?.invoke() }, enabled = onReject != null) { Text("Reject") }
+
+        Row(
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            OutlinedButton(
+                onClick = { onApprove?.invoke() },
+                enabled = onApprove != null,
+                modifier = Modifier
+            ) { Text("Confirm") }
+            Spacer(modifier = Modifier.width(8.dp))
+            OutlinedButton(
+                onClick = { onReject?.invoke() },
+                enabled = onReject != null,
+                modifier = Modifier
+            ) { Text("Reject") }
         }
     }
     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f))
@@ -906,9 +1012,14 @@ private fun PendingApprovalRow(
 
 @Composable
 private fun CustomersTab(uiState: AdminUiState, viewModel: AdminViewModel) {
+    val sortedCustomers = uiState.customers.sortedWith(
+        compareByDescending<com.bof.mobile.model.ProfileResponse> { it.registrationStatus.equals("pending", ignoreCase = true) }
+            .thenByDescending { it.id }
+    )
+
     AdminSectionSurface(
         title = "Customers",
-        subtitle = "Search and update customer verification states."
+        subtitle = "Search and manage customer profile and access states."
     ) {
         OutlinedTextField(
             value = uiState.customerSearchQuery,
@@ -938,21 +1049,24 @@ private fun CustomersTab(uiState: AdminUiState, viewModel: AdminViewModel) {
                     AdminTableColumn("Status", 110.dp),
                     AdminTableColumn("Email", 200.dp),
                     AdminTableColumn("Mobile", 140.dp),
-                    AdminTableColumn("Actions", 320.dp)
+                    AdminTableColumn("Actions", 620.dp)
                 )
             )
-            if (uiState.customers.isEmpty()) {
+            if (sortedCustomers.isEmpty()) {
                 AdminEmptyTableRow("No customers available.")
             } else {
-                uiState.customers.take(12).forEachIndexed { index, customer ->
+                sortedCustomers.forEachIndexed { index, customer ->
                     AdminTableDataRow(index) {
                         AdminTableCell("#${customer.id}", 80.dp)
                         AdminTableCell(customer.fullName, 180.dp, bold = true)
                         AdminStatusChip(customer.status, 110.dp)
                         AdminTableCell(customer.email, 200.dp)
                         AdminTableCell(customer.mobile, 140.dp)
+                        val actionsScroll = rememberScrollState()
                         Row(
-                            modifier = Modifier.width(320.dp),
+                            modifier = Modifier
+                                .width(620.dp)
+                                .horizontalScroll(actionsScroll),
                             horizontalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
                             OutlinedButton(
@@ -970,11 +1084,6 @@ private fun CustomersTab(uiState: AdminUiState, viewModel: AdminViewModel) {
                                 modifier = Modifier.height(36.dp),
                                 enabled = !customer.identityVerified
                             ) { Text("Verify ID") }
-                            OutlinedButton(
-                                onClick = { viewModel.updateCustomer(customer.id, mapOf("registrationStatus" to "approved")) },
-                                modifier = Modifier.height(36.dp),
-                                enabled = customer.registrationStatus != "approved"
-                            ) { Text("Approve KYC") }
                         }
                     }
                 }

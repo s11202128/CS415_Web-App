@@ -19,10 +19,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import com.bof.mobile.data.local.LoginSuggestionsStore
 import com.bof.mobile.data.remote.NetworkModule
 import com.bof.mobile.data.repository.AccountRepository
 import com.bof.mobile.data.repository.AdminRepository
@@ -72,13 +70,7 @@ private enum class MainTab {
 
 @Composable
 fun AppRoot() {
-    val context = LocalContext.current
-    val authViewModel = remember {
-        AuthViewModel(
-            AuthRepository(NetworkModule.createApiService { null }),
-            LoginSuggestionsStore(context)
-        )
-    }
+    val authViewModel = remember { AuthViewModel(AuthRepository(NetworkModule.createApiService { null })) }
     val authState by authViewModel.uiState.collectAsState()
     
     // Capture token as an immutable snapshot so OkHttp threads never read Compose state directly.
