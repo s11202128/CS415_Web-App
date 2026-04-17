@@ -1,3 +1,10 @@
+/**
+ * Provides UI screens and components for managing and viewing user bank accounts.
+ * Includes account overview, account creation, and transaction details.
+ *
+ * @author s11202128
+ * @version 1.0
+ */
 package com.bof.mobile.ui.accounts
 
 import androidx.compose.foundation.background
@@ -45,11 +52,26 @@ import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 
+/**
+ * Tabs for the Accounts screen.
+ * @author s11202128
+ * @version 1.0
+ */
 private enum class AccountsTab {
+    /** Overview of accounts. */
     OVERVIEW,
+    /** Request a new account. */
     REQUEST
 }
 
+/**
+ * Main screen for managing user accounts.
+ *
+ * @param viewModel The ViewModel for account state and actions
+ * @param canGoBack Whether the back button is enabled
+ * @param onBack Callback for back navigation
+ * @param onNavigateToCreateAccount Callback to navigate to account creation
+ */
 @Composable
 fun AccountsScreen(
     viewModel: AccountsViewModel,
@@ -159,6 +181,14 @@ fun AccountsScreen(
     }
 }
 
+/**
+ * Displays an overview of the user's accounts.
+ *
+ * @param uiState The current UI state
+ * @param accounts List of user accounts
+ * @param onLoadPreviousPage Callback to load previous page
+ * @param onLoadNextPage Callback to load next page
+ */
 @Composable
 private fun OverviewTab(
     uiState: com.bof.mobile.viewmodel.AccountsUiState,
@@ -271,6 +301,15 @@ private fun OverviewTab(
     }
 }
 
+/**
+ * Displays the account creation tab and a list of accounts.
+ *
+ * @param uiState The current UI state
+ * @param onOpenCreateAccount Callback to open the account creation form
+ * @param onSelectAccount Callback when an account is selected
+ * @param onLoadPreviousPage Callback to load previous page
+ * @param onLoadNextPage Callback to load next page
+ */
 @Composable
 private fun CreateTab(
     uiState: com.bof.mobile.viewmodel.AccountsUiState,
@@ -341,6 +380,13 @@ private fun CreateTab(
 
 }
 
+/**
+ * Shows inline details for a selected account, including recent transactions.
+ *
+ * @param uiState The current UI state
+ * @param onLoadPreviousPage Callback to load previous page
+ * @param onLoadNextPage Callback to load next page
+ */
 @Composable
 private fun AccountInlineDetails(
     uiState: com.bof.mobile.viewmodel.AccountsUiState,
@@ -392,11 +438,23 @@ private fun AccountInlineDetails(
     }
 }
 
+/**
+ * Masks an account number, showing only the last 4 digits.
+ *
+ * @param accountNumber The full account number
+ * @return The masked account number
+ */
 private fun maskAccountNumber(accountNumber: String): String {
     val suffix = accountNumber.takeLast(4)
     return if (suffix.isBlank()) "...." else ".... $suffix"
 }
 
+/**
+ * Formats the account updated time from a raw string.
+ *
+ * @param raw The raw date string
+ * @return The formatted date string
+ */
 private fun formatAccountUpdatedTime(raw: String?): String {
     val value = raw?.trim().orEmpty()
     if (value.isBlank()) return "N/A"
@@ -415,6 +473,12 @@ private fun formatAccountUpdatedTime(raw: String?): String {
     return parsed ?: value
 }
 
+/**
+ * Formats the balance updated time from an epoch value.
+ *
+ * @param epochMs The epoch time in milliseconds
+ * @return The formatted date string
+ */
 private fun formatBalanceUpdatedTime(epochMs: Long?): String {
     val value = epochMs ?: return "N/A"
     val formatter = DateTimeFormatter.ofPattern("dd MMM yyyy, hh:mm:ss a", Locale.ENGLISH)
@@ -423,10 +487,24 @@ private fun formatBalanceUpdatedTime(epochMs: Long?): String {
         .format(formatter)
 }
 
+/**
+ * Formats a double value as a money string.
+ *
+ * @param value The value to format
+ * @return The formatted money string
+ */
 private fun formatMoney(value: Double): String {
     return "%,.2f".format(Locale.ENGLISH, value)
 }
 
+/**
+ * Displays a message banner for account-related messages.
+ *
+ * @param text The message text
+ * @param isError Whether the message is an error
+ * @param onDismiss Optional callback for dismissing the banner
+ * @param actionLabel Optional label for the action button
+ */
 @Composable
 private fun AccountsMessageBanner(
     text: String,
