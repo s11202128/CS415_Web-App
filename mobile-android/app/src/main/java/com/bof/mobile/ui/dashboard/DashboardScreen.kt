@@ -77,7 +77,6 @@ fun DashboardScreen(
     onNavigateToFeatures: () -> Unit = {},
     onNavigateToDeposit: () -> Unit = {},
     onNavigateToWithdraw: () -> Unit = {},
-    onNavigateToFunding: () -> Unit = {},
     onNavigateToBillPayment: () -> Unit = {},
     onNavigateToStatement: () -> Unit = {},
     onNavigateToReport: () -> Unit = {},
@@ -235,11 +234,9 @@ fun DashboardScreen(
             item {
                 ActionButtonsSection(
                     onSendMoney = onNavigateToTransfers,
-                    onLoanFeature = onNavigateToFeatures,
-                    onFunding = onNavigateToFunding,
+                    onApplyLoan = onNavigateToFeatures,
                     onBillPayment = onNavigateToBillPayment,
                     onAccounts = onNavigateToAccounts,
-                    onStatements = onNavigateToStatement,
                     onTransactionHistory = onNavigateToActivity
                 )
             }
@@ -411,7 +408,9 @@ private fun HeaderSection(
 private data class DashboardMenuItem(
     val label: String,
     val icon: ImageVector,
-    val backgroundColor: Color
+    val backgroundColor: Color,
+    val details: List<String> = emptyList(),
+    val isClickable: Boolean = true
 )
 
 @Composable
@@ -423,6 +422,17 @@ private fun DashboardMenuDrawer(
     onMenuItemSelected: (String) -> Unit
 ) {
     val menuItems = listOf(
+        DashboardMenuItem(
+            label = "My Account",
+            icon = Icons.Filled.CreditCard,
+            backgroundColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.55f),
+            details = listOf(
+                "Account Name: $accountName",
+                "Account Number: $accountNumber",
+                "Last Login: $lastLogin"
+            ),
+            isClickable = false
+        ),
         DashboardMenuItem("Home", Icons.Filled.Timeline, Color(0xFFE0F2FE)),
         DashboardMenuItem("My Contact Details", Icons.Filled.Description, Color(0xFFECFCCB)),
         DashboardMenuItem("Change My PIN", Icons.Filled.Security, Color(0xFFFEE2E2)),
@@ -467,38 +477,45 @@ private fun DashboardMenuDrawer(
                     }
                 }
 
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.55f)),
-                    elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
-                ) {
-                    Column(
-                        modifier = Modifier.padding(12.dp),
-                        verticalArrangement = Arrangement.spacedBy(4.dp)
-                    ) {
-                        Text("Account Name: $accountName", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
-                        Text("Account Number: $accountNumber", style = MaterialTheme.typography.bodySmall)
-                        Text("Last Login: $lastLogin", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                }
-
                 menuItems.forEach { item ->
-                    Card(
-                        modifier = Modifier
+                    val cardModifier = if (item.isClickable) {
+                        Modifier
                             .fillMaxWidth()
-                            .clickable { onMenuItemSelected(item.label) },
+                            .clickable { onMenuItemSelected(item.label) }
+                    } else {
+                        Modifier.fillMaxWidth()
+                    }
+
+                    Card(
+                        modifier = cardModifier,
                         colors = CardDefaults.cardColors(containerColor = item.backgroundColor),
                         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
                     ) {
-                        Row(
+                        Column(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .padding(horizontal = 12.dp, vertical = 11.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                            verticalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
-                            Icon(imageVector = item.icon, contentDescription = item.label)
-                            Text(text = item.label, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                Icon(imageVector = item.icon, contentDescription = item.label)
+                                Text(text = item.label, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
+                            }
+
+                            if (item.details.isNotEmpty()) {
+                                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                    item.details.forEachIndexed { index, detail ->
+                                        Text(
+                                            text = detail,
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = if (index == 2) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface
+                                        )
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -933,11 +950,9 @@ private fun BalanceCard(
 @Composable
 private fun ActionButtonsSection(
     onSendMoney: () -> Unit,
-    onLoanFeature: () -> Unit,
-    onFunding: () -> Unit,
+    onApplyLoan: () -> Unit,
     onBillPayment: () -> Unit,
     onAccounts: () -> Unit,
-    onStatements: () -> Unit,
     onTransactionHistory: () -> Unit
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -946,12 +961,11 @@ private fun ActionButtonsSection(
             ActionButtonCard("↗", "Transfer Money", onSendMoney, Modifier.weight(1f))
         }
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            ActionButtonCard("🧾", "Bill Payment", onBillPayment, Modifier.weight(1f))
-            ActionButtonCard("📄", "Apply Loan", onLoanFeature, Modifier.weight(1f))
+            ActionButtonCard("📄", "Apply Loan", onApplyLoan, Modifier.weight(1f))
+            ActionButtonCard("📜", "Transaction History", onTransactionHistory, Modifier.weight(1f))
         }
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            ActionButtonCard("📑", "Statements", onStatements, Modifier.weight(1f))
-            ActionButtonCard("📜", "Transaction History", onTransactionHistory, Modifier.weight(1f))
+            ActionButtonCard("🧾", "Bill Payment", onBillPayment, Modifier.fillMaxWidth())
         }
     }
 }
@@ -959,7 +973,7 @@ private fun ActionButtonsSection(
 @Composable
 private fun ActionButtonCard(icon: String, label: String, onClick: () -> Unit, modifier: Modifier = Modifier) {
     Card(
-        modifier = modifier.aspectRatio(1.8f),
+        modifier = modifier.height(96.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)),
         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
         onClick = onClick

@@ -36,6 +36,11 @@ import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 
+private data class TransactionDescriptionParts(
+    val provider: String,
+    val service: String
+)
+
 @Composable
 fun ActivityLogScreen(
     viewModel: FeatureViewModel,
@@ -127,12 +132,11 @@ fun ActivityLogScreen(
                         .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.45f))
                         .padding(vertical = 10.dp)
                 ) {
-                    Text("Date", modifier = Modifier.weight(1.4f).padding(horizontal = 8.dp), fontWeight = FontWeight.Bold, maxLines = 1)
-                    Text("Description", modifier = Modifier.weight(1.5f).padding(horizontal = 8.dp), fontWeight = FontWeight.Bold, maxLines = 1)
-                    Text("Amount", modifier = Modifier.weight(1.3f).padding(horizontal = 8.dp), fontWeight = FontWeight.Bold, maxLines = 1, textAlign = TextAlign.End)
-                    Text("Credit", modifier = Modifier.weight(1.1f).padding(horizontal = 8.dp), fontWeight = FontWeight.Bold, maxLines = 1, textAlign = TextAlign.End)
-                    Text("Debit", modifier = Modifier.weight(1.1f).padding(horizontal = 8.dp), fontWeight = FontWeight.Bold, maxLines = 1, textAlign = TextAlign.End)
-                    Text("Balance", modifier = Modifier.weight(1.2f).padding(horizontal = 8.dp), fontWeight = FontWeight.Bold, maxLines = 1, textAlign = TextAlign.End)
+                    Text("Date", modifier = Modifier.weight(1.5f).padding(horizontal = 8.dp), fontWeight = FontWeight.Bold, maxLines = 1)
+                    Text("Description", modifier = Modifier.weight(1.9f).padding(horizontal = 8.dp), fontWeight = FontWeight.Bold, maxLines = 1)
+                    Text("Credit", modifier = Modifier.weight(1.2f).padding(horizontal = 8.dp), fontWeight = FontWeight.Bold, maxLines = 1, textAlign = TextAlign.End)
+                    Text("Debit", modifier = Modifier.weight(1.2f).padding(horizontal = 8.dp), fontWeight = FontWeight.Bold, maxLines = 1, textAlign = TextAlign.End)
+                    Text("Balance", modifier = Modifier.weight(1.3f).padding(horizontal = 8.dp), fontWeight = FontWeight.Bold, maxLines = 1, textAlign = TextAlign.End)
                 }
 
                 LazyColumn(verticalArrangement = Arrangement.spacedBy(0.dp)) {
@@ -142,6 +146,7 @@ fun ActivityLogScreen(
                         val isDebit = direction == TransactionDirection.DEBIT
                         val creditAmount = if (isCredit) item.amount else 0.0
                         val debitAmount = if (isDebit) item.amount else 0.0
+                        val descriptionParts = parseTransactionDescription(item.description)
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -154,32 +159,36 @@ fun ActivityLogScreen(
                         ) {
                             Text(
                                 formatTransactionDate(item.date),
-                                modifier = Modifier.weight(1.4f).padding(horizontal = 8.dp),
+                                modifier = Modifier.weight(1.5f).padding(horizontal = 8.dp),
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis
                             )
-                            Text(
-                                item.description,
-                                modifier = Modifier.weight(1.5f).padding(horizontal = 8.dp),
-                                style = MaterialTheme.typography.bodyMedium,
-                                fontWeight = FontWeight.SemiBold,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                            Text(
-                                formatAmount(item.amount),
-                                modifier = Modifier.weight(1.3f).padding(horizontal = 8.dp),
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurface,
-                                fontWeight = FontWeight.Bold,
-                                maxLines = 1,
-                                textAlign = TextAlign.End
-                            )
+                            Row(
+                                modifier = Modifier.weight(1.9f).padding(horizontal = 8.dp),
+                                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    descriptionParts.provider,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    fontWeight = FontWeight.Bold,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                                Text(
+                                    descriptionParts.service,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
                             Text(
                                 formatAmount(creditAmount),
-                                modifier = Modifier.weight(1.1f).padding(horizontal = 8.dp),
+                                modifier = Modifier.weight(1.2f).padding(horizontal = 8.dp),
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = if (isCredit) CreditAmountColor else MaterialTheme.colorScheme.onSurfaceVariant,
                                 maxLines = 1,
@@ -187,7 +196,7 @@ fun ActivityLogScreen(
                             )
                             Text(
                                 formatAmount(debitAmount),
-                                modifier = Modifier.weight(1.1f).padding(horizontal = 8.dp),
+                                modifier = Modifier.weight(1.2f).padding(horizontal = 8.dp),
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = if (isDebit) DebitAmountColor else MaterialTheme.colorScheme.onSurfaceVariant,
                                 maxLines = 1,
@@ -195,7 +204,7 @@ fun ActivityLogScreen(
                             )
                             Text(
                                 formatBalanceAmount(item.balance),
-                                modifier = Modifier.weight(1.2f).padding(horizontal = 8.dp),
+                                modifier = Modifier.weight(1.3f).padding(horizontal = 8.dp),
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = MaterialTheme.colorScheme.onSurface,
                                 maxLines = 1,
@@ -261,4 +270,40 @@ private fun formatTransactionDate(rawDate: String): String {
     }.getOrNull()
 
     return parsed ?: rawDate
+}
+
+private fun parseTransactionDescription(raw: String): TransactionDescriptionParts {
+    val normalized = raw.trim()
+    if (normalized.isBlank()) {
+        return TransactionDescriptionParts(provider = "UNKNOWN", service = "Service")
+    }
+
+    val pieces = normalized.split(" - ", limit = 2)
+    val leftPart = pieces.getOrNull(0).orEmpty().trim()
+    val rightPart = pieces.getOrNull(1).orEmpty().trim()
+
+    val providerSource = if (leftPart.contains(" to ", ignoreCase = true)) {
+        leftPart.substringAfter(" to ", "").trim()
+    } else {
+        leftPart
+    }
+
+    val provider = when {
+        providerSource.contains("energy fiji", ignoreCase = true) -> "EFL"
+        providerSource.contains("digicel", ignoreCase = true) -> "DIGICEL"
+        providerSource.contains("water authority", ignoreCase = true) -> "WAF"
+        providerSource.isNotBlank() -> providerSource.uppercase(Locale.ENGLISH)
+        else -> "UNKNOWN"
+    }
+
+    val service = when {
+        rightPart.isNotBlank() -> rightPart
+        normalized.contains("electric", ignoreCase = true) || normalized.contains("energy", ignoreCase = true) -> "Electricity"
+        normalized.contains("water", ignoreCase = true) -> "Water"
+        normalized.contains("sky pacific", ignoreCase = true) -> "Sky Pacific"
+        normalized.contains("phone", ignoreCase = true) || normalized.contains("mobile", ignoreCase = true) -> "Phone Service"
+        else -> "Service"
+    }
+
+    return TransactionDescriptionParts(provider = provider, service = service)
 }

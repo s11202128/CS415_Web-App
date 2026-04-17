@@ -169,7 +169,6 @@ fun AppRoot() {
             onNavigateToFeatures = { navigateTo(MainTab.FEATURES) },
             onNavigateToDeposit = { navigateTo(MainTab.DEPOSIT) },
             onNavigateToWithdraw = { navigateTo(MainTab.WITHDRAW) },
-            onNavigateToFunding = { navigateTo(MainTab.FUNDING) },
             onNavigateToBillPayment = { navigateTo(MainTab.BILL_PAYMENT) },
             onNavigateToStatement = { navigateTo(MainTab.STATEMENT) },
             onNavigateToReport = { navigateTo(MainTab.REPORT) },

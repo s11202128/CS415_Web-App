@@ -140,28 +140,42 @@ fun AccountsScreen(
             Spacer(modifier = Modifier.height(10.dp))
 
             if (selectedTab == AccountsTab.OVERVIEW) {
-                OverviewTab(accounts = uiState.accounts)
-                return@Column
+                OverviewTab(
+                    uiState = uiState,
+                    accounts = uiState.accounts,
+                    onLoadPreviousPage = viewModel::loadPreviousPage,
+                    onLoadNextPage = viewModel::loadNextPage
+                )
+            } else {
+                CreateTab(
+                    uiState = uiState,
+                    onOpenCreateAccount = onNavigateToCreateAccount,
+                    onSelectAccount = viewModel::selectAccount,
+                    onLoadPreviousPage = viewModel::loadPreviousPage,
+                    onLoadNextPage = viewModel::loadNextPage
+                )
             }
-
-            CreateTab(
-                uiState = uiState,
-                onOpenCreateAccount = onNavigateToCreateAccount,
-                onSelectAccount = viewModel::selectAccount,
-                onLoadPreviousPage = viewModel::loadPreviousPage,
-                onLoadNextPage = viewModel::loadNextPage
-            )
         }
     }
 }
 
 @Composable
-private fun OverviewTab(accounts: List<AccountItem>) {
+private fun OverviewTab(
+    uiState: com.bof.mobile.viewmodel.AccountsUiState,
+    accounts: List<AccountItem>,
+    onLoadPreviousPage: () -> Unit,
+    onLoadNextPage: () -> Unit
+) {
     val allAccounts = accounts.sortedByDescending { it.createdAt }
-    val totalBalance = allAccounts.sumOf { it.balance }
-    val simpleCount = allAccounts.count { it.type.equals("Simple Access", ignoreCase = true) }
-    val savingsCount = allAccounts.count { it.type.equals("Savings", ignoreCase = true) }
-    val currentCount = allAccounts.count { it.type.equals("Current", ignoreCase = true) }
+    val selectedAccount = allAccounts.firstOrNull { it.id == uiState.selectedAccountId } ?: allAccounts.firstOrNull()
+    val accountName = selectedAccount?.accountHolder
+        ?: uiState.selectedAccountDetails?.customer?.fullName
+        ?: "N/A"
+    val accountType = selectedAccount?.type ?: uiState.selectedAccountDetails?.account?.type ?: "N/A"
+    val accountNumber = selectedAccount?.accountNumber ?: uiState.selectedAccountDetails?.account?.accountNumber ?: ""
+    val accountStatus = selectedAccount?.status ?: uiState.selectedAccountDetails?.account?.status ?: "N/A"
+    val currentBalance = selectedAccount?.balance ?: uiState.selectedAccountDetails?.account?.balance
+    val updatedAtText = formatBalanceUpdatedTime(uiState.lastUpdatedAtEpochMs)
 
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -170,95 +184,87 @@ private fun OverviewTab(accounts: List<AccountItem>) {
     ) {
         Column(
             modifier = Modifier.padding(14.dp),
-            verticalArrangement = Arrangement.spacedBy(6.dp)
-        ) {
-            Text("Account Overview", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-            Text("Total Accounts: ${allAccounts.size}", style = MaterialTheme.typography.bodyMedium)
-            Text("Simple Access: $simpleCount", style = MaterialTheme.typography.bodyMedium)
-            Text("Savings: $savingsCount", style = MaterialTheme.typography.bodyMedium)
-            Text("Current: $currentCount", style = MaterialTheme.typography.bodyMedium)
-            Text(
-                "Total Balance: FJD ${"%.2f".format(totalBalance)}",
-                style = MaterialTheme.typography.bodyMedium,
-                fontWeight = FontWeight.SemiBold
-            )
-        }
-    }
-
-    Spacer(modifier = Modifier.height(10.dp))
-
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        elevation = CardDefaults.cardElevation(defaultElevation = 3.dp)
-    ) {
-        Column(
-            modifier = Modifier.padding(12.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            Text("Account Summaries", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+            Text("Account Overview", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
 
-            if (allAccounts.isEmpty()) {
+            if (selectedAccount == null) {
                 Text(
-                    text = "No accounts found yet. If you just submitted an account request, tap Refresh accounts.",
+                    text = "No account selected yet. Tap Refresh accounts to load your latest account overview.",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             } else {
-                val pendingCount = allAccounts.count { it.status.equals("pending_approval", ignoreCase = true) }
-                if (pendingCount > 0) {
-                    Text(
-                        text = "$pendingCount account request(s) pending admin approval.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.primary
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-                }
-                Text(
-                    text = "Showing all created accounts for this logged-in customer.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                Spacer(modifier = Modifier.height(8.dp))
-                val scrollState = rememberScrollState()
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .horizontalScroll(scrollState)
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.55f)),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
                 ) {
-                    Row(
+                    Column(
                         modifier = Modifier
-                            .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.08f))
-                            .padding(vertical = 8.dp)
+                            .fillMaxWidth()
+                            .padding(14.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
-                        Text("ID", modifier = Modifier.width(70.dp), fontWeight = FontWeight.Bold)
-                        Text("Account Number", modifier = Modifier.width(170.dp), fontWeight = FontWeight.Bold)
-                        Text("Account Name", modifier = Modifier.width(170.dp), fontWeight = FontWeight.Bold)
-                        Text("PIN", modifier = Modifier.width(80.dp), fontWeight = FontWeight.Bold)
-                        Text("Account Type", modifier = Modifier.width(140.dp), fontWeight = FontWeight.Bold)
-                        Text("Status", modifier = Modifier.width(130.dp), fontWeight = FontWeight.Bold)
-                        Text("Balance", modifier = Modifier.width(120.dp), fontWeight = FontWeight.Bold)
-                        Text("Updated Time", modifier = Modifier.width(170.dp), fontWeight = FontWeight.Bold)
-                        Text("Charge", modifier = Modifier.width(120.dp), fontWeight = FontWeight.Bold)
+                        Text(
+                            text = accountName,
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer
+                        )
+                        Text(
+                            text = if (accountNumber.isBlank()) "N/A" else accountNumber,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.85f)
+                        )
+                        Text(
+                            text = "FJD ${formatMoney(currentBalance ?: 0.0)}",
+                            style = MaterialTheme.typography.headlineSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                        Text(
+                            text = "Updated at: $updatedAtText",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.85f)
+                        )
                     }
+                }
 
-                    allAccounts.forEach { account ->
-                        Row(
-                            modifier = Modifier
-                                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f))
-                                .padding(vertical = 8.dp)
-                        ) {
-                            Text(account.id.toString(), modifier = Modifier.width(70.dp), style = MaterialTheme.typography.bodyMedium)
-                            Text(account.accountNumber, modifier = Modifier.width(170.dp), style = MaterialTheme.typography.bodyMedium)
-                            Text(account.accountHolder, modifier = Modifier.width(170.dp), style = MaterialTheme.typography.bodyMedium)
-                            Text(account.accountPin ?: "----", modifier = Modifier.width(80.dp), style = MaterialTheme.typography.bodyMedium)
-                            Text(account.type, modifier = Modifier.width(140.dp), style = MaterialTheme.typography.bodyMedium)
-                            Text(account.status, modifier = Modifier.width(130.dp), style = MaterialTheme.typography.bodyMedium)
-                            Text("FJD ${"%.2f".format(account.balance)}", modifier = Modifier.width(120.dp), style = MaterialTheme.typography.bodyMedium)
-                            Text(formatAccountUpdatedTime(account.createdAt), modifier = Modifier.width(170.dp), style = MaterialTheme.typography.bodyMedium)
-                            Text("FJD ${"%.2f".format(account.maintenanceFee)}", modifier = Modifier.width(120.dp), style = MaterialTheme.typography.bodyMedium)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Card(
+                        modifier = Modifier.weight(1f),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)),
+                        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+                    ) {
+                        Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                            Text("Account Type", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(accountType, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
                         }
                     }
+
+                    Card(
+                        modifier = Modifier.weight(1f),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)),
+                        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+                    ) {
+                        Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                            Text("Status", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(accountStatus, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+                        }
+                    }
+                }
+
+                if (uiState.selectedAccountDetails != null) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    AccountInlineDetails(
+                        uiState = uiState,
+                        onLoadPreviousPage = onLoadPreviousPage,
+                        onLoadNextPage = onLoadNextPage
+                    )
                 }
             }
         }
@@ -299,62 +305,56 @@ private fun CreateTab(
     ) {
         uiState.accounts.forEach { account ->
             Card(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(150.dp),
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
                 elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
             ) {
-                Column(modifier = Modifier.padding(12.dp)) {
-                    Text(
-                        text = "Account Name: ${account.accountHolder.ifBlank { "N/A" }}",
-                        style = MaterialTheme.typography.labelLarge,
-                        color = MaterialTheme.colorScheme.primary
-                    )
-                    Spacer(modifier = Modifier.height(2.dp))
-                    Text(
-                        text = "Account Type: ${account.type.ifBlank { "Account" }}",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
-                    Text(
-                        text = "Balance: FJD ${"%.2f".format(account.balance)}",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.SemiBold
-                    )
-                    Text(
-                        text = maskAccountNumber(account.accountNumber),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    Text(
-                        text = "Updated: ${formatAccountUpdatedTime(account.createdAt)}",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(12.dp),
+                    verticalArrangement = Arrangement.Center,
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
                     OutlinedButton(
                         onClick = { onSelectAccount(account.id) },
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier.fillMaxWidth(0.7f),
                         colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.primary)
                     ) {
                         Text("View details")
+                    }
+
+                    if (uiState.selectedAccountId == account.id && uiState.selectedAccountDetails != null) {
+                        Spacer(modifier = Modifier.height(10.dp))
+                        AccountInlineDetails(
+                            uiState = uiState,
+                            onLoadPreviousPage = onLoadPreviousPage,
+                            onLoadNextPage = onLoadNextPage
+                        )
                     }
                 }
             }
         }
     }
 
+}
+
+@Composable
+private fun AccountInlineDetails(
+    uiState: com.bof.mobile.viewmodel.AccountsUiState,
+    onLoadPreviousPage: () -> Unit,
+    onLoadNextPage: () -> Unit
+) {
     val details = uiState.selectedAccountDetails
     if (details != null) {
-        Text("Selected Account", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-        Spacer(modifier = Modifier.height(8.dp))
-
         Card(
             modifier = Modifier.fillMaxWidth(),
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
             elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
         ) {
             Column(modifier = Modifier.padding(12.dp)) {
-                Text("Holder: ${details.customer.fullName}", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
                 Text("Status: ${details.account.status}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
 
                 Spacer(modifier = Modifier.height(8.dp))
@@ -413,6 +413,18 @@ private fun formatAccountUpdatedTime(raw: String?): String {
     }.getOrNull()
 
     return parsed ?: value
+}
+
+private fun formatBalanceUpdatedTime(epochMs: Long?): String {
+    val value = epochMs ?: return "N/A"
+    val formatter = DateTimeFormatter.ofPattern("dd MMM yyyy, hh:mm:ss a", Locale.ENGLISH)
+    return Instant.ofEpochMilli(value)
+        .atZone(ZoneId.systemDefault())
+        .format(formatter)
+}
+
+private fun formatMoney(value: Double): String {
+    return "%,.2f".format(Locale.ENGLISH, value)
 }
 
 @Composable

@@ -92,6 +92,7 @@ data class FeatureUiState(
     val loanPurpose: String = "",
     val loanMonthlyIncome: String = "",
     val loanOccupation: String = "",
+    val showLoanSubmissionDialog: Boolean = false,
     val loanProducts: List<LoanProductItem> = emptyList(),
     val loanApplications: List<LoanApplicationItem> = emptyList(),
 
@@ -124,6 +125,10 @@ class FeatureViewModel(private val featureRepository: FeatureRepository) : ViewM
 
     fun clearMessages() {
         _uiState.update { it.copy(errorMessage = null, successMessage = null) }
+    }
+
+    fun dismissLoanSubmissionDialog() {
+        _uiState.update { it.copy(showLoanSubmissionDialog = false) }
     }
 
     fun onFullNameChanged(value: String) = _uiState.update { it.copy(fullName = value) }
@@ -816,8 +821,15 @@ class FeatureViewModel(private val featureRepository: FeatureRepository) : ViewM
                     _uiState.update {
                         it.copy(
                             loanApplications = listOf(result.data) + it.loanApplications,
-                            successMessage = "Loan application submitted",
-                            errorMessage = null
+                            successMessage = "Submission successful",
+                            errorMessage = null,
+                            showLoanSubmissionDialog = true,
+                            loanProductId = "",
+                            loanRequestedAmount = "",
+                            loanTermMonths = "",
+                            loanPurpose = "",
+                            loanMonthlyIncome = "",
+                            loanOccupation = ""
                         )
                     }
                 }

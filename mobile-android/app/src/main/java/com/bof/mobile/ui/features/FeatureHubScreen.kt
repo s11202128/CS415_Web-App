@@ -20,6 +20,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -27,7 +28,9 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
+import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -108,103 +111,148 @@ fun FeatureHubScreen(viewModel: FeatureViewModel, customerId: Int, canGoBack: Bo
             }
 
             FeaturePanel("Loan Application") {
+                var selectedTab by remember { mutableStateOf(0) }
                 var productMenuExpanded by remember { mutableStateOf(false) }
 
-                Box {
-                    OutlinedTextField(
-                        value = uiState.loanProductId,
-                        onValueChange = {},
-                        readOnly = true,
-                        label = { Text("Loan product") },
-                        trailingIcon = {
-                            Icon(
-                                imageVector = Icons.Filled.KeyboardArrowDown,
-                                contentDescription = null,
-                                modifier = Modifier.clickable { productMenuExpanded = true }
-                            )
-                        },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable { productMenuExpanded = true }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    AssistChip(
+                        onClick = { selectedTab = 0 },
+                        label = { Text("Apply") }
                     )
+                    AssistChip(
+                        onClick = {
+                            selectedTab = 1
+                            viewModel.loadLoanApplications()
+                        },
+                        label = { Text("Status") }
+                    )
+                }
 
-                    DropdownMenu(
-                        expanded = productMenuExpanded,
-                        onDismissRequest = { productMenuExpanded = false }
-                    ) {
-                        uiState.loanProducts.forEach { product ->
-                            DropdownMenuItem(
-                                text = {
-                                    Column {
-                                        Text(product.name)
-                                        Text(
-                                            "Rate ${"%.2f".format(product.annualRate)}% | ${product.minTermMonths}-${product.maxTermMonths} months",
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                                        )
+                if (selectedTab == 0) {
+                    Box {
+                        OutlinedTextField(
+                            value = uiState.loanProductId,
+                            onValueChange = {},
+                            readOnly = true,
+                            label = { Text("Loan product") },
+                            trailingIcon = {
+                                Icon(
+                                    imageVector = Icons.Filled.KeyboardArrowDown,
+                                    contentDescription = null,
+                                    modifier = Modifier.clickable { productMenuExpanded = true }
+                                )
+                            },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { productMenuExpanded = true }
+                        )
+
+                        DropdownMenu(
+                            expanded = productMenuExpanded,
+                            onDismissRequest = { productMenuExpanded = false }
+                        ) {
+                            uiState.loanProducts.forEach { product ->
+                                DropdownMenuItem(
+                                    text = {
+                                        Column {
+                                            Text(product.name)
+                                            Text(
+                                                "Rate ${"%.2f".format(product.annualRate)}% | ${product.minTermMonths}-${product.maxTermMonths} months",
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                        }
+                                    },
+                                    onClick = {
+                                        viewModel.onLoanProductIdChanged(product.id)
+                                        productMenuExpanded = false
                                     }
-                                },
-                                onClick = {
-                                    viewModel.onLoanProductIdChanged(product.id)
-                                    productMenuExpanded = false
-                                }
-                            )
+                                )
+                            }
                         }
                     }
-                }
 
-                OutlinedTextField(
-                    value = uiState.loanRequestedAmount,
-                    onValueChange = viewModel::onLoanRequestedAmountChanged,
-                    label = { Text("Requested amount") },
-                    modifier = Modifier.fillMaxWidth()
-                )
-                OutlinedTextField(
-                    value = uiState.loanTermMonths,
-                    onValueChange = viewModel::onLoanTermMonthsChanged,
-                    label = { Text("Term (months)") },
-                    modifier = Modifier.fillMaxWidth()
-                )
-                OutlinedTextField(
-                    value = uiState.loanPurpose,
-                    onValueChange = viewModel::onLoanPurposeChanged,
-                    label = { Text("Purpose") },
-                    modifier = Modifier.fillMaxWidth()
-                )
-                OutlinedTextField(
-                    value = uiState.loanMonthlyIncome,
-                    onValueChange = viewModel::onLoanMonthlyIncomeChanged,
-                    label = { Text("Monthly income") },
-                    modifier = Modifier.fillMaxWidth()
-                )
-                OutlinedTextField(
-                    value = uiState.loanOccupation,
-                    onValueChange = viewModel::onLoanOccupationChanged,
-                    label = { Text("Occupation") },
-                    modifier = Modifier.fillMaxWidth()
-                )
-
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Button(onClick = viewModel::submitLoanApplication, modifier = Modifier.weight(1f)) {
-                        Text("Submit Loan")
-                    }
-                    OutlinedButton(onClick = viewModel::loadLoanApplications, modifier = Modifier.weight(1f)) {
-                        Text("Refresh")
-                    }
-                }
-
-                uiState.loanApplications.take(3).forEach { loan ->
-                    val productName = uiState.loanProducts.firstOrNull { it.id == loan.loanProductId }?.name
-                        ?: loan.loanProductId
-                    Text(
-                        "$productName • FJD ${"%.2f".format(loan.requestedAmount)} • ${loan.status}",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    OutlinedTextField(
+                        value = uiState.loanRequestedAmount,
+                        onValueChange = viewModel::onLoanRequestedAmountChanged,
+                        label = { Text("Requested amount") },
+                        modifier = Modifier.fillMaxWidth()
                     )
+                    OutlinedTextField(
+                        value = uiState.loanTermMonths,
+                        onValueChange = viewModel::onLoanTermMonthsChanged,
+                        label = { Text("Term (months)") },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    OutlinedTextField(
+                        value = uiState.loanPurpose,
+                        onValueChange = viewModel::onLoanPurposeChanged,
+                        label = { Text("Purpose") },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    OutlinedTextField(
+                        value = uiState.loanMonthlyIncome,
+                        onValueChange = viewModel::onLoanMonthlyIncomeChanged,
+                        label = { Text("Monthly income") },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    OutlinedTextField(
+                        value = uiState.loanOccupation,
+                        onValueChange = viewModel::onLoanOccupationChanged,
+                        label = { Text("Occupation") },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Button(onClick = viewModel::submitLoanApplication, modifier = Modifier.weight(1f)) {
+                            Text("Submit Loan")
+                        }
+                        OutlinedButton(onClick = viewModel::loadLoanApplications, modifier = Modifier.weight(1f)) {
+                            Text("Refresh")
+                        }
+                    }
+                } else {
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedButton(onClick = viewModel::loadLoanApplications) {
+                            Text("Refresh statuses")
+                        }
+                    }
+
+                    if (uiState.loanApplications.isEmpty()) {
+                        Text(
+                            "No loan submissions yet.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+
+                    uiState.loanApplications.forEach { loan ->
+                        val productName = uiState.loanProducts.firstOrNull { it.id == loan.loanProductId }?.name
+                            ?: loan.loanProductId
+                        val createdDate = loan.createdAt.take(10)
+                        Text(
+                            "$productName • FJD ${"%.2f".format(loan.requestedAmount)} • ${loan.status.uppercase()} • $createdDate",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
                 }
             }
 
             Spacer(modifier = Modifier.height(8.dp))
+        }
+
+        if (uiState.showLoanSubmissionDialog) {
+            AlertDialog(
+                onDismissRequest = viewModel::dismissLoanSubmissionDialog,
+                title = { Text("Loan Application") },
+                text = { Text("Submission successful") },
+                confirmButton = {
+                    TextButton(onClick = viewModel::dismissLoanSubmissionDialog) {
+                        Text("OK")
+                    }
+                }
+            )
         }
     }
 }

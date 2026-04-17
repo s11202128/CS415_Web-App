@@ -47,11 +47,13 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ExitToApp
+import androidx.compose.material.icons.automirrored.filled.FactCheck
+import androidx.compose.material.icons.automirrored.filled.TrendingDown
+import androidx.compose.material.icons.automirrored.filled.TrendingUp
 import androidx.compose.material.icons.filled.AccountCircle
 import androidx.compose.material.icons.filled.AccountBalanceWallet
 import androidx.compose.material.icons.filled.Dashboard
-import androidx.compose.material.icons.filled.ExitToApp
-import androidx.compose.material.icons.filled.FactCheck
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material.icons.filled.KeyboardArrowDown
@@ -59,8 +61,6 @@ import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Payments
 import androidx.compose.material.icons.filled.People
 import androidx.compose.material.icons.filled.Tune
-import androidx.compose.material.icons.filled.TrendingDown
-import androidx.compose.material.icons.filled.TrendingUp
 import androidx.compose.foundation.clickable
 import com.bof.mobile.viewmodel.AdminTab
 import com.bof.mobile.viewmodel.AdminUiState
@@ -74,7 +74,7 @@ private enum class AdminBottomNavItem(
     DASHBOARD(
         label = "Dashboard",
         icon = Icons.Filled.Dashboard,
-        tabs = listOf(AdminTab.OVERVIEW, AdminTab.CUSTOMERS, AdminTab.REPORTS, AdminTab.STATEMENTS)
+        tabs = listOf(AdminTab.OVERVIEW, AdminTab.LOAN_REQUESTS, AdminTab.CUSTOMERS, AdminTab.REPORTS, AdminTab.STATEMENTS)
     ),
     ACCOUNTS(
         label = "Accounts",
@@ -84,7 +84,7 @@ private enum class AdminBottomNavItem(
     TRANSACTIONS(
         label = "Transactions",
         icon = Icons.Filled.Payments,
-        tabs = listOf(AdminTab.TRANSACTIONS, AdminTab.TRANSFER_HISTORY, AdminTab.INVESTMENTS, AdminTab.DEPOSITS, AdminTab.LOANS)
+        tabs = listOf(AdminTab.TRANSACTIONS, AdminTab.TRANSFER_HISTORY, AdminTab.INVESTMENTS, AdminTab.DEPOSITS)
     ),
     ACTIVITY(
         label = "Activity",
@@ -93,7 +93,7 @@ private enum class AdminBottomNavItem(
     ),
     APPROVALS(
         label = "Interest",
-        icon = Icons.Filled.FactCheck,
+        icon = Icons.AutoMirrored.Filled.FactCheck,
         tabs = listOf(AdminTab.TRANSFER_LIMIT, AdminTab.INTEREST_RATE, AdminTab.INTEREST_SUMMARIES)
     )
 }
@@ -122,9 +122,9 @@ fun AdminDashboardScreen(viewModel: AdminViewModel, canGoBack: Boolean, onBack: 
             modifier = Modifier
                 .fillMaxSize()
                 .verticalScroll(rememberScrollState())
-                .padding(horizontal = 12.dp, vertical = 10.dp)
+                .padding(horizontal = 14.dp, vertical = 12.dp)
                 .padding(bottom = 84.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp)
+            verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             AdminTopHeader(
                 canGoBack = canGoBack,
@@ -170,7 +170,7 @@ fun AdminDashboardScreen(viewModel: AdminViewModel, canGoBack: Boolean, onBack: 
                     modifier = Modifier
                         .fillMaxWidth()
                         .horizontalScroll(rememberScrollState()),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
                     activeBottomNav.tabs.forEach { tab ->
                         val isActive = tab == uiState.activeTab
@@ -189,8 +189,8 @@ fun AdminDashboardScreen(viewModel: AdminViewModel, canGoBack: Boolean, onBack: 
                 elevation = CardDefaults.cardElevation(defaultElevation = 3.dp)
             ) {
                 Column(
-                    modifier = Modifier.padding(10.dp),
-                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                    modifier = Modifier.padding(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     if (showProfilePage) {
                         AdminProfilePage(
@@ -315,7 +315,7 @@ private fun AdminTopHeader(
                 }
                 IconButton(onClick = onLogout) {
                     Icon(
-                        Icons.Filled.ExitToApp,
+                        Icons.AutoMirrored.Filled.ExitToApp,
                         contentDescription = "Logout",
                         modifier = Modifier.size(32.dp),
                         tint = MaterialTheme.colorScheme.error
@@ -377,7 +377,7 @@ private fun AdminProfilePage(
                 modifier = Modifier.weight(1f),
                 title = "Pending",
                 value = pendingApprovals.toString(),
-                icon = Icons.Filled.FactCheck,
+                icon = Icons.AutoMirrored.Filled.FactCheck,
                 accent = Color(0xFFB45309)
             )
         }
@@ -463,7 +463,7 @@ private fun AdminTabContent(uiState: AdminUiState, viewModel: AdminViewModel) {
         AdminTab.ACCOUNTS -> AccountsTab(uiState = uiState, viewModel = viewModel)
         AdminTab.DEPOSITS -> DepositsTab(uiState = uiState, viewModel = viewModel)
         AdminTab.INVESTMENTS -> InvestmentsTab(uiState = uiState, viewModel = viewModel)
-        AdminTab.LOANS -> LoansTab(uiState = uiState, viewModel = viewModel)
+        AdminTab.LOAN_REQUESTS -> LoanRequestsTab(uiState = uiState, viewModel = viewModel)
         AdminTab.TRANSACTIONS -> TransactionsTab(uiState = uiState, viewModel = viewModel)
         AdminTab.TRANSFER_HISTORY -> TransferHistoryTab(uiState = uiState, viewModel = viewModel)
         AdminTab.TRANSFER_LIMIT -> TransferLimitTab(uiState = uiState, viewModel = viewModel)
@@ -678,8 +678,8 @@ private fun OverviewTab(uiState: AdminUiState, viewModel: AdminViewModel) {
         subtitle = "Snapshot of users, balances, approvals, and transaction activity.",
         actionContent = { OutlinedButton(onClick = viewModel::loadAllAdminData) { Text("Refresh") } }
     ) {
-        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
+        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
                 AdminSummaryCard(
                     modifier = Modifier.weight(1f),
                     title = "Total Users",
@@ -697,7 +697,7 @@ private fun OverviewTab(uiState: AdminUiState, viewModel: AdminViewModel) {
                     onClick = { viewModel.setActiveTab(AdminTab.ACCOUNTS) }
                 )
             }
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
                 AdminSummaryCard(
                     modifier = Modifier.weight(1f),
                     title = "Total Balance",
@@ -710,7 +710,7 @@ private fun OverviewTab(uiState: AdminUiState, viewModel: AdminViewModel) {
                     modifier = Modifier.weight(1f),
                     title = "Pending Approvals",
                     value = pendingApprovals.toString(),
-                    icon = Icons.Filled.FactCheck,
+                    icon = Icons.AutoMirrored.Filled.FactCheck,
                     accent = Color(0xFFE53935),
                     onClick = { viewModel.setActiveTab(AdminTab.REGISTRATION_REQUESTS) }
                 )
@@ -737,84 +737,26 @@ private fun OverviewTab(uiState: AdminUiState, viewModel: AdminViewModel) {
             }
 
             AdminSectionSurface(
-                title = "Pending Approvals",
-                subtitle = "Handle pending registrations, deposits, withdrawals, and loans with existing actions."
+                title = "Quick Actions",
+                subtitle = "Open focused workflows without repeating controls on this page."
             ) {
-                val pendingRows = mutableListOf<PendingApprovalItem>()
-
-                uiState.customers
-                    .filter { it.registrationStatus.equals("pending", ignoreCase = true) }
-                    .sortedBy { it.id }
-                    .forEach { customer ->
-                        pendingRows.add(
-                            PendingApprovalItem(
-                                user = customer.fullName,
-                                requestType = "Registration",
-                                amount = customer.email,
-                                onApprove = { viewModel.updateCustomer(customer.id, mapOf("registrationStatus" to "approved")) },
-                                onReject = { viewModel.updateCustomer(customer.id, mapOf("registrationStatus" to "rejected")) }
-                            )
-                        )
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    OutlinedButton(onClick = { viewModel.setActiveTab(AdminTab.REGISTRATION_REQUESTS) }) {
+                        Text("Registration Requests ($pendingRegistrations)")
                     }
-
-                uiState.accounts
-                    .filter { it.status.equals("pending_approval", ignoreCase = true) }
-                    .forEach { account ->
-                        pendingRows.add(
-                            PendingApprovalItem(
-                                user = account.accountHolder,
-                                requestType = "Deposit",
-                                amount = account.requestedOpeningBalance?.let { "FJD ${"%.2f".format(it)}" } ?: "FJD 0.00",
-                                onApprove = {
-                                    val approvedAmount = account.requestedOpeningBalance ?: account.balance
-                                    viewModel.approveAccountRequest(account.id, approvedAmount)
-                                },
-                                onReject = {
-                                    viewModel.rejectAccountRequest(account.id, "Rejected by admin")
-                                }
-                            )
-                        )
+                    OutlinedButton(onClick = { viewModel.setActiveTab(AdminTab.LOAN_REQUESTS) }) {
+                        Text("Loan Requests ($pendingLoans)")
                     }
-
-                uiState.transactions
-                    .filter { it.kind.equals("withdraw", ignoreCase = true) && it.status.equals("pending", ignoreCase = true) }
-                    .forEach { tx ->
-                        pendingRows.add(
-                            PendingApprovalItem(
-                                user = uiState.accounts.firstOrNull { it.id == tx.accountId }?.accountHolder ?: tx.accountNumber,
-                                requestType = "Withdrawal",
-                                amount = "FJD ${"%.2f".format(tx.amount)}",
-                                onApprove = null,
-                                onReject = null
-                            )
-                        )
+                    OutlinedButton(onClick = { viewModel.setActiveTab(AdminTab.ACCOUNTS) }) {
+                        Text("Account Operations")
                     }
-
-                uiState.loanApplications
-                    .filter { it.status.equals("submitted", ignoreCase = true) || it.status.equals("pending", ignoreCase = true) }
-                    .forEach { loan ->
-                        pendingRows.add(
-                            PendingApprovalItem(
-                                user = "Customer #${loan.customerId}",
-                                requestType = "Loan",
-                                amount = "FJD ${"%.2f".format(loan.requestedAmount)}",
-                                onApprove = { viewModel.updateLoanStatus(loan.id, "approved") },
-                                onReject = { viewModel.updateLoanStatus(loan.id, "rejected") }
-                            )
-                        )
-                    }
-
-                if (pendingRows.isEmpty()) {
-                    Text("No pending approvals right now.", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                } else {
-                    pendingRows.forEach { row ->
-                        PendingApprovalRow(
-                            user = row.user,
-                            requestType = row.requestType,
-                            amount = row.amount,
-                            onApprove = row.onApprove,
-                            onReject = row.onReject
-                        )
+                    OutlinedButton(onClick = { viewModel.setActiveTab(AdminTab.TRANSACTIONS) }) {
+                        Text("Transaction Review")
                     }
                 }
             }
@@ -827,14 +769,6 @@ private data class AdminRecentActivity(
     val amountLabel: String,
     val status: String,
     val type: String
-)
-
-private data class PendingApprovalItem(
-    val user: String,
-    val requestType: String,
-    val amount: String,
-    val onApprove: (() -> Unit)?,
-    val onReject: (() -> Unit)?
 )
 
 @Composable
@@ -895,7 +829,7 @@ private fun IncomeExpenseChart(income: Double, expense: Double) {
             value = "FJD ${"%.2f".format(income)}",
             ratio = incomeRatio,
             color = Color(0xFF2E7D32),
-            icon = Icons.Filled.TrendingUp
+            icon = Icons.AutoMirrored.Filled.TrendingUp
         )
         ChartBarItem(
             modifier = Modifier.weight(1f),
@@ -903,7 +837,7 @@ private fun IncomeExpenseChart(income: Double, expense: Double) {
             value = "FJD ${"%.2f".format(expense)}",
             ratio = expenseRatio,
             color = Color(0xFFC62828),
-            icon = Icons.Filled.TrendingDown
+            icon = Icons.AutoMirrored.Filled.TrendingDown
         )
     }
 }
@@ -966,45 +900,6 @@ private fun RecentActivityRow(activity: AdminRecentActivity) {
                 color = statusColor,
                 fontWeight = FontWeight.SemiBold
             )
-        }
-    }
-    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f))
-}
-
-@Composable
-private fun PendingApprovalRow(
-    user: String,
-    requestType: String,
-    amount: String,
-    onApprove: (() -> Unit)?,
-    onReject: (() -> Unit)?
-) {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 8.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp)
-    ) {
-        Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            Text(user, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
-            Text(requestType, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Text(amount, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
-        }
-
-        Row(
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            OutlinedButton(
-                onClick = { onApprove?.invoke() },
-                enabled = onApprove != null,
-                modifier = Modifier
-            ) { Text("Confirm") }
-            Spacer(modifier = Modifier.width(8.dp))
-            OutlinedButton(
-                onClick = { onReject?.invoke() },
-                enabled = onReject != null,
-                modifier = Modifier
-            ) { Text("Reject") }
         }
     }
     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f))
@@ -1503,57 +1398,99 @@ private fun InvestmentsTab(uiState: AdminUiState, viewModel: AdminViewModel) {
 }
 
 @Composable
-private fun LoansTab(uiState: AdminUiState, viewModel: AdminViewModel) {
+private fun LoanRequestsTab(uiState: AdminUiState, viewModel: AdminViewModel) {
     AdminSectionSurface(
-        title = "Loan Applications",
-        subtitle = "Review pending loans with a compact table layout.",
-        actionContent = { OutlinedButton(onClick = viewModel::loadLoans) { Text("Refresh loans") } }
+        title = "Loan Requests",
+        subtitle = "Review each request details and decide quickly.",
+        actionContent = { OutlinedButton(onClick = viewModel::loadLoans) { Text("Refresh requests") } }
     ) {
+        if (uiState.loanApplications.isEmpty()) {
+            Text("No loan applications available.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+        } else {
+            val sortedLoanRequests = uiState.loanApplications
+                .sortedByDescending { it.submittedAt.orEmpty().ifBlank { it.createdAt.orEmpty() } }
 
-        val scrollState = rememberScrollState()
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .horizontalScroll(scrollState)
-                .then(adminTableFrame())
-        ) {
-            AdminTableHeaderRow(
-                listOf(
-                    AdminTableColumn("ID", 80.dp),
-                    AdminTableColumn("Customer", 110.dp),
-                    AdminTableColumn("Loan Type", 150.dp),
-                    AdminTableColumn("Amount", 130.dp),
-                    AdminTableColumn("Term", 110.dp),
-                    AdminTableColumn("Status", 120.dp),
-                    AdminTableColumn("Submitted", 170.dp),
-                    AdminTableColumn("Actions", 220.dp)
-                )
-            )
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                sortedLoanRequests.take(20).forEach { loan ->
+                    val customerName = uiState.customers
+                        .firstOrNull { it.id == loan.customerId }
+                        ?.fullName
+                        ?: "Customer #${loan.customerId}"
+                    val linkedAccountNumber = uiState.accounts
+                        .firstOrNull { it.customerId == loan.customerId }
+                        ?.accountNumber
+                        ?: "-"
+                    val requestedOn = loan.submittedAt
+                        .orEmpty()
+                        .ifBlank { loan.createdAt.orEmpty() }
+                        .take(16)
+                        .ifBlank { "-" }
+                    val reviewedOn = loan.reviewedAt
+                        .orEmpty()
+                        .take(16)
+                        .ifBlank { "-" }
+                    val safeLoanType = loan.loanProductId.orEmpty().ifBlank { "-" }
+                    val safePurpose = loan.purpose.orEmpty().ifBlank { "-" }
+                    val safeOccupation = loan.occupation.orEmpty().ifBlank { "-" }
 
-            if (uiState.loanApplications.isEmpty()) {
-                AdminEmptyTableRow("No loan applications available.")
-            } else {
-                uiState.loanApplications.take(20).forEachIndexed { index, loan ->
-                    AdminTableDataRow(index) {
-                        AdminTableCell("#${loan.id}", 80.dp)
-                        AdminTableCell(loan.customerId.toString(), 110.dp)
-                        AdminTableCell(loan.loanProductId, 150.dp)
-                        AdminTableCell("FJD ${"%.2f".format(loan.requestedAmount)}", 130.dp)
-                        AdminTableCell("${loan.termMonths} months", 110.dp)
-                        AdminStatusChip(loan.status, 120.dp)
-                        AdminTableCell(loan.createdAt.take(16), 170.dp)
-                        Row(
-                            modifier = Modifier.width(220.dp),
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.28f))
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(14.dp),
+                            verticalArrangement = Arrangement.spacedBy(12.dp)
                         ) {
-                            OutlinedButton(
-                                onClick = { viewModel.updateLoanStatus(loan.id, "approved") },
-                                enabled = !loan.status.equals("approved", ignoreCase = true)
-                            ) { Text("Approve") }
-                            OutlinedButton(
-                                onClick = { viewModel.updateLoanStatus(loan.id, "rejected") },
-                                enabled = !loan.status.equals("rejected", ignoreCase = true)
-                            ) { Text("Reject") }
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text("Request #${loan.id}", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+                                AdminStatusChip(loan.status, 110.dp)
+                            }
+
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(16.dp),
+                                verticalAlignment = Alignment.Top
+                            ) {
+                                Column(
+                                    modifier = Modifier.weight(1f),
+                                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    Text("Customer: $customerName", style = MaterialTheme.typography.bodyMedium)
+                                    Text("Account #: $linkedAccountNumber", style = MaterialTheme.typography.bodyMedium)
+                                    Text("Loan Type: $safeLoanType", style = MaterialTheme.typography.bodyMedium)
+                                    Text("Amount: FJD ${"%.2f".format(loan.requestedAmount)}", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+                                    Text("Term: ${loan.termMonths} months", style = MaterialTheme.typography.bodyMedium)
+                                    Text("Purpose: $safePurpose", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    Text("Monthly Income: FJD ${"%.2f".format(loan.monthlyIncome)}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    Text("Occupation: $safeOccupation", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    Text("Requested On: $requestedOn", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    Text("Reviewed On: $reviewedOn", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
+
+                                Column(
+                                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                                    horizontalAlignment = Alignment.End
+                                ) {
+                                    Button(
+                                        modifier = Modifier.width(112.dp),
+                                        onClick = { viewModel.updateLoanStatus(loan.id, "approved") },
+                                        enabled = !loan.status.equals("approved", ignoreCase = true)
+                                    ) {
+                                        Text("Accept")
+                                    }
+                                    OutlinedButton(
+                                        modifier = Modifier.width(112.dp),
+                                        onClick = { viewModel.updateLoanStatus(loan.id, "rejected") },
+                                        enabled = !loan.status.equals("rejected", ignoreCase = true)
+                                    ) {
+                                        Text("Reject")
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -2154,8 +2091,8 @@ private fun AdminSectionSurface(
         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
     ) {
         Column(
-            modifier = Modifier.padding(12.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
+            modifier = Modifier.padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),

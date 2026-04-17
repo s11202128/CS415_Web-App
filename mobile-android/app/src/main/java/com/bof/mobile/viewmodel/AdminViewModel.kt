@@ -37,7 +37,7 @@ enum class AdminTab(val group: AdminMenuGroup, val label: String) {
     ACCOUNTS(AdminMenuGroup.OPERATIONS, "Accounts"),
     DEPOSITS(AdminMenuGroup.OPERATIONS, "Deposits"),
     INVESTMENTS(AdminMenuGroup.OPERATIONS, "Investments"),
-    LOANS(AdminMenuGroup.OPERATIONS, "Loans"),
+    LOAN_REQUESTS(AdminMenuGroup.OPERATIONS, "Loan Requests"),
 
     TRANSACTIONS(AdminMenuGroup.MONITORING, "Transactions"),
     TRANSFER_HISTORY(AdminMenuGroup.MONITORING, "Transfers"),
@@ -468,10 +468,15 @@ class AdminViewModel(private val repository: AdminRepository) : ViewModel() {
         viewModelScope.launch {
             when (val result = repository.updateLoanApplication(id, status)) {
                 is ApiResult.Success -> {
+                    val successText = when {
+                        status.equals("approved", ignoreCase = true) -> "Loan request approved successfully"
+                        status.equals("rejected", ignoreCase = true) -> "Loan request rejected successfully"
+                        else -> "Loan updated successfully"
+                    }
                     _uiState.update { state ->
                         state.copy(
                             loanApplications = state.loanApplications.map { if (it.id == id) result.data else it },
-                            successMessage = "Loan updated",
+                            successMessage = successText,
                             errorMessage = null
                         )
                     }

@@ -1,5 +1,6 @@
 package com.bof.mobile.ui.statement
 
+import android.app.DatePickerDialog
 import android.content.ContentValues
 import android.content.Context
 import android.content.Intent
@@ -52,8 +53,10 @@ import com.bof.mobile.ui.components.ScreenHeader
 import com.bof.mobile.viewmodel.FeatureViewModel
 import java.io.File
 import java.io.IOException
+import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
+import java.util.Calendar
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -71,7 +74,6 @@ fun StatementScreen(
         viewModel.initialize(customerId)
         viewModel.loadCustomerAccounts()
         viewModel.initializeStatementDateDefaults()
-        viewModel.loadInvestments(customerId)
     }
 
     Box(
@@ -197,24 +199,30 @@ fun StatementScreen(
                         }
                     }
 
-                    OutlinedTextField(
+                    DatePickerSelector(
+                        label = "From Date",
                         value = uiState.statementFromDate,
-                        onValueChange = viewModel::onStatementFromDateChanged,
-                        readOnly = false,
                         enabled = !uiState.isLoading,
-                        label = { Text("From Date") },
-                        modifier = Modifier.fillMaxWidth(),
-                        supportingText = { Text("Format: yyyy-MM-dd") }
+                        onPick = {
+                            openDatePickerDialog(
+                                context = context,
+                                initialValue = uiState.statementFromDate,
+                                onDateSelected = viewModel::onStatementFromDateChanged
+                            )
+                        }
                     )
 
-                    OutlinedTextField(
+                    DatePickerSelector(
+                        label = "To Date",
                         value = uiState.statementToDate,
-                        onValueChange = viewModel::onStatementToDateChanged,
-                        readOnly = false,
                         enabled = !uiState.isLoading,
-                        label = { Text("To Date") },
-                        modifier = Modifier.fillMaxWidth(),
-                        supportingText = { Text("Format: yyyy-MM-dd") }
+                        onPick = {
+                            openDatePickerDialog(
+                                context = context,
+                                initialValue = uiState.statementToDate,
+                                onDateSelected = viewModel::onStatementToDateChanged
+                            )
+                        }
                     )
 
                     Button(
@@ -270,70 +278,65 @@ fun StatementScreen(
                 }
             }
 
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                elevation = CardDefaults.cardElevation(defaultElevation = 3.dp)
-            ) {
-                Column(
-                    modifier = Modifier.padding(14.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    Text("Investments", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-
-                    OutlinedTextField(
-                        value = uiState.investmentType,
-                        onValueChange = viewModel::onInvestmentTypeChanged,
-                        label = { Text("Investment type") },
-                        enabled = !uiState.isLoading,
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                    OutlinedTextField(
-                        value = uiState.investmentAmount,
-                        onValueChange = viewModel::onInvestmentAmountChanged,
-                        label = { Text("Amount") },
-                        enabled = !uiState.isLoading,
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                    OutlinedTextField(
-                        value = uiState.investmentExpectedReturn,
-                        onValueChange = viewModel::onInvestmentExpectedReturnChanged,
-                        label = { Text("Expected return (%)") },
-                        enabled = !uiState.isLoading,
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                    OutlinedTextField(
-                        value = uiState.investmentMaturityDate,
-                        onValueChange = viewModel::onInvestmentMaturityDateChanged,
-                        label = { Text("Maturity date (YYYY-MM-DD)") },
-                        enabled = !uiState.isLoading,
-                        modifier = Modifier.fillMaxWidth()
-                    )
-
-                    androidx.compose.foundation.layout.Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Button(onClick = viewModel::createInvestment, modifier = Modifier.weight(1f), enabled = !uiState.isLoading) {
-                            Text("Create Investment")
-                        }
-                        OutlinedButton(onClick = { viewModel.loadInvestments(customerId) }, modifier = Modifier.weight(1f), enabled = !uiState.isLoading) {
-                            Text("Refresh")
-                        }
-                    }
-
-                    if (uiState.investments.isEmpty()) {
-                        Text("No investments available yet", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    } else {
-                        uiState.investments.take(3).forEach { investment ->
-                            Text(
-                                "${investment.investmentType} • FJD ${"%.2f".format(investment.amount)} • ${investment.status}",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                    }
-                }
-            }
         }
     }
+}
+
+@Composable
+private fun DatePickerSelector(
+    label: String,
+    value: String,
+    enabled: Boolean,
+    onPick: () -> Unit
+) {
+    OutlinedButton(
+        onClick = onPick,
+        enabled = enabled,
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(
+            modifier = Modifier.fillMaxWidth(),
+            verticalArrangement = Arrangement.spacedBy(2.dp)
+        ) {
+            Text(
+                text = label,
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Text(
+                text = if (value.isBlank()) "Tap to pick date" else value,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+        }
+    }
+}
+
+private fun openDatePickerDialog(
+    context: Context,
+    initialValue: String,
+    onDateSelected: (String) -> Unit
+) {
+    val initialDate = parseDateOrToday(initialValue)
+    val calendar = Calendar.getInstance().apply {
+        set(initialDate.year, initialDate.monthValue - 1, initialDate.dayOfMonth)
+    }
+
+    DatePickerDialog(
+        context,
+        { _, year, month, dayOfMonth ->
+            val selectedDate = LocalDate.of(year, month + 1, dayOfMonth)
+            onDateSelected(selectedDate.format(DateTimeFormatter.ISO_LOCAL_DATE))
+        },
+        calendar.get(Calendar.YEAR),
+        calendar.get(Calendar.MONTH),
+        calendar.get(Calendar.DAY_OF_MONTH)
+    ).show()
+}
+
+private fun parseDateOrToday(value: String): LocalDate {
+    return runCatching { LocalDate.parse(value, DateTimeFormatter.ISO_LOCAL_DATE) }
+        .getOrElse { LocalDate.now() }
 }
 
 private fun saveStatementPdfAndOpen(context: Context, bytes: ByteArray, fileName: String) {

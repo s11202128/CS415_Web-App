@@ -2295,10 +2295,11 @@ router.patch("/admin/loan-applications/:id", asyncHandler(async (req, res) => {
     return res.status(404).json({ error: "Loan application not found" });
   }
 
+  const previousStatus = String(loan.status || "").trim().toLowerCase();
   const payload = req.body || {};
   const updates = {};
   if (payload.status !== undefined) {
-    updates.status = payload.status;
+    updates.status = String(payload.status || "").trim().toLowerCase();
   }
   if (payload.interestRate !== undefined) {
     const rate = Number(payload.interestRate);
@@ -2308,6 +2309,43 @@ router.patch("/admin/loan-applications/:id", asyncHandler(async (req, res) => {
     updates.interestRate = rate;
   }
   await loan.update(updates);
+
+  const currentStatus = String(loan.status || "").trim().toLowerCase();
+  if (previousStatus !== "approved" && currentStatus === "approved") {
+    const disbursementAmount = Number(loan.principal || 0);
+    if (Number.isFinite(disbursementAmount) && disbursementAmount > 0) {
+      const payoutAccount = await Account.findOne({
+        where: {
+          customerId: loan.customerId,
+          status: { [Op.ne]: "closed" },
+        },
+        order: [["createdAt", "ASC"]],
+      });
+
+      if (payoutAccount) {
+        const currentBalance = Number(payoutAccount.balance || 0);
+        const nextBalance = Number((currentBalance + disbursementAmount).toFixed(2));
+
+        await payoutAccount.update({ balance: nextBalance });
+
+        await Transaction.create({
+          accountId: payoutAccount.id,
+          accountNumber: payoutAccount.accountNumber,
+          userId: loan.customerId,
+          date: new Date(),
+          type: "loan_disbursement",
+          transactionType: "credit",
+          amount: disbursementAmount,
+          description: `Loan disbursement for application #${loan.id}`,
+          status: "completed",
+          balanceAfter: nextBalance,
+          balance: nextBalance,
+        });
+
+        await loan.update({ disbursedAmount: disbursementAmount });
+      }
+    }
+  }
 
   res.json({
     id: loan.id,
