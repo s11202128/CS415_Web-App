@@ -1,6 +1,7 @@
 package com.bof.mobile.ui.admin
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -14,7 +15,23 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ExitToApp
+import androidx.compose.material.icons.automirrored.filled.FactCheck
+import androidx.compose.material.icons.automirrored.filled.TrendingDown
+import androidx.compose.material.icons.automirrored.filled.TrendingUp
+import androidx.compose.material.icons.filled.AccountBalanceWallet
+import androidx.compose.material.icons.filled.AccountCircle
+import androidx.compose.material.icons.filled.Dashboard
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.Notifications
+import androidx.compose.material.icons.filled.Payments
+import androidx.compose.material.icons.filled.People
+import androidx.compose.material.icons.filled.Tune
+import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -46,22 +63,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ExitToApp
-import androidx.compose.material.icons.automirrored.filled.FactCheck
-import androidx.compose.material.icons.automirrored.filled.TrendingDown
-import androidx.compose.material.icons.automirrored.filled.TrendingUp
-import androidx.compose.material.icons.filled.AccountCircle
-import androidx.compose.material.icons.filled.AccountBalanceWallet
-import androidx.compose.material.icons.filled.Dashboard
-import androidx.compose.material.icons.filled.Visibility
-import androidx.compose.material.icons.filled.VisibilityOff
-import androidx.compose.material.icons.filled.KeyboardArrowDown
-import androidx.compose.material.icons.filled.Notifications
-import androidx.compose.material.icons.filled.Payments
-import androidx.compose.material.icons.filled.People
-import androidx.compose.material.icons.filled.Tune
-import androidx.compose.foundation.clickable
+import com.bof.mobile.model.AdminNotificationLogItem
 import com.bof.mobile.viewmodel.AdminTab
 import com.bof.mobile.viewmodel.AdminUiState
 import com.bof.mobile.viewmodel.AdminViewModel
@@ -99,7 +101,7 @@ private enum class AdminBottomNavItem(
 }
 
 private fun resolveBottomNav(activeTab: AdminTab): AdminBottomNavItem {
-    return AdminBottomNavItem.values().firstOrNull { activeTab in it.tabs } ?: AdminBottomNavItem.DASHBOARD
+    return AdminBottomNavItem.entries.firstOrNull { activeTab in it.tabs } ?: AdminBottomNavItem.DASHBOARD
 }
 
 @Composable
@@ -224,7 +226,7 @@ fun AdminDashboardScreen(viewModel: AdminViewModel, canGoBack: Boolean, onBack: 
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                AdminBottomNavItem.values().forEach { item ->
+                AdminBottomNavItem.entries.forEach { item ->
                     val selected = item == activeBottomNav
                     Column(
                         modifier = Modifier
@@ -282,44 +284,25 @@ private fun AdminTopHeader(
                     TextButton(onClick = onBack) { Text("Back") }
                 }
                 Column {
-                    Text("Admin Panel", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                    Text("Control center", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(
+                        "Administrator",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    Text("Secure Portal", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
 
-            Text(
-                text = "Welcome, Admin",
-                style = MaterialTheme.typography.bodyMedium,
-                fontWeight = FontWeight.SemiBold,
-                color = MaterialTheme.colorScheme.onSurface
-            )
-
-            Row(
-                modifier = Modifier.width(120.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(4.dp)
-            ) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                 IconButton(onClick = onNotificationsClick) {
-                    Icon(
-                        Icons.Filled.Notifications,
-                        contentDescription = "Notifications",
-                        modifier = Modifier.size(24.dp)
-                    )
+                    Icon(Icons.Filled.Notifications, contentDescription = "Notifications", tint = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 IconButton(onClick = onProfileClick) {
-                    Icon(
-                        Icons.Filled.AccountCircle,
-                        contentDescription = "Profile",
-                        modifier = Modifier.size(24.dp)
-                    )
+                    Icon(Icons.Filled.AccountCircle, contentDescription = "Profile", tint = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 IconButton(onClick = onLogout) {
-                    Icon(
-                        Icons.AutoMirrored.Filled.ExitToApp,
-                        contentDescription = "Logout",
-                        modifier = Modifier.size(32.dp),
-                        tint = MaterialTheme.colorScheme.error
-                    )
+                    Icon(Icons.AutoMirrored.Filled.ExitToApp, contentDescription = "Logout", tint = MaterialTheme.colorScheme.error)
                 }
             }
         }
@@ -327,130 +310,76 @@ private fun AdminTopHeader(
 }
 
 @Composable
-private fun AdminProfilePage(
-    uiState: AdminUiState,
-    onBackToDashboard: () -> Unit
-) {
-    val adminEmail = "superadmin@bof.fj"
-    val pendingApprovals = uiState.accounts.count { it.status.equals("pending", ignoreCase = true) } +
-            uiState.loanApplications.count { it.status.equals("pending", ignoreCase = true) }
-
-    AdminSectionSurface(
-        title = "Admin Profile",
-        subtitle = "Account details and quick admin system information.",
-        actionContent = {
-            OutlinedButton(onClick = onBackToDashboard) { Text("Back") }
-        }
-    ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            AdminSummaryCard(
-                modifier = Modifier.weight(1f),
-                title = "Role",
-                value = "System Admin",
-                icon = Icons.Filled.AccountCircle,
-                accent = Color(0xFF1E40AF)
-            )
-            AdminSummaryCard(
-                modifier = Modifier.weight(1f),
-                title = "Email",
-                value = adminEmail,
-                icon = Icons.Filled.Notifications,
-                accent = Color(0xFF0F766E)
-            )
-        }
-
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            AdminSummaryCard(
-                modifier = Modifier.weight(1f),
-                title = "Customers",
-                value = uiState.customers.size.toString(),
-                icon = Icons.Filled.People,
-                accent = Color(0xFF6D28D9)
-            )
-            AdminSummaryCard(
-                modifier = Modifier.weight(1f),
-                title = "Pending",
-                value = pendingApprovals.toString(),
-                icon = Icons.AutoMirrored.Filled.FactCheck,
-                accent = Color(0xFFB45309)
-            )
-        }
-
-        Surface(
-            modifier = Modifier.fillMaxWidth(),
-            shape = MaterialTheme.shapes.medium,
-            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
-        ) {
-            Column(
-                modifier = Modifier.padding(10.dp),
-                verticalArrangement = Arrangement.spacedBy(4.dp)
-            ) {
-                Text("Admin Name: Primary Administrator", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
-                Text("Access Level: Full", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Text("Total Accounts: ${uiState.accounts.size}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Text("Total Transactions: ${uiState.transactions.size}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+private fun AdminProfilePage(uiState: AdminUiState, onBackToDashboard: () -> Unit) {
+    Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            IconButton(onClick = onBackToDashboard) {
+                Icon(imageVector = Icons.Filled.Dashboard, contentDescription = "Back")
             }
+            Text("Admin Profile", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
         }
-    }
-}
 
-@Composable
-private fun NotificationCenterPage(
-    uiState: AdminUiState,
-    viewModel: AdminViewModel,
-    onBackToDashboard: () -> Unit
-) {
-    AdminSectionSurface(
-        title = "Notifications",
-        subtitle = "Notification log records opened from the header bell icon.",
-        actionContent = {
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedButton(onClick = viewModel::loadNotificationLogs) { Text("Refresh") }
-                OutlinedButton(onClick = onBackToDashboard) { Text("Back") }
-            }
-        }
-    ) {
-        val scrollState = rememberScrollState()
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .horizontalScroll(scrollState)
-                .then(adminTableFrame())
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.2f))
         ) {
-            AdminTableHeaderRow(
-                listOf(
-                    AdminTableColumn("ID", 70.dp),
-                    AdminTableColumn("User ID", 100.dp),
-                    AdminTableColumn("Phone", 150.dp),
-                    AdminTableColumn("Type", 160.dp),
-                    AdminTableColumn("Status", 120.dp),
-                    AdminTableColumn("Provider Msg ID", 180.dp),
-                    AdminTableColumn("Timestamp", 180.dp)
-                )
-            )
-
-            if (uiState.notificationLogs.isEmpty()) {
-                AdminEmptyTableRow("No notification logs available.")
-            } else {
-                uiState.notificationLogs.take(30).forEachIndexed { index, item ->
-                    AdminTableDataRow(index) {
-                        AdminTableCell("#${item.id}", 70.dp)
-                        AdminTableCell(item.userId.toString(), 100.dp)
-                        AdminTableCell(item.phoneNumber, 150.dp, bold = true)
-                        AdminTableCell(item.notificationType, 160.dp)
-                        AdminStatusChip(item.deliveryStatus, 120.dp)
-                        AdminTableCell(item.providerMessageId ?: "-", 180.dp)
-                        AdminTableCell(item.timestamp.take(16), 180.dp)
+            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Surface(modifier = Modifier.size(60.dp), shape = CircleShape, color = MaterialTheme.colorScheme.primary) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Text("AD", color = Color.White, style = MaterialTheme.typography.headlineSmall)
+                        }
+                    }
+                    Column {
+                        Text("System Administrator", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                        Text("Role: Super Admin", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
             }
         }
+
+        AdminSectionSurface(title = "Security Settings", subtitle = "Manage your administrative access.") {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(onClick = {}, modifier = Modifier.fillMaxWidth()) { Text("Change Admin Password") }
+                OutlinedButton(onClick = {}, modifier = Modifier.fillMaxWidth()) { Text("Configure 2FA") }
+                OutlinedButton(onClick = {}, modifier = Modifier.fillMaxWidth()) { Text("View Access Logs") }
+            }
+        }
+    }
+}
+
+@Composable
+private fun NotificationCenterPage(uiState: AdminUiState, viewModel: AdminViewModel, onBackToDashboard: () -> Unit) {
+    Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            IconButton(onClick = onBackToDashboard) {
+                Icon(imageVector = Icons.Filled.Dashboard, contentDescription = "Back")
+            }
+            Text("Notification Center", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+        }
+
+        AdminSectionSurface(title = "System Alerts", subtitle = "Recent automated system notifications.") {
+            if (uiState.notificationLogs.isEmpty()) {
+                Text("No recent alerts found.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            } else {
+                uiState.notificationLogs.take(10).forEach { log ->
+                    NotificationItem(log)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun NotificationItem(item: AdminNotificationLogItem) {
+    Column(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            Text(item.notificationType, fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.bodyMedium)
+            Text(item.timestamp.take(16), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        Text("To: ${item.phoneNumber}", style = MaterialTheme.typography.bodySmall)
+        Text("Status: ${item.deliveryStatus}", style = MaterialTheme.typography.bodySmall, color = if (item.deliveryStatus.contains("success", true)) Color(0xFF2E7D32) else Color(0xFFC62828))
+        HorizontalDivider(modifier = Modifier.padding(top = 8.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
     }
 }
 
@@ -517,11 +446,11 @@ private fun RegistrationRequestsTab(uiState: AdminUiState, viewModel: AdminViewM
 
                             Spacer(modifier = Modifier.width(12.dp))
 
-                            Text(
-                                text = customer.fullName,
-                                style = MaterialTheme.typography.titleSmall,
-                                fontWeight = FontWeight.SemiBold
-                            )
+                            Column {
+                                Text(customer.fullName, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                                Text(customer.email, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text("Phone: ${customer.mobile}", style = MaterialTheme.typography.bodySmall)
+                            }
                         }
                     }
                 }
@@ -532,14 +461,10 @@ private fun RegistrationRequestsTab(uiState: AdminUiState, viewModel: AdminViewM
 
 @Composable
 private fun VerificationTab(uiState: AdminUiState, viewModel: AdminViewModel) {
-    val sortedCustomers = uiState.customers.sortedWith(
-        compareByDescending<com.bof.mobile.model.ProfileResponse> { it.registrationStatus.equals("pending", ignoreCase = true) }
-            .thenByDescending { it.id }
-    )
-
     AdminSectionSurface(
-        title = "Account Verification Monitoring",
-        subtitle = "Review verification flags and update customer compliance status."
+        title = "Identity Verifications",
+        subtitle = "Audit KYC documents and verification status for all users.",
+        actionContent = { OutlinedButton(onClick = viewModel::loadCustomers) { Text("Reload") } }
     ) {
         val scrollState = rememberScrollState()
         Column(
@@ -553,63 +478,24 @@ private fun VerificationTab(uiState: AdminUiState, viewModel: AdminViewModel) {
                     AdminTableColumn("ID", 70.dp),
                     AdminTableColumn("Name", 180.dp),
                     AdminTableColumn("Email", 220.dp),
-                    AdminTableColumn("Mobile", 140.dp),
-                    AdminTableColumn("Email Verified", 120.dp),
-                    AdminTableColumn("ID Verified", 110.dp),
                     AdminTableColumn("KYC Status", 130.dp),
-                    AdminTableColumn("Actions", 780.dp)
+                    AdminTableColumn("Actions", 150.dp)
                 )
             )
 
-            if (sortedCustomers.isEmpty()) {
-                AdminEmptyTableRow("No customers available for verification review.")
+            if (uiState.customers.isEmpty()) {
+                AdminEmptyTableRow("No customers available for verification.")
             } else {
-                sortedCustomers.forEachIndexed { index, customer ->
+                uiState.customers.forEachIndexed { index, customer ->
                     AdminTableDataRow(index) {
-                        AdminTableCell("#${customer.id}", 70.dp)
+                        AdminTableCell(customer.id.toString(), 70.dp)
                         AdminTableCell(customer.fullName, 180.dp, bold = true)
                         AdminTableCell(customer.email, 220.dp)
-                        AdminTableCell(customer.mobile, 140.dp)
-                        AdminStatusChip(if (customer.emailVerified) "verified" else "pending", 120.dp)
-                        AdminStatusChip(if (customer.identityVerified) "verified" else "pending", 110.dp)
                         AdminStatusChip(customer.registrationStatus, 130.dp)
-                        val actionsScroll = rememberScrollState()
-                        Row(
-                            modifier = Modifier
-                                .width(780.dp)
-                                .horizontalScroll(actionsScroll),
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
-                        ) {
-                            OutlinedButton(
-                                onClick = { viewModel.updateCustomer(customer.id, mapOf("registrationStatus" to "approved")) },
-                                enabled = !customer.registrationStatus.equals("approved", ignoreCase = true),
-                                modifier = Modifier.height(36.dp)
-                            ) { Text("Approve Registration") }
-                            OutlinedButton(
-                                onClick = { viewModel.updateCustomer(customer.id, mapOf("registrationStatus" to "rejected")) },
-                                enabled = !customer.registrationStatus.equals("rejected", ignoreCase = true),
-                                modifier = Modifier.height(36.dp)
-                            ) { Text("Decline Registration") }
-                            OutlinedButton(
-                                onClick = { viewModel.updateCustomer(customer.id, mapOf("emailVerified" to true)) },
-                                enabled = !customer.emailVerified,
-                                modifier = Modifier.height(36.dp)
-                            ) { Text("Mark Email Verified") }
-                            OutlinedButton(
-                                onClick = { viewModel.updateCustomer(customer.id, mapOf("emailVerified" to false)) },
-                                enabled = customer.emailVerified,
-                                modifier = Modifier.height(36.dp)
-                            ) { Text("Unverify Email") }
-                            OutlinedButton(
-                                onClick = { viewModel.updateCustomer(customer.id, mapOf("identityVerified" to true)) },
-                                enabled = !customer.identityVerified,
-                                modifier = Modifier.height(36.dp)
-                            ) { Text("Verify ID") }
-                            OutlinedButton(
-                                onClick = { viewModel.updateCustomer(customer.id, mapOf("identityVerified" to false)) },
-                                enabled = customer.identityVerified,
-                                modifier = Modifier.height(36.dp)
-                            ) { Text("Unverify ID") }
+                        Box(modifier = Modifier.width(150.dp)) {
+                            OutlinedButton(onClick = { /* View documents logic */ }) {
+                                Text("Verify Docs")
+                            }
                         }
                     }
                 }
@@ -620,143 +506,117 @@ private fun VerificationTab(uiState: AdminUiState, viewModel: AdminViewModel) {
 
 @Composable
 private fun OverviewTab(uiState: AdminUiState, viewModel: AdminViewModel) {
-    val pendingRegistrations = uiState.customers.count { it.registrationStatus.equals("pending", ignoreCase = true) }
-    val totalUsers = uiState.customers.size
-    val totalAccounts = uiState.accounts.size
-    val totalBalance = uiState.accounts.sumOf { it.balance }
-    val pendingDeposits = uiState.accounts.count { it.status.equals("pending_approval", ignoreCase = true) }
-    val pendingLoans = uiState.loanApplications.count {
-        it.status.equals("submitted", ignoreCase = true) || it.status.equals("pending", ignoreCase = true)
-    }
-    val pendingWithdrawals = uiState.transactions.count {
-        it.kind.equals("withdraw", ignoreCase = true) && it.status.equals("pending", ignoreCase = true)
-    }
-    val pendingApprovals = pendingDeposits + pendingLoans + pendingWithdrawals + pendingRegistrations
-
-    val incomeAmount = uiState.transactions
-        .filter {
-            it.kind.equals("credit", ignoreCase = true) ||
-                it.kind.equals("deposit", ignoreCase = true)
-        }
-        .sumOf { it.amount }
-    val expenseAmount = uiState.transactions
-        .filter {
-            it.kind.equals("debit", ignoreCase = true) ||
-                it.kind.equals("withdraw", ignoreCase = true)
-        }
-        .sumOf { it.amount }
-
-    val recentActivities = buildList {
-        uiState.transactions.take(5).forEach { tx ->
-            val user = uiState.accounts.firstOrNull { it.id == tx.accountId }?.accountHolder ?: tx.accountNumber
-            add(
-                AdminRecentActivity(
-                    user = user,
-                    amountLabel = "FJD ${"%.2f".format(tx.amount)}",
-                    status = tx.status,
-                    type = tx.kind
+    Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(
+                    brush = Brush.verticalGradient(
+                        colors = listOf(MaterialTheme.colorScheme.primary, MaterialTheme.colorScheme.primaryContainer)
+                    ),
+                    shape = MaterialTheme.shapes.large
                 )
-            )
-        }
-        uiState.accounts
-            .filter { it.status.equals("pending_approval", ignoreCase = true) }
-            .take(3)
-            .forEach { account ->
-                add(
-                    AdminRecentActivity(
-                        user = account.accountHolder,
-                        amountLabel = account.requestedOpeningBalance?.let { "FJD ${"%.2f".format(it)}" } ?: "FJD 0.00",
-                        status = "pending",
-                        type = "new account"
+                .padding(20.dp)
+        ) {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column {
+                        Text("System Liquidity", color = Color.White.copy(alpha = 0.85f), style = MaterialTheme.typography.labelMedium)
+                        Text(
+                            "FJD ${"%,.2f".format(uiState.accounts.sumOf { it.balance })}",
+                            color = Color.White,
+                            style = MaterialTheme.typography.headlineMedium,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                    Icon(
+                        imageVector = Icons.Filled.AccountBalanceWallet,
+                        contentDescription = null,
+                        modifier = Modifier.size(44.dp),
+                        tint = Color.White.copy(alpha = 0.25f)
                     )
-                )
-            }
-    }.take(8)
+                }
 
-    AdminSectionSurface(
-        title = "Dashboard Overview",
-        subtitle = "Snapshot of users, balances, approvals, and transaction activity.",
-        actionContent = { OutlinedButton(onClick = viewModel::loadAllAdminData) { Text("Refresh") } }
-    ) {
-        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
-                AdminSummaryCard(
-                    modifier = Modifier.weight(1f),
-                    title = "Total Users",
-                    value = totalUsers.toString(),
-                    icon = Icons.Filled.People,
-                    accent = Color(0xFF1E88E5),
-                    onClick = { viewModel.setActiveTab(AdminTab.CUSTOMERS) }
-                )
-                AdminSummaryCard(
-                    modifier = Modifier.weight(1f),
-                    title = "Total Accounts",
-                    value = totalAccounts.toString(),
-                    icon = Icons.Filled.AccountBalanceWallet,
-                    accent = Color(0xFF43A047),
-                    onClick = { viewModel.setActiveTab(AdminTab.ACCOUNTS) }
-                )
-            }
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
-                AdminSummaryCard(
-                    modifier = Modifier.weight(1f),
-                    title = "Total Balance",
-                    value = "FJD ${"%.2f".format(totalBalance)}",
-                    icon = Icons.Filled.Payments,
-                    accent = Color(0xFFFB8C00),
-                    onClick = { viewModel.setActiveTab(AdminTab.REPORTS) }
-                )
-                AdminSummaryCard(
-                    modifier = Modifier.weight(1f),
-                    title = "Pending Approvals",
-                    value = pendingApprovals.toString(),
-                    icon = Icons.AutoMirrored.Filled.FactCheck,
-                    accent = Color(0xFFE53935),
-                    onClick = { viewModel.setActiveTab(AdminTab.REGISTRATION_REQUESTS) }
-                )
-            }
-
-            AdminSectionSurface(
-                title = "Transactions Overview",
-                subtitle = "Income vs Expense based on existing transaction entries."
-            ) {
-                IncomeExpenseChart(income = incomeAmount, expense = expenseAmount)
-            }
-
-            AdminSectionSurface(
-                title = "Recent Activities",
-                subtitle = "Latest deposits, withdrawals, transfers, and account events."
-            ) {
-                if (recentActivities.isEmpty()) {
-                    Text("No recent activities available.", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                } else {
-                    recentActivities.forEach { activity ->
-                        RecentActivityRow(activity)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Box(modifier = Modifier.weight(1f)) {
+                        AdminMetricCard("Total Customers", uiState.customers.size.toString())
+                    }
+                    Box(modifier = Modifier.weight(1f)) {
+                        AdminMetricCard("Active Accounts", uiState.accounts.size.toString())
                     }
                 }
             }
+        }
 
-            AdminSectionSurface(
-                title = "Quick Actions",
-                subtitle = "Open focused workflows without repeating controls on this page."
-            ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .horizontalScroll(rememberScrollState()),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    OutlinedButton(onClick = { viewModel.setActiveTab(AdminTab.REGISTRATION_REQUESTS) }) {
-                        Text("Registration Requests ($pendingRegistrations)")
-                    }
-                    OutlinedButton(onClick = { viewModel.setActiveTab(AdminTab.LOAN_REQUESTS) }) {
-                        Text("Loan Requests ($pendingLoans)")
-                    }
-                    OutlinedButton(onClick = { viewModel.setActiveTab(AdminTab.ACCOUNTS) }) {
-                        Text("Account Operations")
-                    }
-                    OutlinedButton(onClick = { viewModel.setActiveTab(AdminTab.TRANSACTIONS) }) {
-                        Text("Transaction Review")
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            DashboardQuickAction(
+                modifier = Modifier.weight(1f),
+                title = "Approve Users",
+                icon = Icons.AutoMirrored.Filled.FactCheck,
+                count = uiState.customers.count { it.registrationStatus == "pending" },
+                onClick = { viewModel.setActiveTab(AdminTab.REGISTRATION_REQUESTS) }
+            )
+            DashboardQuickAction(
+                modifier = Modifier.weight(1f),
+                title = "Loan Requests",
+                icon = Icons.AutoMirrored.Filled.TrendingUp,
+                count = uiState.loanApplications.count { it.status == "pending" },
+                onClick = { viewModel.setActiveTab(AdminTab.LOAN_REQUESTS) }
+            )
+        }
+
+        AdminSectionSurface(
+            title = "Recent Activity",
+            subtitle = "Overview of the latest 5 transactions across the bank.",
+            actionContent = {
+                TextButton(onClick = { viewModel.setActiveTab(AdminTab.TRANSACTIONS) }) { Text("View All") }
+            }
+        ) {
+            if (uiState.transactions.isEmpty()) {
+                Text("No recent transactions.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            } else {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    uiState.transactions.take(5).forEach { tx ->
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Surface(
+                                    modifier = Modifier.size(36.dp),
+                                    shape = CircleShape,
+                                    color = if (tx.kind.lowercase().contains("credit")) MaterialTheme.colorScheme.tertiaryContainer else MaterialTheme.colorScheme.secondaryContainer
+                                ) {
+                                    Box(contentAlignment = Alignment.Center) {
+                                        Icon(
+                                            imageVector = if (tx.kind.lowercase().contains("credit")) Icons.AutoMirrored.Filled.TrendingUp else Icons.AutoMirrored.Filled.TrendingDown,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(18.dp),
+                                            tint = if (tx.kind.lowercase().contains("credit")) MaterialTheme.colorScheme.onTertiaryContainer else MaterialTheme.colorScheme.onSecondaryContainer
+                                        )
+                                    }
+                                }
+                                Column {
+                                    Text(tx.accountNumber, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+                                    Text(tx.kind, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
+                            }
+                            Text(
+                                "FJD ${"%.2f".format(tx.amount)}",
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = if (tx.kind.lowercase().contains("credit")) Color(0xFF2E7D32) else Color(0xFFC62828)
+                            )
+                        }
+                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
                     }
                 }
             }
@@ -764,172 +624,51 @@ private fun OverviewTab(uiState: AdminUiState, viewModel: AdminViewModel) {
     }
 }
 
-private data class AdminRecentActivity(
-    val user: String,
-    val amountLabel: String,
-    val status: String,
-    val type: String
-)
-
 @Composable
-private fun AdminSummaryCard(
+private fun DashboardQuickAction(
     modifier: Modifier = Modifier,
     title: String,
-    value: String,
     icon: ImageVector,
-    accent: Color,
-    onClick: (() -> Unit)? = null
+    count: Int,
+    onClick: () -> Unit
 ) {
     Card(
-        modifier = if (onClick != null) {
-            modifier.clickable(onClick = onClick)
-        } else {
-            modifier
-        },
-        shape = MaterialTheme.shapes.large,
-        colors = CardDefaults.cardColors(containerColor = Color.White),
-        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+        modifier = modifier.clickable { onClick() },
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
     ) {
         Column(
             modifier = Modifier.padding(14.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Surface(color = accent.copy(alpha = 0.14f), shape = MaterialTheme.shapes.medium) {
-                    Icon(
-                        imageVector = icon,
-                        contentDescription = title,
-                        tint = accent,
-                        modifier = Modifier.padding(8.dp)
+            Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+            Text(title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+            if (count > 0) {
+                Surface(
+                    color = MaterialTheme.colorScheme.error,
+                    shape = CircleShape
+                ) {
+                    Text(
+                        text = count.toString(),
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = Color.White
                     )
                 }
-                Text(title, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            } else {
+                Text("Up to date", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
-            Text(value, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = accent)
         }
     }
-}
-
-@Composable
-private fun IncomeExpenseChart(income: Double, expense: Double) {
-    val maxAmount = maxOf(income, expense, 1.0)
-    val incomeRatio = (income / maxAmount).toFloat().coerceIn(0f, 1f)
-    val expenseRatio = (expense / maxAmount).toFloat().coerceIn(0f, 1f)
-
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(top = 6.dp),
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
-        verticalAlignment = Alignment.Bottom
-    ) {
-        ChartBarItem(
-            modifier = Modifier.weight(1f),
-            label = "Income",
-            value = "FJD ${"%.2f".format(income)}",
-            ratio = incomeRatio,
-            color = Color(0xFF2E7D32),
-            icon = Icons.AutoMirrored.Filled.TrendingUp
-        )
-        ChartBarItem(
-            modifier = Modifier.weight(1f),
-            label = "Expense",
-            value = "FJD ${"%.2f".format(expense)}",
-            ratio = expenseRatio,
-            color = Color(0xFFC62828),
-            icon = Icons.AutoMirrored.Filled.TrendingDown
-        )
-    }
-}
-
-@Composable
-private fun ChartBarItem(
-    modifier: Modifier,
-    label: String,
-    value: String,
-    ratio: Float,
-    color: Color,
-    icon: ImageVector
-) {
-    Column(
-        modifier = modifier,
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(6.dp)
-    ) {
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-            Icon(icon, contentDescription = label, tint = color)
-            Text(label, style = MaterialTheme.typography.labelMedium)
-        }
-        Text(value, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(130.dp)
-                .background(Color(0xFFF4F6F9), MaterialTheme.shapes.medium),
-            contentAlignment = Alignment.BottomCenter
-        ) {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth(0.55f)
-                    .height((120f * ratio).dp)
-                    .background(color, MaterialTheme.shapes.small)
-            )
-        }
-    }
-}
-
-@Composable
-private fun RecentActivityRow(activity: AdminRecentActivity) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 6.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            Text(activity.user, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
-            Text(activity.type, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
-        Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            Text(activity.amountLabel, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
-            val statusColor = if (activity.status.equals("pending", ignoreCase = true)) Color(0xFFFB8C00) else Color(0xFF2E7D32)
-            Text(
-                activity.status,
-                style = MaterialTheme.typography.labelSmall,
-                color = statusColor,
-                fontWeight = FontWeight.SemiBold
-            )
-        }
-    }
-    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f))
 }
 
 @Composable
 private fun CustomersTab(uiState: AdminUiState, viewModel: AdminViewModel) {
-    val sortedCustomers = uiState.customers.sortedWith(
-        compareByDescending<com.bof.mobile.model.ProfileResponse> { it.registrationStatus.equals("pending", ignoreCase = true) }
-            .thenByDescending { it.id }
-    )
-
     AdminSectionSurface(
-        title = "Customers",
-        subtitle = "Search and manage customer profile and access states."
+        title = "Customer Directory",
+        subtitle = "Manage all registered bank customers and their profile status.",
+        actionContent = { OutlinedButton(onClick = viewModel::loadCustomers) { Text("Refresh") } }
     ) {
-        OutlinedTextField(
-            value = uiState.customerSearchQuery,
-            onValueChange = viewModel::onCustomerSearchChanged,
-            label = { Text("Search by name/email/mobile") },
-            modifier = Modifier.fillMaxWidth()
-        )
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Button(onClick = viewModel::loadCustomers, modifier = Modifier.weight(1f)) { Text("Search") }
-            OutlinedButton(
-                onClick = { viewModel.onCustomerSearchChanged(""); viewModel.loadCustomers() },
-                modifier = Modifier.weight(1f)
-            ) { Text("Clear") }
-        }
-
         val scrollState = rememberScrollState()
         Column(
             modifier = Modifier
@@ -939,46 +678,29 @@ private fun CustomersTab(uiState: AdminUiState, viewModel: AdminViewModel) {
         ) {
             AdminTableHeaderRow(
                 listOf(
-                    AdminTableColumn("ID", 80.dp),
-                    AdminTableColumn("Name", 180.dp),
-                    AdminTableColumn("Status", 110.dp),
-                    AdminTableColumn("Email", 200.dp),
-                    AdminTableColumn("Mobile", 140.dp),
-                    AdminTableColumn("Actions", 620.dp)
+                    AdminTableColumn("ID", 70.dp),
+                    AdminTableColumn("Full Name", 180.dp),
+                    AdminTableColumn("Email Address", 240.dp),
+                    AdminTableColumn("Phone", 150.dp),
+                    AdminTableColumn("Verified", 110.dp),
+                    AdminTableColumn("Joined", 170.dp),
+                    AdminTableColumn("Actions", 140.dp)
                 )
             )
-            if (sortedCustomers.isEmpty()) {
-                AdminEmptyTableRow("No customers available.")
+
+            if (uiState.customers.isEmpty()) {
+                AdminEmptyTableRow("No registered customers found.")
             } else {
-                sortedCustomers.forEachIndexed { index, customer ->
+                uiState.customers.forEachIndexed { index, customer ->
                     AdminTableDataRow(index) {
-                        AdminTableCell("#${customer.id}", 80.dp)
+                        AdminTableCell(customer.id.toString(), 70.dp)
                         AdminTableCell(customer.fullName, 180.dp, bold = true)
-                        AdminStatusChip(customer.status, 110.dp)
-                        AdminTableCell(customer.email, 200.dp)
-                        AdminTableCell(customer.mobile, 140.dp)
-                        val actionsScroll = rememberScrollState()
-                        Row(
-                            modifier = Modifier
-                                .width(620.dp)
-                                .horizontalScroll(actionsScroll),
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
-                        ) {
-                            OutlinedButton(
-                                onClick = { viewModel.updateCustomer(customer.id, mapOf("status" to "active")) },
-                                modifier = Modifier.height(36.dp),
-                                enabled = customer.status != "active"
-                            ) { Text("Activate") }
-                            OutlinedButton(
-                                onClick = { viewModel.updateCustomer(customer.id, mapOf("status" to "blocked")) },
-                                modifier = Modifier.height(36.dp),
-                                enabled = customer.status != "blocked"
-                            ) { Text("Block") }
-                            OutlinedButton(
-                                onClick = { viewModel.updateCustomer(customer.id, mapOf("identityVerified" to true)) },
-                                modifier = Modifier.height(36.dp),
-                                enabled = !customer.identityVerified
-                            ) { Text("Verify ID") }
+                        AdminTableCell(customer.email, 240.dp)
+                        AdminTableCell(customer.mobile, 150.dp)
+                        AdminStatusChip(customer.registrationStatus, 110.dp)
+                        AdminTableCell(customer.lastLoginAt?.take(16) ?: "-", 170.dp)
+                        Box(modifier = Modifier.width(140.dp)) {
+                            TextButton(onClick = { /* TODO */ }) { Text("Manage") }
                         }
                     }
                 }
@@ -1003,24 +725,23 @@ private fun AccountsTab(uiState: AdminUiState, viewModel: AdminViewModel) {
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
 
-        var accountSectionTab by remember { mutableStateOf("Create Account") }
         Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .horizontalScroll(rememberScrollState()),
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            listOf("Create Account", "Account Summaries").forEach { label ->
-                val selected = accountSectionTab == label
+            listOf("Create Account", "Account Summaries", "Deposit", "Create Deposit").forEach { label ->
+                val selected = uiState.accountSectionTab == label
                 if (selected) {
-                    Button(onClick = { accountSectionTab = label }) { Text(label) }
+                    Button(onClick = { viewModel.setAccountSectionTab(label) }) { Text(label) }
                 } else {
-                    OutlinedButton(onClick = { accountSectionTab = label }) { Text(label) }
+                    OutlinedButton(onClick = { viewModel.setAccountSectionTab(label) }) { Text(label) }
                 }
             }
         }
 
-        if (accountSectionTab == "Create Account") {
+        if (uiState.accountSectionTab == "Create Account") {
             Text("Create account", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
             Text(
                 "Customer must already exist. Use Customer ID from the Customers tab.",
@@ -1063,7 +784,7 @@ private fun AccountsTab(uiState: AdminUiState, viewModel: AdminViewModel) {
                     label = { Text("Select account type") },
                     trailingIcon = {
                         Icon(
-                            imageVector = androidx.compose.material.icons.Icons.Filled.KeyboardArrowDown,
+                            imageVector = Icons.Filled.KeyboardArrowDown,
                             contentDescription = null,
                             modifier = Modifier.clickable { createAccountTypeExpanded = true }
                         )
@@ -1137,7 +858,35 @@ private fun AccountsTab(uiState: AdminUiState, viewModel: AdminViewModel) {
             }
         }
 
-        if (accountSectionTab == "Account Summaries") {
+        if (uiState.accountSectionTab == "Deposit") {
+            com.bof.mobile.ui.deposit.DepositScreen(
+                viewModel = com.bof.mobile.viewmodel.DepositViewModel(
+                    com.bof.mobile.data.repository.AccountRepository(viewModel.repository.apiService),
+                    com.bof.mobile.data.repository.FeatureRepository(viewModel.repository.apiService)
+                ),
+                canGoBack = false,
+                onBack = {},
+                onDepositCompleted = { viewModel.loadAccounts() }
+            )
+        }
+        if (uiState.accountSectionTab == "Create Deposit") {
+            CreateDepositTab(
+                accounts = uiState.accounts,
+                onDeposit = { accountId, amount, note ->
+                    // Use a simple ViewModel-less approach for now, or you can wire to AdminViewModel
+                    val depositViewModel = com.bof.mobile.viewmodel.DepositViewModel(
+                        com.bof.mobile.data.repository.AccountRepository(viewModel.repository.apiService),
+                        com.bof.mobile.data.repository.FeatureRepository(viewModel.repository.apiService)
+                    )
+                    depositViewModel.onDepositAccountIdChanged(accountId)
+                    depositViewModel.onDepositAmountChanged(amount)
+                    depositViewModel.onDepositNoteChanged(note)
+                    depositViewModel.deposit()
+                }
+            )
+        }
+
+        if (uiState.accountSectionTab == "Account Summaries") {
             Text("Account Summaries", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
             val summaryScrollState = rememberScrollState()
             Column(
@@ -1240,6 +989,51 @@ private fun AccountsTab(uiState: AdminUiState, viewModel: AdminViewModel) {
                 }
             }
         }
+        }
+    }
+}
+
+@Composable
+private fun CreateDepositTab(
+    accounts: List<com.bof.mobile.model.AccountItem>,
+    onDeposit: (String, String, String) -> Unit
+) {
+    var selectedAccountId by remember { mutableStateOf("") }
+    var amount by remember { mutableStateOf("") }
+    var note by remember { mutableStateOf("") }
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Text("Create Deposit", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+        OutlinedTextField(
+            value = selectedAccountId,
+            onValueChange = { selectedAccountId = it },
+            label = { Text("Account ID") },
+            placeholder = { Text("Enter or select account ID") },
+            modifier = Modifier.fillMaxWidth()
+        )
+        // Optionally, you can add a dropdown for account selection
+        OutlinedTextField(
+            value = amount,
+            onValueChange = { amount = it },
+            label = { Text("Amount") },
+            placeholder = { Text("Enter deposit amount") },
+            modifier = Modifier.fillMaxWidth()
+        )
+        OutlinedTextField(
+            value = note,
+            onValueChange = { note = it },
+            label = { Text("Note (optional)") },
+            placeholder = { Text("Add a note") },
+            modifier = Modifier.fillMaxWidth()
+        )
+        Button(
+            onClick = {
+                if (selectedAccountId.isNotBlank() && amount.isNotBlank()) {
+                    onDeposit(selectedAccountId, amount, note)
+                }
+            },
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Text("Deposit to Account")
         }
     }
 }
@@ -1408,7 +1202,7 @@ private fun LoanRequestsTab(uiState: AdminUiState, viewModel: AdminViewModel) {
             Text("No loan applications available.", color = MaterialTheme.colorScheme.onSurfaceVariant)
         } else {
             val sortedLoanRequests = uiState.loanApplications
-                .sortedByDescending { it.submittedAt.orEmpty().ifBlank { it.createdAt.orEmpty() } }
+                .sortedByDescending { it.submittedAt.ifBlank { it.createdAt } }
 
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 sortedLoanRequests.take(20).forEach { loan ->
@@ -1421,17 +1215,15 @@ private fun LoanRequestsTab(uiState: AdminUiState, viewModel: AdminViewModel) {
                         ?.accountNumber
                         ?: "-"
                     val requestedOn = loan.submittedAt
-                        .orEmpty()
-                        .ifBlank { loan.createdAt.orEmpty() }
+                        .ifBlank { loan.createdAt }
                         .take(16)
                         .ifBlank { "-" }
                     val reviewedOn = loan.reviewedAt
-                        .orEmpty()
-                        .take(16)
-                        .ifBlank { "-" }
-                    val safeLoanType = loan.loanProductId.orEmpty().ifBlank { "-" }
-                    val safePurpose = loan.purpose.orEmpty().ifBlank { "-" }
-                    val safeOccupation = loan.occupation.orEmpty().ifBlank { "-" }
+                        ?.take(16)
+                        ?: "-"
+                    val safeLoanType = loan.loanProductId.ifBlank { "-" }
+                    val safePurpose = loan.purpose.ifBlank { "-" }
+                    val safeOccupation = loan.occupation.ifBlank { "-" }
 
                     Card(
                         modifier = Modifier.fillMaxWidth(),

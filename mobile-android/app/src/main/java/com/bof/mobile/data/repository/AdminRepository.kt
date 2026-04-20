@@ -28,7 +28,7 @@ import com.bof.mobile.model.StatementRequestItem
 import retrofit2.HttpException
 import java.io.IOException
 
-class AdminRepository(private val apiService: ApiService) {
+class AdminRepository(val apiService: ApiService) {
 
     private fun extractErrorMessage(e: HttpException): String {
         val raw = e.response()?.errorBody()?.string()?.trim()

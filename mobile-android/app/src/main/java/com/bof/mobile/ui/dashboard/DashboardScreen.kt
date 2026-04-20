@@ -75,7 +75,7 @@ fun DashboardScreen(
     onNavigateToTransfers: () -> Unit = {},
     onNavigateToAccounts: () -> Unit = {},
     onNavigateToFeatures: () -> Unit = {},
-    onNavigateToDeposit: () -> Unit = {},
+    // onNavigateToDeposit: () -> Unit = {},
     onNavigateToWithdraw: () -> Unit = {},
     onNavigateToBillPayment: () -> Unit = {},
     onNavigateToStatement: () -> Unit = {},

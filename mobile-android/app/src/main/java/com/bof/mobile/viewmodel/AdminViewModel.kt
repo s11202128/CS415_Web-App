@@ -107,11 +107,19 @@ data class AdminUiState(
 
     val testSmsMobile: String = "",
     val testSmsMessage: String = "Test SMS from Bank of Fiji"
+    ,
+
+    // Persist selected tab in Accounts section
+    val accountSectionTab: String = "Create Account"
 )
 
-class AdminViewModel(private val repository: AdminRepository) : ViewModel() {
+class AdminViewModel(val repository: AdminRepository) : ViewModel() {
     private val _uiState = MutableStateFlow(AdminUiState())
     val uiState: StateFlow<AdminUiState> = _uiState
+
+    fun setAccountSectionTab(tab: String) {
+        _uiState.update { it.copy(accountSectionTab = tab) }
+    }
 
     fun setActiveMenu(menu: AdminMenuGroup) {
         _uiState.update { state ->
