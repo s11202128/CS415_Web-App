@@ -29,6 +29,7 @@ const {
   getOtpAttempts,
   reverseTransaction,
   generateRandomAccountPin,
+  createTransaction,
 } = require("../store-mysql");
 const { Customer, Account, Bill, Investment, Loan, Transaction, OtpVerification, StatementRequest, ActivityLog } = require("../models");
 
@@ -307,6 +308,7 @@ async function mapTransactionRows(rows) {
     accountId: Number(t.accountId) || accountIdByNumber.get(String(t.accountNumber)) || null,
     accountNumber: t.accountNumber,
     kind: t.type,
+    transactionType: t.transactionType || t.type,
     amount: Number(t.amount),
     description: t.description,
     status: t.status,
@@ -1149,6 +1151,59 @@ router.post("/admin/create-account", asyncHandler(async (req, res) => {
   });
 
   res.status(201).json(toAccountResponse(account));
+}));
+
+router.post("/admin/deposits", asyncHandler(async (req, res) => {
+  const payload = req.body || {};
+  const accountId = Number(payload.accountId);
+  const amount = Number(payload.amount);
+  const description = String(payload.description || "Admin deposit").trim() || "Admin deposit";
+
+  if (!Number.isFinite(accountId) || accountId <= 0) {
+    return res.status(400).json({ error: "accountId must be a positive number" });
+  }
+  if (!Number.isFinite(amount) || amount <= 0) {
+    return res.status(400).json({ error: "amount must be greater than 0" });
+  }
+
+  const account = await Account.findByPk(accountId);
+  if (!account) {
+    return res.status(404).json({ error: "Account not found" });
+  }
+
+  const accountStatus = String(account.status || "").toLowerCase();
+  if (["frozen", "suspended", "closed", "rejected"].includes(accountStatus)) {
+    return res.status(400).json({ error: "Account is not available for deposits" });
+  }
+
+  await createTransaction({
+    accountId: account.id,
+    kind: "deposit",
+    amount,
+    description,
+    transactionType: "deposit",
+  });
+
+  await account.reload();
+
+  try {
+    await addNotification(
+      account.customerId,
+      `Admin deposited FJD ${amount.toFixed(2)} to account ${account.accountNumber}. New balance: FJD ${Number(account.balance || 0).toFixed(2)}.`,
+      "DEPOSIT"
+    );
+  } catch (error) {
+    // Keep deposit successful even if notification dispatch fails.
+  }
+
+  const refreshedAccount = await Account.findByPk(account.id, {
+    include: [{ model: Customer, attributes: ["fullName"] }],
+  });
+
+  res.status(201).json({
+    message: `Deposited FJD ${amount.toFixed(2)} to account ${account.accountNumber}`,
+    account: toAccountResponse(refreshedAccount || account),
+  });
 }));
 
 router.put("/admin/freeze-account", asyncHandler(async (req, res) => {

@@ -59,6 +59,7 @@ data class AdminUiState(
     val isLoading: Boolean = false,
     val errorMessage: String? = null,
     val successMessage: String? = null,
+    val depositSuccessDialogMessage: String? = null,
 
     val activeMenu: AdminMenuGroup = AdminMenuGroup.OVERVIEW,
     val activeTab: AdminTab = AdminTab.OVERVIEW,
@@ -90,7 +91,7 @@ data class AdminUiState(
 
     val depositAccountId: String = "",
     val depositAmount: String = "",
-    val depositDescription: String = "Admin deposit",
+    val depositDescription: String = "",
 
     val investmentCustomerId: String = "",
     val investmentType: String = "",
@@ -133,7 +134,11 @@ class AdminViewModel(private val repository: AdminRepository) : ViewModel() {
     }
 
     fun clearMessages() {
-        _uiState.update { it.copy(errorMessage = null, successMessage = null) }
+        _uiState.update { it.copy(errorMessage = null, successMessage = null, depositSuccessDialogMessage = null) }
+    }
+
+    fun dismissDepositSuccessPopup() {
+        _uiState.update { it.copy(depositSuccessDialogMessage = null) }
     }
 
     fun onCustomerSearchChanged(value: String) = _uiState.update { it.copy(customerSearchQuery = value) }
@@ -371,10 +376,16 @@ class AdminViewModel(private val repository: AdminRepository) : ViewModel() {
                             accounts = it.accounts.map { account ->
                                 if (account.id == result.data.account.id) result.data.account else account
                             },
+                            depositAccountId = "",
+                            depositAmount = "",
+                            depositDescription = "",
+                            depositSuccessDialogMessage = result.data.message,
                             successMessage = result.data.message,
                             errorMessage = null
                         )
                     }
+                    loadAdminTransactions()
+                    loadOverview()
                 }
                 is ApiResult.Error -> setError(result.message)
             }

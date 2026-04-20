@@ -19,6 +19,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
@@ -60,6 +61,7 @@ import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Payments
 import androidx.compose.material.icons.filled.People
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.foundation.clickable
 import com.bof.mobile.viewmodel.AdminTab
@@ -74,12 +76,12 @@ private enum class AdminBottomNavItem(
     DASHBOARD(
         label = "Dashboard",
         icon = Icons.Filled.Dashboard,
-        tabs = listOf(AdminTab.OVERVIEW, AdminTab.LOAN_REQUESTS, AdminTab.CUSTOMERS, AdminTab.REPORTS, AdminTab.STATEMENTS)
+        tabs = listOf(AdminTab.OVERVIEW, AdminTab.DEPOSITS, AdminTab.LOAN_REQUESTS, AdminTab.CUSTOMERS, AdminTab.REPORTS, AdminTab.STATEMENTS)
     ),
     ACCOUNTS(
         label = "Accounts",
         icon = Icons.Filled.People,
-        tabs = listOf(AdminTab.REGISTRATION_REQUESTS, AdminTab.ACCOUNTS)
+        tabs = listOf(AdminTab.REGISTRATION_REQUESTS, AdminTab.ACCOUNTS, AdminTab.DEPOSITS)
     ),
     TRANSACTIONS(
         label = "Transactions",
@@ -752,6 +754,9 @@ private fun OverviewTab(uiState: AdminUiState, viewModel: AdminViewModel) {
                     OutlinedButton(onClick = { viewModel.setActiveTab(AdminTab.LOAN_REQUESTS) }) {
                         Text("Loan Requests ($pendingLoans)")
                     }
+                    OutlinedButton(onClick = { viewModel.setActiveTab(AdminTab.DEPOSITS) }) {
+                        Text("Deposits")
+                    }
                     OutlinedButton(onClick = { viewModel.setActiveTab(AdminTab.ACCOUNTS) }) {
                         Text("Account Operations")
                     }
@@ -1246,11 +1251,122 @@ private fun AccountsTab(uiState: AdminUiState, viewModel: AdminViewModel) {
 
 @Composable
 private fun DepositsTab(uiState: AdminUiState, viewModel: AdminViewModel) {
+    if (!uiState.depositSuccessDialogMessage.isNullOrBlank()) {
+        AlertDialog(
+            onDismissRequest = viewModel::dismissDepositSuccessPopup,
+            title = { Text("Deposit Successful") },
+            text = { Text(uiState.depositSuccessDialogMessage.orEmpty()) },
+            confirmButton = {
+                Button(onClick = viewModel::dismissDepositSuccessPopup) {
+                    Text("OK")
+                }
+            }
+        )
+    }
+
     AdminSectionSurface(
-        title = "Deposit Approvals",
-        subtitle = "Approve or reject pending opening deposit requests.",
-        actionContent = { OutlinedButton(onClick = viewModel::loadAccounts) { Text("Refresh deposits") } }
+        title = "Admin Deposits",
+        subtitle = "Credit funds to a customer account and keep opening deposit approvals in one place.",
+        actionContent = { OutlinedButton(onClick = viewModel::loadAccounts) { Text("Refresh") } }
     ) {
+        val eligibleAccounts = uiState.accounts.sortedBy { it.id }
+
+        var destinationAccountExpanded by remember { mutableStateOf(false) }
+
+        val selectedAccount = uiState.depositAccountId.toIntOrNull()?.let { selectedId ->
+            eligibleAccounts.firstOrNull { it.id == selectedId }
+        }
+
+        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Box {
+                OutlinedTextField(
+                    value = selectedAccount?.let { "${it.accountNumber} - ${it.accountHolder}" } ?: "",
+                    onValueChange = {},
+                    readOnly = true,
+                    label = { Text("Destination account") },
+                    placeholder = { Text("Select destination account") },
+                    trailingIcon = {
+                        Icon(
+                            imageVector = Icons.Filled.KeyboardArrowDown,
+                            contentDescription = null,
+                            modifier = Modifier.clickable { destinationAccountExpanded = true }
+                        )
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { destinationAccountExpanded = true }
+                )
+
+                DropdownMenu(
+                    expanded = destinationAccountExpanded,
+                    onDismissRequest = { destinationAccountExpanded = false }
+                ) {
+                    eligibleAccounts.forEach { account ->
+                        DropdownMenuItem(
+                            text = {
+                                Text("#${account.id}  ${account.accountNumber}  ${account.accountHolder}")
+                            },
+                            onClick = {
+                                viewModel.onDepositAccountIdChanged(account.id.toString())
+                                destinationAccountExpanded = false
+                            }
+                        )
+                    }
+                }
+            }
+
+            if (selectedAccount != null) {
+                Text(
+                    text = "Selected: ${selectedAccount.accountHolder} (${selectedAccount.accountNumber})",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            } else {
+                Text(
+                    text = if (eligibleAccounts.isEmpty()) "No registered accounts available." else "Select a destination account from the dropdown.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+
+            OutlinedTextField(
+                value = uiState.depositAmount,
+                onValueChange = viewModel::onDepositAmountChanged,
+                label = { Text("Amount (FJD)") },
+                modifier = Modifier.fillMaxWidth()
+            )
+
+            OutlinedTextField(
+                value = uiState.depositDescription,
+                onValueChange = viewModel::onDepositDescriptionChanged,
+                label = { Text("Description") },
+                modifier = Modifier.fillMaxWidth()
+            )
+
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(onClick = viewModel::createDeposit) {
+                    Text("Deposit Now")
+                }
+                OutlinedButton(
+                    onClick = {
+                        viewModel.onDepositAccountIdChanged("")
+                        viewModel.onDepositAmountChanged("")
+                        viewModel.onDepositDescriptionChanged("")
+                    }
+                ) {
+                    Text("Clear")
+                }
+            }
+        }
+
+        HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+
+        Text(
+            text = "Pending Opening Deposit Approvals",
+            style = MaterialTheme.typography.titleSmall,
+            fontWeight = FontWeight.SemiBold
+        )
+
         val pendingDepositRequests = uiState.accounts
             .filter {
                 it.status.equals("pending_approval", ignoreCase = true) ||
@@ -1402,7 +1518,14 @@ private fun LoanRequestsTab(uiState: AdminUiState, viewModel: AdminViewModel) {
     AdminSectionSurface(
         title = "Loan Requests",
         subtitle = "Review each request details and decide quickly.",
-        actionContent = { OutlinedButton(onClick = viewModel::loadLoans) { Text("Refresh requests") } }
+        actionContent = {
+            OutlinedButton(onClick = viewModel::loadLoans) {
+                Icon(
+                    imageVector = Icons.Filled.Refresh,
+                    contentDescription = "Refresh requests"
+                )
+            }
+        }
     ) {
         if (uiState.loanApplications.isEmpty()) {
             Text("No loan applications available.", color = MaterialTheme.colorScheme.onSurfaceVariant)
