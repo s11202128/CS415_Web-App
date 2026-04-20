@@ -44,6 +44,7 @@ data class TransferUiState(
     val isLoading: Boolean = false,
     val successMessage: String? = null,
     val errorMessage: String? = null,
+    val transferSuccessDialogMessage: String? = null,
     val dailyLimit: Double = 10000.0,
     val latestServerResponse: TransferMoneyResponse? = null,
     val lastUpdatedAtEpochMs: Long? = null
@@ -94,7 +95,17 @@ class TransferViewModel(
         }
     }
 
-    fun clearMessages() = _uiState.update { it.copy(errorMessage = null, successMessage = null) }
+    fun clearMessages() = _uiState.update {
+        it.copy(
+            errorMessage = null,
+            successMessage = null,
+            transferSuccessDialogMessage = null
+        )
+    }
+
+    fun dismissTransferSuccessPopup() {
+        _uiState.update { it.copy(transferSuccessDialogMessage = null) }
+    }
 
     fun onTransferModeChanged(mode: TransferMode) = _uiState.update {
         it.copy(
@@ -110,6 +121,7 @@ class TransferViewModel(
             otpState = OtpState.Idle,
             errorMessage = null,
             successMessage = null,
+            transferSuccessDialogMessage = null,
             latestServerResponse = null
         )
     }
@@ -212,6 +224,7 @@ class TransferViewModel(
                             requiresOtp = false,
                             otpState = OtpState.Verified(result.data.message.ifBlank { "Transfer verified successfully" }),
                             successMessage = result.data.message,
+                            transferSuccessDialogMessage = result.data.message.ifBlank { "Transfer verified successfully" },
                             errorMessage = null,
                             latestServerResponse = result.data,
                             lastUpdatedAtEpochMs = System.currentTimeMillis()
@@ -242,7 +255,8 @@ class TransferViewModel(
                 requiresOtp = false,
                 otpState = OtpState.Idle,
                 errorMessage = null,
-                successMessage = null
+                successMessage = null,
+                transferSuccessDialogMessage = null
             )
         }
     }
@@ -289,6 +303,7 @@ class TransferViewModel(
                 )
             }
         } else {
+            val resolvedSuccessMessage = response.message.ifBlank { "Transfer successful - FJD ${String.format("%.2f", amount)}" }
             _uiState.update {
                 it.copy(
                     fromAccountId = "",
@@ -303,7 +318,8 @@ class TransferViewModel(
                     pendingTransactionId = null,
                     requiresOtp = false,
                     otpState = OtpState.Verified(response.message.ifBlank { "Transfer successful - FJD ${String.format("%.2f", amount)}" }),
-                    successMessage = response.message.ifBlank { "Transfer successful - FJD ${String.format("%.2f", amount)}" },
+                    successMessage = resolvedSuccessMessage,
+                    transferSuccessDialogMessage = resolvedSuccessMessage,
                     errorMessage = null,
                     latestServerResponse = response,
                     lastUpdatedAtEpochMs = System.currentTimeMillis()
@@ -323,6 +339,6 @@ class TransferViewModel(
     }
 
     private fun setError(message: String) {
-        _uiState.update { it.copy(errorMessage = message, successMessage = null) }
+        _uiState.update { it.copy(errorMessage = message, successMessage = null, transferSuccessDialogMessage = null) }
     }
 }

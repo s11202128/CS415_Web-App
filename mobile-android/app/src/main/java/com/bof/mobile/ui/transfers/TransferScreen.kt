@@ -22,6 +22,7 @@ import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -77,6 +78,7 @@ fun TransferScreen(
         )
     }
     val eligibleAccounts = accountsList.filter { it.status.equals("active", ignoreCase = true) }
+    val destinationAccounts = accountsList.filter { it.id.toString() != uiState.fromAccountId }
     var fromAccountMenuExpanded by remember { mutableStateOf(false) }
     var destinationAccountMenuExpanded by remember { mutableStateOf(false) }
     var handledSuccessMessage by remember { mutableStateOf<String?>(null) }
@@ -97,12 +99,11 @@ fun TransferScreen(
         }
     }
 
-    LaunchedEffect(uiState.transferMode, uiState.fromAccountId, eligibleAccounts) {
+    LaunchedEffect(uiState.transferMode, uiState.fromAccountId, destinationAccounts) {
         if (uiState.transferMode == TransferMode.INTERNAL) {
-            val selectedDestination = eligibleAccounts.firstOrNull { it.id.toString() == uiState.internalDestinationAccountId }
-            val sourceId = uiState.fromAccountId
-            if (selectedDestination == null || selectedDestination.id.toString() == sourceId) {
-                val fallback = eligibleAccounts.firstOrNull { it.id.toString() != sourceId }
+            val selectedDestination = destinationAccounts.firstOrNull { it.id.toString() == uiState.internalDestinationAccountId }
+            if (selectedDestination == null) {
+                val fallback = destinationAccounts.firstOrNull()
                 viewModel.onInternalDestinationAccountIdChanged(fallback?.id?.toString() ?: "")
             }
         }
@@ -129,7 +130,7 @@ fun TransferScreen(
 
     val selectedFromAccount = eligibleAccounts.firstOrNull { it.id.toString() == uiState.fromAccountId }
     val effectiveFromAccount = selectedFromAccount
-    val selectedDestinationAccount = eligibleAccounts.firstOrNull { it.id.toString() == uiState.internalDestinationAccountId }
+    val selectedDestinationAccount = destinationAccounts.firstOrNull { it.id.toString() == uiState.internalDestinationAccountId }
     val effectiveDestinationAccount = selectedDestinationAccount
     val canResolveDestination = uiState.transferMode == TransferMode.INTERNAL
     val sourceIdResolved = effectiveFromAccount != null
@@ -166,6 +167,19 @@ fun TransferScreen(
                 )
             )
     ) {
+        if (!uiState.transferSuccessDialogMessage.isNullOrBlank()) {
+            AlertDialog(
+                onDismissRequest = viewModel::dismissTransferSuccessPopup,
+                title = { Text("Transfer Successful") },
+                text = { Text(uiState.transferSuccessDialogMessage.orEmpty()) },
+                confirmButton = {
+                    Button(onClick = viewModel::dismissTransferSuccessPopup) {
+                        Text("OK")
+                    }
+                }
+            )
+        }
+
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -257,10 +271,10 @@ fun TransferScreen(
                 if (canResolveDestination) {
                     AccountSelectorCard(
                         label = "Destination account",
-                        accounts = eligibleAccounts.filter { it.id.toString() != uiState.fromAccountId },
+                        accounts = destinationAccounts,
                         selectedAccount = effectiveDestinationAccount,
                         expanded = destinationAccountMenuExpanded,
-                        enabled = eligibleAccounts.count { it.id.toString() != uiState.fromAccountId } > 0,
+                        enabled = destinationAccounts.isNotEmpty(),
                         onExpandedChange = { destinationAccountMenuExpanded = it },
                         onAccountSelected = {
                             viewModel.onInternalDestinationAccountIdChanged(it.id.toString())
@@ -469,7 +483,7 @@ fun TransferScreen(
                 }
             }
 
-            if (!isOtpStep && uiState.transferMode == TransferMode.INTERNAL && eligibleAccounts.count { it.id.toString() != uiState.fromAccountId } == 0) {
+            if (!isOtpStep && uiState.transferMode == TransferMode.INTERNAL && destinationAccounts.isEmpty()) {
                 Text(
                     text = "Add another account to transfer internally.",
                     style = MaterialTheme.typography.bodySmall,
