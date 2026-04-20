@@ -66,6 +66,10 @@ private enum class AccountsTab {
 
 /**
  * Main screen for managing user accounts.
+ * <p>
+ * This composable displays the user's bank accounts, allows navigation between account overview and account creation tabs,
+ * and provides options to refresh account data. It uses a ViewModel to manage state and actions.
+ * </p>
  *
  * @param viewModel The ViewModel for account state and actions
  * @param canGoBack Whether the back button is enabled
