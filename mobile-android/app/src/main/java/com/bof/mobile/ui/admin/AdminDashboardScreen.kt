@@ -118,7 +118,7 @@ fun AdminDashboardScreen(viewModel: AdminViewModel, canGoBack: Boolean, onBack: 
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color(0xFFF4F6F9))
+            .background(Color.White)
     ) {
         Column(
             modifier = Modifier
@@ -1156,6 +1156,7 @@ private fun AccountsTab(uiState: AdminUiState, viewModel: AdminViewModel) {
                     AdminTableColumn("ID", 70.dp),
                     AdminTableColumn("Account Number", 170.dp),
                     AdminTableColumn("Account Holder", 150.dp),
+                    AdminTableColumn("TIN", 120.dp),
                     AdminTableColumn("PIN", 80.dp),
                     AdminTableColumn("Type", 140.dp),
                     AdminTableColumn("Status", 130.dp),
@@ -1185,6 +1186,7 @@ private fun AccountsTab(uiState: AdminUiState, viewModel: AdminViewModel) {
                         AdminTableCell(account.id.toString(), 70.dp)
                         AdminTableCell(account.accountNumber, 170.dp, bold = true)
                         AdminTableCell(account.accountHolder, 150.dp)
+                        AdminTableCell(account.tin ?: "-", 120.dp)
                         AdminTableCell(account.accountPin ?: "----", 80.dp)
                         AdminTableCell(account.type, 140.dp)
                         AdminStatusChip(account.status, 130.dp)

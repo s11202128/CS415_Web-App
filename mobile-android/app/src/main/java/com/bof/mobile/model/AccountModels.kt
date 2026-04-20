@@ -6,6 +6,7 @@ data class AccountItem(
     val accountPin: String? = null,
     val customerId: Int,
     val accountHolder: String,
+    val tin: String? = null,
     val type: String,
     val balance: Double,
     val requestedOpeningBalance: Double? = null,
