@@ -79,15 +79,7 @@ fun StatementScreen(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(
-                brush = Brush.verticalGradient(
-                    listOf(
-                        MaterialTheme.colorScheme.background,
-                        MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.35f),
-                        MaterialTheme.colorScheme.surface
-                    )
-                )
-            )
+            .background(Color.White)
     ) {
         Column(
             modifier = Modifier
